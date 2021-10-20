@@ -30,6 +30,25 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
+  fn generate_graph(&self) -> DiGraph<String, String> {
+    todo!();
+
+    let mut graph = DiGraph::new();
+
+    let mut node_id_to_index = HashMap::new();
+    for node in &self.nodes {
+      node_id_to_index.insert(node.id.clone(), graph.add_node(node.id.clone()));
+      // add nodes for all the nodes' handles aswell.
+    }
+    for link in &self.links {
+      graph.add_edge(
+        *node_id_to_index.get(link.from.node_id.as_str()).unwrap(),
+        *node_id_to_index.get(link.from.node_id.as_str()).unwrap(),
+        link.get_id(),
+      );
+    }
+  }
+
   pub fn generate_pipeline_string(&self) -> Result<String, String> {
     let mut graph = DiGraph::new();
 
@@ -54,4 +73,6 @@ impl Pipeline {
     // step 2: check for cycles: if there's cycles, error
     // step 3: use the graph to find any dependencies of the target_node_id, and generate the pipeline only including those nodes.
   }
+
+  pub fn get_output_type(&self, output_clip_id: ID) {}
 }
