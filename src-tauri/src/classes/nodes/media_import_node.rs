@@ -66,7 +66,7 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Pipeline ID of clip is invalid"));
           }
           let pipeline = pipeline.unwrap();
-          let prop_type = pipeline.get_output_type(composited_clip.id.clone());
+          let prop_type = pipeline.get_output_type(composited_clip.id.clone(), &store);
           if prop_type.is_err() {
             return Err(String::from(
               "Failed to get output type for composited clip",

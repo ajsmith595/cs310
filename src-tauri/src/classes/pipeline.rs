@@ -6,6 +6,7 @@ use crate::classes::{clip::ClipIdentifier, node::Type, nodes};
 
 use super::{node::Node, store::Store, ID};
 
+#[derive(PartialEq, Eq, Clone)]
 pub struct LinkEndpoint {
   pub node_id: ID,
   pub property: String,
@@ -26,7 +27,7 @@ impl Link {
 }
 
 pub struct Pipeline {
-  pub nodes: Vec<Node>,
+  pub nodes: HashMap<ID, Node>,
   pub links: Vec<Link>,
   pub target_node_id: ID,
 }
@@ -36,7 +37,7 @@ impl Pipeline {
     let mut graph = DiGraph::new();
 
     let mut node_id_to_index = HashMap::new();
-    for node in &self.nodes {
+    for (_, node) in &self.nodes {
       let node_index = graph.add_node(node.id.clone());
       node_id_to_index.insert(node.id.clone(), node_index);
       let node_type = &store.node_types.get(&node.node_type);
@@ -114,12 +115,12 @@ impl Pipeline {
     // step 3: use the graph to find any dependencies of the target_node_id, and generate the pipeline only including those nodes.
   }
 
-  pub fn get_output_type(&self, output_clip_id: ID) -> Result<Type, String> {
+  pub fn get_output_type(&self, output_clip_id: ID, store: &Store) -> Result<Type, String> {
     // 1. look at the nodes, find all the output nodes.
     // 2. find the specific output node (if exists) for the relevant clip ID
     // 3. recurse until done: look at the previous node, and determine its output.
     let mut node_id = None;
-    for node in &self.nodes {
+    for (_, node) in &self.nodes {
       if node.node_type == nodes::output_node::IDENTIFIER {
         let clip = node.properties.get(nodes::output_node::INPUTS::CLIP);
         if let Some(clip) = clip {
@@ -133,10 +134,41 @@ impl Pipeline {
         }
       }
     }
-    todo!();
-  }
 
-  pub fn get_node_output_type(&self, node_id: ID, property_id: String) -> Result<Type, String> {
-    todo!();
+    if node_id.is_none() {
+      return Err(String::from("Clip output node not found"));
+    }
+    let node_id = node_id.unwrap();
+    let endpoint = self.get_connecting_endpoint(LinkEndpoint {
+      node_id: String::from(node_id),
+      property: String::from(nodes::output_node::INPUTS::MEDIA),
+    });
+    if endpoint.is_none() {
+      return Err(String::from("No endpoint connecting to output node"));
+    }
+    let LinkEndpoint { node_id, property } = endpoint.unwrap();
+    let node = self.nodes.get(&node_id);
+    if node.is_none() {
+      return Err(String::from("Link is invalid!"));
+    }
+    let node = node.unwrap();
+    let node_type = store.node_types.get(&node.node_type).unwrap();
+    let outputs = (node_type.get_output_types)(&node.properties, &store);
+    if outputs.is_err() {
+      return Err(String::from(
+        "Could not get output type of nod ebefore output node",
+      ));
+    }
+    let outputs = outputs.unwrap();
+    let output_type = outputs.get(&property).unwrap();
+    return Ok(output_type.property_type[0]);
+  }
+  fn get_connecting_endpoint(&self, input_link: LinkEndpoint) -> Option<LinkEndpoint> {
+    for Link { from, to } in &self.links {
+      if *to == input_link {
+        return Some(from.clone());
+      }
+    }
+    return None;
   }
 }

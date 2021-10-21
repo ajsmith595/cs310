@@ -18,19 +18,20 @@ pub struct Node {
   pub node_type: String,
   pub properties: HashMap<String, Value>, // value from serde_json?
 }
-
+#[derive(Copy, Clone)]
 pub struct Restrictions {
   pub min: f32,
   pub max: f32,
   pub step: f32,
 }
-
+#[derive(Copy, Clone)]
 pub enum PipeableType {
   Video,
   Audio,
   Image,
 }
 
+#[derive(Copy, Clone)]
 pub enum Type {
   Pipeable(Option<PipeableType>),
   Number(Restrictions),
