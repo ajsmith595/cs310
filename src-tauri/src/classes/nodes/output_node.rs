@@ -8,13 +8,20 @@ use crate::classes::{
   store::Store,
 };
 
+pub const IDENTIFIER: &str = "output";
+pub mod INPUTS {
+  pub const MEDIA: &str = "media";
+  pub const CLIP: &str = "clip";
+}
+pub mod OUTPUTS {}
+
 pub fn output_node() -> NodeType {
   let mut properties = HashMap::new();
 
   properties.insert(
-    String::from("media"),
+    String::from(INPUTS::MEDIA),
     NodeTypeProperty {
-      name: String::from("media"),
+      name: String::from(INPUTS::MEDIA),
       display_name: String::from("Media"),
       description: String::from("Media to output to clip"),
       property_type: vec![Type::Pipeable(None)],
@@ -22,9 +29,9 @@ pub fn output_node() -> NodeType {
   );
 
   properties.insert(
-    String::from("clip"),
+    String::from(INPUTS::CLIP),
     NodeTypeProperty {
-      name: String::from("clip"),
+      name: String::from(INPUTS::CLIP),
       display_name: String::from("Clip"),
       description: String::from("Clip to output"),
       property_type: vec![Type::Clip],
@@ -32,7 +39,7 @@ pub fn output_node() -> NodeType {
   );
 
   NodeType {
-    id: String::from("output"),
+    id: String::from(IDENTIFIER),
     display_name: String::from("Output"),
     description: String::from("Output media to a clip"),
     properties,

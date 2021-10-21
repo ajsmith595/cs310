@@ -8,6 +8,13 @@ use crate::classes::{
   store::Store,
 };
 
+pub const IDENTIFIER: &str = "clip_import";
+pub mod INPUTS {
+  pub const CLIP: &str = "clip";
+}
+pub mod OUTPUTS {
+  pub const OUTPUT: &str = "output";
+}
 pub fn media_import_node() -> NodeType {
   let mut properties = HashMap::new();
 
@@ -22,7 +29,7 @@ pub fn media_import_node() -> NodeType {
   );
 
   NodeType {
-    id: String::from("clip_import"),
+    id: String::from(IDENTIFIER),
     display_name: String::from("Clip Import"),
     description: String::from("Import a source or composited clip"),
     properties,
@@ -59,12 +66,18 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Pipeline ID of clip is invalid"));
           }
           let pipeline = pipeline.unwrap();
-          property_type = pipeline.get_output_type(composited_clip.id.clone());
+          let prop_type = pipeline.get_output_type(composited_clip.id.clone());
+          if prop_type.is_err() {
+            return Err(String::from(
+              "Failed to get output type for composited clip",
+            ));
+          }
+          property_type = prop_type.unwrap();
         }
       }
       let mut hm = HashMap::new();
       hm.insert(
-        String::from("output"),
+        String::from(OUTPUTS::OUTPUT),
         NodeTypeProperty {
           name: String::from("output"),
           display_name: String::from("Output"),

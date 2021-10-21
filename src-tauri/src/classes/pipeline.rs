@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use petgraph::{data::Build, graph::DiGraph, Graph};
 
-use crate::classes::node::Type;
+use crate::classes::{clip::ClipIdentifier, node::Type, nodes};
 
 use super::{node::Node, store::Store, ID};
 
@@ -114,11 +114,29 @@ impl Pipeline {
     // step 3: use the graph to find any dependencies of the target_node_id, and generate the pipeline only including those nodes.
   }
 
-  pub fn get_output_type(&self, output_clip_id: ID) -> Type {
+  pub fn get_output_type(&self, output_clip_id: ID) -> Result<Type, String> {
     // 1. look at the nodes, find all the output nodes.
     // 2. find the specific output node (if exists) for the relevant clip ID
     // 3. recurse until done: look at the previous node, and determine its output.
+    let mut node_id = None;
+    for node in &self.nodes {
+      if node.node_type == nodes::output_node::IDENTIFIER {
+        let clip = node.properties.get(nodes::output_node::INPUTS::CLIP);
+        if let Some(clip) = clip {
+          let clip = serde_json::from_value::<ClipIdentifier>(clip.to_owned());
+          if let Ok(clip) = clip {
+            if output_clip_id == clip.id {
+              node_id = Some(node.id.as_str());
+              break;
+            }
+          }
+        }
+      }
+    }
+    todo!();
+  }
 
+  pub fn get_node_output_type(&self, node_id: ID, property_id: String) -> Result<Type, String> {
     todo!();
   }
 }
