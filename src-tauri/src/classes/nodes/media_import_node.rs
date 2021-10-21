@@ -17,7 +17,7 @@ pub fn media_import_node() -> NodeType {
       name: String::from("clip"),
       display_name: String::from("Clip"),
       description: String::from("Clip to import"),
-      property_type: Type::MiscType(String::from("clip")),
+      property_type: vec![Type::Clip],
     },
   );
 
@@ -26,7 +26,7 @@ pub fn media_import_node() -> NodeType {
     display_name: String::from("Clip Import"),
     description: String::from("Import a source or composited clip"),
     properties,
-    get_output_types: |properties: HashMap<String, Value>, store: Store| {
+    get_output_types: |properties: &HashMap<String, Value>, store: &Store| {
       let clip = properties.get("clip");
       if clip.is_none() {
         return Err(String::from("No clip given"));
@@ -41,7 +41,6 @@ pub fn media_import_node() -> NodeType {
       match clip.clip_type {
         ClipType::Source => {
           // If it's a source clip, we get the relevant source clip from the store, and we get its clip type directly (by looking at the file)
-
           let source_clip = store.clips.source.get(&clip.id);
           if source_clip.is_none() {
             return Err(String::from("Clip ID is invalid"));
@@ -55,12 +54,12 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Clip ID is invalid"));
           }
           let composited_clip = composited_clip.unwrap();
-          let pipeline = store.pipeline_store.get(&composited_clip.pipeline_id);
+          let pipeline = store.pipelines.get(&composited_clip.pipeline_id);
           if pipeline.is_none() {
             return Err(String::from("Pipeline ID of clip is invalid"));
           }
           let pipeline = pipeline.unwrap();
-          property_type = Type::Video;
+          property_type = pipeline.get_output_type(composited_clip.id.clone());
         }
       }
       let mut hm = HashMap::new();
@@ -70,11 +69,11 @@ pub fn media_import_node() -> NodeType {
           name: String::from("output"),
           display_name: String::from("Output"),
           description: String::from("The clip itself"),
-          property_type: property_type,
+          property_type: vec![property_type],
         },
       );
       return Ok(hm);
     },
-    get_output: |_, _| Err(String::from("Test")),
+    get_output: |_, _| todo!(),
   }
 }

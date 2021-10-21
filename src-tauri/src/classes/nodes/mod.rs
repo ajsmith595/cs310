@@ -1,4 +1,5 @@
 mod media_import_node;
+mod output_node;
 use super::node::NodeType;
 use crate::classes::nodes::media_import_node::media_import_node;
 use std::collections::HashMap;

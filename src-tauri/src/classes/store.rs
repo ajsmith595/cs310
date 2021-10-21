@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use super::{
   clip::{ClipType, CompositedClip, SourceClip},
-  node::Node,
+  node::{Node, NodeType, PipeableType},
   pipeline::Pipeline,
   ID,
 };
@@ -14,5 +14,7 @@ pub struct ClipStore {
 pub struct Store {
   pub nodes: HashMap<ID, Node>,
   pub clips: ClipStore,
-  pub pipeline_store: HashMap<ID, Pipeline>,
+  pub pipelines: HashMap<ID, Pipeline>,
+  pub node_types: HashMap<String, NodeType>,
+  pub medias: HashMap<ID, PipeableType>,
 }

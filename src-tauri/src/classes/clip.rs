@@ -19,8 +19,7 @@ pub struct SourceClip {
 
 impl SourceClip {
   pub fn get_clip_type(&self) -> Type {
-    todo!();
-    Type::Video // TODO: look at file, determine whether it is audio/video/image
+    todo!(); // TODO: look at file, determine whether it is audio/video/image
   }
 }
 pub struct CompositedClip {
