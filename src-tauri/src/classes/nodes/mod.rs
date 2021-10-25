@@ -1,6 +1,7 @@
+pub mod concat_node;
 pub mod media_import_node;
 pub mod output_node;
-use self::output_node::output_node;
+use self::{concat_node::concat_node, output_node::output_node};
 
 use super::node::NodeType;
 use crate::classes::nodes::media_import_node::media_import_node;
@@ -14,6 +15,7 @@ pub fn get_node_register() -> HashMap<String, NodeType> {
     media_import_node(),
   );
   register.insert(String::from(output_node::IDENTIFIER), output_node());
+  register.insert(String::from(concat_node::IDENTIFIER), concat_node());
 
   register
 }

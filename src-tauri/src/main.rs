@@ -10,7 +10,7 @@ use uuid::Uuid;
 use crate::classes::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
   node::{Node, Position},
-  nodes::{get_node_register, media_import_node, output_node},
+  nodes::{concat_node, get_node_register, media_import_node, output_node},
   pipeline::{Link, LinkEndpoint, Pipeline},
   store::{ClipStore, Store},
 };
@@ -28,40 +28,66 @@ mod classes;
 
 fn main() {
   let mut clip_store = ClipStore::new();
-  let clip_id = Uuid::new_v4().to_string();
-  clip_store.source.insert(
-    clip_id.clone(),
-    SourceClip {
-      id: clip_id.clone(),
-      name: "Test Clip".to_string(),
-      file_location: "Test clip 1.mp4".to_string(),
-    },
-  );
+  let source_clip1;
+  let composited_clip1;
+  let source_clip2;
+  {
+    source_clip1 = Uuid::new_v4().to_string();
+    clip_store.source.insert(
+      source_clip1.clone(),
+      SourceClip {
+        id: source_clip1.clone(),
+        name: "Test Clip".to_string(),
+        file_location: "Test clip 1.mp4".to_string(),
+      },
+    );
 
-  let composited_clip_id = Uuid::new_v4().to_string();
-  clip_store.composited.insert(
-    composited_clip_id.clone(),
-    CompositedClip {
-      id: composited_clip_id.clone(),
-      name: "Test Composited Clip".to_string(),
-      pipeline_id: "".to_string(),
-    },
-  );
+    source_clip2 = Uuid::new_v4().to_string();
+    clip_store.source.insert(
+      source_clip2.clone(),
+      SourceClip {
+        id: source_clip2.clone(),
+        name: "Test Clip".to_string(),
+        file_location: "Test clip 1.mp4".to_string(),
+      },
+    );
+
+    composited_clip1 = Uuid::new_v4().to_string();
+    clip_store.composited.insert(
+      composited_clip1.clone(),
+      CompositedClip {
+        id: composited_clip1.clone(),
+        name: "Test Composited Clip".to_string(),
+        pipeline_id: "".to_string(),
+      },
+    );
+  }
 
   let mut media_import_node1 = Node::new(media_import_node::IDENTIFIER.to_string());
   media_import_node1.properties.insert(
     media_import_node::INPUTS::CLIP.to_string(),
     serde_json::to_value(ClipIdentifier {
-      id: clip_id.clone(),
+      id: source_clip1.clone(),
       clip_type: classes::clip::ClipType::Source,
     })
     .unwrap(),
   );
+
+  let mut media_import_node2 = Node::new(media_import_node::IDENTIFIER.to_string());
+  media_import_node2.properties.insert(
+    media_import_node::INPUTS::CLIP.to_string(),
+    serde_json::to_value(ClipIdentifier {
+      id: source_clip2.clone(),
+      clip_type: classes::clip::ClipType::Source,
+    })
+    .unwrap(),
+  );
+  let mut concat_node1 = Node::new(concat_node::IDENTIFIER.to_string());
   let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string());
   output_node1.properties.insert(
     output_node::INPUTS::CLIP.to_string(),
     serde_json::to_value(ClipIdentifier {
-      id: composited_clip_id.clone(),
+      id: composited_clip1.clone(),
       clip_type: classes::clip::ClipType::Composited,
     })
     .unwrap(),
@@ -69,6 +95,8 @@ fn main() {
 
   let mut nodes = HashMap::new();
   nodes.insert(media_import_node1.id.clone(), media_import_node1.clone());
+  nodes.insert(media_import_node2.id.clone(), media_import_node2.clone());
+  nodes.insert(concat_node1.id.clone(), concat_node1.clone());
   nodes.insert(output_node1.id.clone(), output_node1.clone());
 
   let mut pipelines = HashMap::new();
@@ -78,6 +106,26 @@ fn main() {
     from: LinkEndpoint {
       node_id: media_import_node1.id.clone(),
       property: media_import_node::OUTPUTS::OUTPUT.to_string(),
+    },
+    to: LinkEndpoint {
+      node_id: concat_node1.id.clone(),
+      property: concat_node::INPUTS::MEDIA1.to_string(),
+    },
+  });
+  pipeline1.links.push(Link {
+    from: LinkEndpoint {
+      node_id: media_import_node2.id.clone(),
+      property: media_import_node::OUTPUTS::OUTPUT.to_string(),
+    },
+    to: LinkEndpoint {
+      node_id: concat_node1.id.clone(),
+      property: concat_node::INPUTS::MEDIA2.to_string(),
+    },
+  });
+  pipeline1.links.push(Link {
+    from: LinkEndpoint {
+      node_id: concat_node1.id.clone(),
+      property: concat_node::OUTPUTS::OUTPUT.to_string(),
     },
     to: LinkEndpoint {
       node_id: output_node1.id.clone(),

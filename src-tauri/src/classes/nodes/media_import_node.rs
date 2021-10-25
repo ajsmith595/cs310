@@ -120,7 +120,7 @@ pub fn media_import_node() -> NodeType {
           }
           let composited_clip = composited_clip.unwrap();
           return Ok(format!(
-            "{} ! videoconvert name='{}'",
+            "{}. ! videoconvert name='{}'",
             composited_clip.get_gstreamer_id(),
             Node::get_gstreamer_handle_id(node_id, OUTPUTS::OUTPUT.to_string())
           ));

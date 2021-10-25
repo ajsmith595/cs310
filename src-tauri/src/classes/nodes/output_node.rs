@@ -55,7 +55,7 @@ pub fn output_node() -> NodeType {
         let clip = serde_json::from_value::<ClipIdentifier>(clip).unwrap();
         let clip = store.clips.composited.get(&clip.id).unwrap();
         return Ok(format!(
-          "{} ! videoconvert name='{}'",
+          "{}. ! videoconvert name='{}'",
           media,
           clip.get_gstreamer_id()
         ));

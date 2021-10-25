@@ -17,7 +17,7 @@ use crate::classes::{clip::ClipIdentifier, node::Type, nodes};
 
 use super::{node::Node, store::Store, ID};
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct LinkEndpoint {
   pub node_id: ID,
   pub property: String,
@@ -27,7 +27,7 @@ impl LinkEndpoint {
     return String::from(self.node_id.clone() + "." + &self.property);
   }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Link {
   pub from: LinkEndpoint,
   pub to: LinkEndpoint,
@@ -129,16 +129,14 @@ impl Pipeline {
       return Err(String::from("Graph could not be generated: ") + res.unwrap_err().as_str());
     }
     let (graph, node_id_to_index) = res.unwrap();
-    println!("{}", serde_json::to_string_pretty(&graph).unwrap());
     if petgraph::algo::is_cyclic_directed(&graph) {
       return Err(String::from("Cycle in pipeline"));
     }
 
-    let mut new_nodes = HashMap::new();
+    let mut new_nodes = store.nodes.clone();
     for Link { from, to } in &self.links {
-      let mut to_node = store.nodes.get(&to.node_id.clone()).unwrap().to_owned();
-      let to_node = to_node.borrow_mut();
-      let from_node = store.nodes.get(&from.node_id.clone()).unwrap().to_owned();
+      let mut to_node = new_nodes.get(&to.node_id.clone()).unwrap().to_owned();
+      let from_node = new_nodes.get(&from.node_id.clone()).unwrap().to_owned();
       to_node.properties.insert(
         to.property.clone(),
         Value::String(Node::get_gstreamer_handle_id(
@@ -146,8 +144,8 @@ impl Pipeline {
           from.property.clone(),
         )),
       );
-      new_nodes.insert(to_node.id.clone(), to_node.to_owned());
-      new_nodes.insert(from_node.id.clone(), from_node.to_owned());
+      new_nodes.insert(to_node.id.clone(), to_node.clone());
+      new_nodes.insert(from_node.id.clone(), from_node);
     }
 
     let target_node_id = self.target_node_id.as_ref().unwrap();
@@ -158,6 +156,7 @@ impl Pipeline {
     let target_idx = target_idx.unwrap();
     let mut store = store.clone();
     store.nodes = new_nodes;
+
     let out_str = Self::get_node_output_string(&graph, &store, &node_id_to_index, *target_idx);
     if out_str.is_err() {
       return Err(String::from("Could not get output"));

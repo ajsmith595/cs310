@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::{store::Store, ID};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Position {
   pub x: i32,
   pub y: i32,
@@ -19,7 +19,7 @@ impl Position {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Node {
   pub position: Position,
   pub id: ID,
