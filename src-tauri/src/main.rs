@@ -8,7 +8,7 @@ use std::{cell::Cell, collections::HashMap};
 use uuid::Uuid;
 
 use crate::classes::{
-  clip::{ClipIdentifier, SourceClip},
+  clip::{ClipIdentifier, CompositedClip, SourceClip},
   node::{Node, Position},
   nodes::{get_node_register, media_import_node, output_node},
   pipeline::{Link, LinkEndpoint, Pipeline},
@@ -38,6 +38,16 @@ fn main() {
     },
   );
 
+  let composited_clip_id = Uuid::new_v4().to_string();
+  clip_store.composited.insert(
+    composited_clip_id.clone(),
+    CompositedClip {
+      id: composited_clip_id.clone(),
+      name: "Test Composited Clip".to_string(),
+      pipeline_id: "".to_string(),
+    },
+  );
+
   let mut media_import_node1 = Node::new(media_import_node::IDENTIFIER.to_string());
   media_import_node1.properties.insert(
     media_import_node::INPUTS::CLIP.to_string(),
@@ -47,17 +57,23 @@ fn main() {
     })
     .unwrap(),
   );
-  let output_node1 = Node::new(output_node::IDENTIFIER.to_string());
+  let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string());
+  output_node1.properties.insert(
+    output_node::INPUTS::CLIP.to_string(),
+    serde_json::to_value(ClipIdentifier {
+      id: composited_clip_id.clone(),
+      clip_type: classes::clip::ClipType::Composited,
+    })
+    .unwrap(),
+  );
 
   let mut nodes = HashMap::new();
-  nodes.insert(
-    media_import_node1.id.clone(),
-    Cell::new(media_import_node1.clone()),
-  );
-  nodes.insert(output_node1.id.clone(), Cell::new(output_node1.clone()));
+  nodes.insert(media_import_node1.id.clone(), media_import_node1.clone());
+  nodes.insert(output_node1.id.clone(), output_node1.clone());
 
   let mut pipelines = HashMap::new();
   let mut pipeline1 = Pipeline::new();
+  pipeline1.target_node_id = Some(output_node1.id.clone());
   pipeline1.links.push(Link {
     from: LinkEndpoint {
       node_id: media_import_node1.id.clone(),
@@ -68,7 +84,7 @@ fn main() {
       property: output_node::INPUTS::MEDIA.to_string(),
     },
   });
-  pipelines.insert("main".to_string(), pipeline1);
+  // pipelines.insert("main".to_string(), pipeline1);
   let store = Store {
     nodes,
     clips: clip_store,
@@ -76,6 +92,8 @@ fn main() {
     node_types: get_node_register(),
     medias: HashMap::new(),
   };
+  let res = pipeline1.generate_pipeline_string(&store).unwrap();
+  println!("Result: {};", res);
 
   tauri::Builder::default()
     .run(tauri::generate_context!())

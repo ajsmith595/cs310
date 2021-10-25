@@ -6,7 +6,7 @@ use super::{
   pipeline::Pipeline,
   ID,
 };
-
+#[derive(Clone)]
 pub struct ClipStore {
   pub source: HashMap<ID, SourceClip>,
   pub composited: HashMap<ID, CompositedClip>,
@@ -19,8 +19,9 @@ impl ClipStore {
     }
   }
 }
+#[derive(Clone)]
 pub struct Store {
-  pub nodes: HashMap<ID, Cell<Node>>,
+  pub nodes: HashMap<ID, Node>,
   pub clips: ClipStore,
   pub pipelines: HashMap<ID, Pipeline>,
   pub node_types: HashMap<String, NodeType>,

@@ -63,13 +63,14 @@ pub enum Type {
   // Maybe some restrictions on video min/max duration, resolution, etc?
   Clip,
 }
-
+#[derive(Clone)]
 pub struct NodeTypeProperty {
   pub name: String,
   pub display_name: String,
   pub description: String,
   pub property_type: Vec<Type>,
 }
+#[derive(Clone)]
 pub struct NodeType {
   pub id: String,
   pub display_name: String,
