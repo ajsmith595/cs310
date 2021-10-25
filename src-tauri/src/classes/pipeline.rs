@@ -1,6 +1,13 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
-use petgraph::{data::Build, graph::DiGraph, Graph};
+use petgraph::{
+  data::Build,
+  graph::{DiGraph, NodeIndex},
+  Graph,
+};
+
+use bimap::BiMap;
+use serde_json::Value;
 
 use crate::classes::{clip::ClipIdentifier, node::Type, nodes};
 
@@ -27,17 +34,27 @@ impl Link {
 }
 
 pub struct Pipeline {
-  pub nodes: HashMap<ID, Node>,
   pub links: Vec<Link>,
-  pub target_node_id: ID,
+  pub target_node_id: Option<ID>,
 }
 
 impl Pipeline {
-  fn generate_graph(&self, store: &Store) -> Result<Graph<String, String>, String> {
+  pub fn new() -> Self {
+    Self {
+      links: Vec::new(),
+      target_node_id: None,
+    }
+  }
+
+  fn generate_graph(
+    &self,
+    store: &Store,
+  ) -> Result<(Graph<String, String>, BiMap<String, NodeIndex>), String> {
     let mut graph = DiGraph::new();
 
-    let mut node_id_to_index = HashMap::new();
-    for (_, node) in &self.nodes {
+    let mut node_id_to_index = BiMap::new();
+    for (_, node) in &store.nodes {
+      let node = node.get_mut();
       let node_index = graph.add_node(node.id.clone());
       node_id_to_index.insert(node.id.clone(), node_index);
       let node_type = &store.node_types.get(&node.node_type);
@@ -64,7 +81,7 @@ impl Pipeline {
           _ => {}
         }
       }
-      let outputs = (node_type.get_output_types)(&node.properties, &store);
+      let outputs = (node_type.get_output_types)(node.id.clone(), &node.properties, &store);
       if outputs.is_err() {
         return Err(String::from("Getting output type caused error!"));
       }
@@ -85,8 +102,8 @@ impl Pipeline {
       // add nodes for all the nodes' handles aswell.
     }
     for link in &self.links {
-      let from = node_id_to_index.get(&link.from.get_id());
-      let to = node_id_to_index.get(&link.to.get_id());
+      let from = node_id_to_index.get_by_left(&link.from.get_id());
+      let to = node_id_to_index.get_by_left(&link.to.get_id());
       if from.is_none() || to.is_none() {
         return Err(String::from(
           "Link is invalid - connects non-existent handles!",
@@ -96,18 +113,45 @@ impl Pipeline {
       let to = to.unwrap();
       graph.add_edge(*from, *to, link.get_id());
     }
-    Ok(graph)
+    Ok((graph, node_id_to_index))
   }
 
-  pub fn generate_pipeline_string(&self, store: &Store) -> Result<String, String> {
-    let graph = self.generate_graph(store);
-    if graph.is_err() {
-      return Err(String::from("Graph could not be generated: ") + graph.unwrap_err().as_str());
+  pub fn generate_pipeline_string(&self, store: &mut Store) -> Result<String, String> {
+    if self.target_node_id.is_none() {
+      return Err(String::from("No target node chosen"));
     }
-    let graph = graph.unwrap();
+    let res = self.generate_graph(store);
+    if res.is_err() {
+      return Err(String::from("Graph could not be generated: ") + res.unwrap_err().as_str());
+    }
+    let (graph, node_id_to_index) = res.unwrap();
     if petgraph::algo::is_cyclic_directed(&graph) {
       return Err(String::from("Cycle in pipeline"));
     }
+
+    for Link { from, to } in &self.links {
+      let to_node = store.nodes.get(&to.node_id.clone()).unwrap().get_mut();
+      let from_node = store.nodes.get(&from.node_id.clone()).unwrap().get_mut();
+      to_node.properties.insert(
+        to.property.clone(),
+        Value::String(Node::get_gstreamer_handle_id(
+          from_node.id.clone(),
+          from.property.clone(),
+        )),
+      );
+    }
+
+    let target_node_id = self.target_node_id.as_ref().unwrap();
+    let target_idx = node_id_to_index.get_by_left(target_node_id);
+    if target_idx.is_none() {
+      return Err(String::from("Target can't be found in pipeline"));
+    }
+    let target_idx = target_idx.unwrap();
+    let out_str = Self::get_node_output_string(&graph, store, &node_id_to_index, *target_idx);
+    if out_str.is_err() {
+      return Err(String::from("Could not get output"));
+    }
+    return Ok(out_str.unwrap());
 
     Ok(String::from("test"))
     // step 1: generate graph from nodes + links
@@ -115,12 +159,46 @@ impl Pipeline {
     // step 3: use the graph to find any dependencies of the target_node_id, and generate the pipeline only including those nodes.
   }
 
-  pub fn get_output_type(&self, output_clip_id: ID, store: &Store) -> Result<Type, String> {
+  fn get_node_output_string(
+    graph: &Graph<String, String>,
+    store: &Store,
+    node_id_to_index: &BiMap<String, NodeIndex>,
+    node_index: NodeIndex,
+  ) -> Result<String, String> {
+    let mut str = String::from("");
+    let target_input_handles =
+      graph.neighbors_directed(node_index, petgraph::EdgeDirection::Incoming);
+    // let dependents = Vec::new();
+    for x in target_input_handles {
+      let node = graph
+        .neighbors_directed(x, petgraph::EdgeDirection::Incoming)
+        .next();
+      if node.is_none() {
+        panic!("Graph not generated properly!");
+      }
+      let node = node.unwrap();
+      let node_string = Self::get_node_output_string(graph, store, node_id_to_index, node);
+      if node_string.is_err() {
+        return Err(String::from("An error occured in a dependent node"));
+      }
+      let node_string = node_string.unwrap();
+      str = format!("{} {}", str, node_string);
+    }
+    let node_id = node_id_to_index.get_by_right(&node_index).unwrap();
+    let node = store.nodes.get(node_id).unwrap().get_mut();
+    let node_type = store.node_types.get(&node.node_type).unwrap();
+    let out = (node_type.get_output)(node.id.clone(), &node.properties, store).unwrap();
+    str = format!("{} {}", str, out);
+    return Ok(str);
+  }
+
+  pub fn get_output_type(&self, output_clip_id: ID, store: &mut Store) -> Result<Type, String> {
     // 1. look at the nodes, find all the output nodes.
     // 2. find the specific output node (if exists) for the relevant clip ID
     // 3. recurse until done: look at the previous node, and determine its output.
     let mut node_id = None;
-    for (_, node) in &self.nodes {
+    for (_, node) in &store.nodes {
+      let node = node.get_mut();
       if node.node_type == nodes::output_node::IDENTIFIER {
         let clip = node.properties.get(nodes::output_node::INPUTS::CLIP);
         if let Some(clip) = clip {
@@ -147,13 +225,13 @@ impl Pipeline {
       return Err(String::from("No endpoint connecting to output node"));
     }
     let LinkEndpoint { node_id, property } = endpoint.unwrap();
-    let node = self.nodes.get(&node_id);
+    let node = store.nodes.get_mut(&node_id);
     if node.is_none() {
       return Err(String::from("Link is invalid!"));
     }
-    let node = node.unwrap();
+    let node = node.unwrap().get_mut();
     let node_type = store.node_types.get(&node.node_type).unwrap();
-    let outputs = (node_type.get_output_types)(&node.properties, &store);
+    let outputs = (node_type.get_output_types)(node.id.clone(), &node.properties, &store);
     if outputs.is_err() {
       return Err(String::from(
         "Could not get output type of nod ebefore output node",

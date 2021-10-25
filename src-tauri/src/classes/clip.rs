@@ -27,3 +27,8 @@ pub struct CompositedClip {
   pub name: String,
   pub pipeline_id: ID,
 }
+impl CompositedClip {
+  pub fn get_gstreamer_id(&self) -> String {
+    format!("clip-{}", self.id)
+  }
+}
