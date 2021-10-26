@@ -162,11 +162,6 @@ impl Pipeline {
       return Err(String::from("Could not get output"));
     }
     return Ok(out_str.unwrap());
-
-    Ok(String::from("test"))
-    // step 1: generate graph from nodes + links
-    // step 2: check for cycles: if there's cycles, error
-    // step 3: use the graph to find any dependencies of the target_node_id, and generate the pipeline only including those nodes.
   }
 
   fn get_node_output_string(
@@ -181,17 +176,17 @@ impl Pipeline {
 
     // let dependents = Vec::new();
     println!("Getting output for node index: {:?}", node_index);
-    for x in target_input_handles {
-      println!("Neighbor: {:?}", x);
-      let node = graph
-        .neighbors_directed(x, petgraph::EdgeDirection::Incoming)
+    for input in target_input_handles {
+      println!("Neighbor: {:?}", input);
+      let output = graph
+        .neighbors_directed(input, petgraph::EdgeDirection::Incoming)
         .next();
-      if node.is_none() {
+      if output.is_none() {
         panic!("Graph not generated properly!");
       }
-      let node = node.unwrap();
+      let output = output.unwrap();
       let node = graph
-        .neighbors_directed(node, petgraph::EdgeDirection::Incoming)
+        .neighbors_directed(output, petgraph::EdgeDirection::Incoming)
         .next();
       if node.is_none() {
         panic!("Graph not generated properly!");
