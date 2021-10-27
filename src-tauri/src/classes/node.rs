@@ -6,9 +6,9 @@ use uuid::Uuid;
 
 use serde_json::Value;
 
-use super::{store::Store, ID};
+use super::{global::uniq_id, nodes::NodeRegister, store::Store, ID};
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
   pub x: i32,
   pub y: i32,
@@ -19,7 +19,7 @@ impl Position {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Node {
   pub position: Position,
   pub id: ID,
@@ -30,7 +30,7 @@ impl Node {
   pub fn new(node_type: String) -> Self {
     Self {
       position: Position::new(),
-      id: Uuid::new_v4().to_string(),
+      id: uniq_id(),
       node_type,
       properties: HashMap::new(),
     }
@@ -42,20 +42,20 @@ impl Node {
     format!("{}-{}", node_id, property)
   }
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub struct Restrictions {
   pub min: f32,
   pub max: f32,
   pub step: f32,
 }
-#[derive(Copy, Clone)]
+#[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub enum PipeableType {
   Video,
   Audio,
   Image,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub enum Type {
   Pipeable(Option<PipeableType>),
   Number(Restrictions),
@@ -63,27 +63,31 @@ pub enum Type {
   // Maybe some restrictions on video min/max duration, resolution, etc?
   Clip,
 }
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NodeTypeProperty {
   pub name: String,
   pub display_name: String,
   pub description: String,
   pub property_type: Vec<Type>,
 }
-#[derive(Clone)]
+#[derive(Serialize, Clone)]
 pub struct NodeType {
   pub id: String,
   pub display_name: String,
   pub description: String,
   pub properties: HashMap<String, NodeTypeProperty>,
+  #[serde(skip_serializing)]
   pub get_output_types: fn(
     node_id: String,
     properties: &HashMap<String, Value>,
     store: &Store,
+    node_register: &NodeRegister,
   ) -> Result<HashMap<String, NodeTypeProperty>, String>,
+  #[serde(skip_serializing)]
   pub get_output: fn(
     node_id: String,
     properties: &HashMap<String, Value>,
     store: &Store,
+    node_register: &NodeRegister,
   ) -> Result<String, String>,
 }

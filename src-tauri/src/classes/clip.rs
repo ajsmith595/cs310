@@ -2,19 +2,19 @@ use crate::classes::node::PipeableType;
 
 use super::{node::Type, pipeline::Pipeline, ID};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ClipType {
   Source,
   Composited,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClipIdentifier {
   pub id: ID,
   pub clip_type: ClipType,
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceClip {
   pub id: ID,
   pub name: String,
@@ -27,7 +27,7 @@ impl SourceClip {
     todo!(); // TODO: look at file, determine whether it is audio/video/image
   }
 }
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CompositedClip {
   pub id: ID,
   pub name: String,

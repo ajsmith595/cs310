@@ -43,8 +43,8 @@ pub fn output_node() -> NodeType {
     display_name: String::from("Output"),
     description: String::from("Output media to a clip"),
     properties,
-    get_output_types: |_, _, _| Ok(HashMap::new()),
-    get_output: |_, properties: &HashMap<String, Value>, store: &Store| {
+    get_output_types: |_, _, _, _| Ok(HashMap::new()),
+    get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
       let media = properties.get(INPUTS::MEDIA).unwrap();
       if let Value::String(media) = media {
         let clip = properties.get(INPUTS::CLIP);
@@ -55,7 +55,7 @@ pub fn output_node() -> NodeType {
         let clip = serde_json::from_value::<ClipIdentifier>(clip).unwrap();
         let clip = store.clips.composited.get(&clip.id).unwrap();
         return Ok(format!(
-          "{}. ! videoconvert name='{}'",
+          "{}. ! videoconvert name={}",
           media,
           clip.get_gstreamer_id()
         ));

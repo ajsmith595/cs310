@@ -5,6 +5,7 @@ use serde_json::Value;
 use crate::classes::{
   clip::{ClipIdentifier, ClipType},
   node::{Node, NodeType, NodeTypeProperty, Type},
+  nodes::NodeRegister,
   store::Store,
 };
 
@@ -33,7 +34,10 @@ pub fn media_import_node() -> NodeType {
     display_name: String::from("Clip Import"),
     description: String::from("Import a source or composited clip"),
     properties,
-    get_output_types: |_, properties: &HashMap<String, Value>, store: &Store| {
+    get_output_types: |_,
+                       properties: &HashMap<String, Value>,
+                       store: &Store,
+                       node_register: &NodeRegister| {
       let clip = properties.get(INPUTS::CLIP);
       if clip.is_none() {
         return Err(String::from("No clip given"));
@@ -66,7 +70,8 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Pipeline ID of clip is invalid"));
           }
           let pipeline = pipeline.unwrap();
-          let prop_type = pipeline.get_output_type(composited_clip.id.clone(), store);
+          let prop_type =
+            pipeline.get_output_type(composited_clip.id.clone(), store, node_register);
           if prop_type.is_err() {
             return Err(String::from(
               "Failed to get output type for composited clip",
@@ -87,7 +92,7 @@ pub fn media_import_node() -> NodeType {
       );
       return Ok(hm);
     },
-    get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store| {
+    get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
       let clip = properties.get(INPUTS::CLIP);
       if clip.is_none() {
         return Err(String::from("No clip given"));
@@ -108,7 +113,7 @@ pub fn media_import_node() -> NodeType {
           }
           let source_clip = source_clip.unwrap();
           return Ok(format!(
-            "filesrc location='{}' ! parsebin ! videoconvert name='{}'",
+            "filesrc location=\"{}\" ! qtdemux ! h264parse ! d3d11h264dec ! videoconvert name={}",
             source_clip.file_location,
             Node::get_gstreamer_handle_id(node_id, OUTPUTS::OUTPUT.to_string())
           ));

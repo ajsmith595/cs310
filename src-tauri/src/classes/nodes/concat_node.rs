@@ -45,7 +45,7 @@ pub fn concat_node() -> NodeType {
     display_name: String::from("Concatenation"),
     description: String::from("Concatenate two media sources"),
     properties,
-    get_output_types: |node_id: String, properties: &HashMap<String, Value>, store: &Store| {
+    get_output_types: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
       // let media1 = properties.get(INPUTS::MEDIA1).unwrap();
       // let media2 = properties.get(INPUTS::MEDIA2).unwrap();
       // if let (Value::String(media1), Value::String(media2)) = (media1, media2) {
@@ -63,14 +63,14 @@ pub fn concat_node() -> NodeType {
       // }
       // return Err(format!("Media is invalid type"));
     },
-    get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store| {
+    get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
       println!("{:?}", properties);
       let media1 = properties.get(INPUTS::MEDIA1).unwrap();
       let media2 = properties.get(INPUTS::MEDIA2).unwrap();
       if let (Value::String(media1), Value::String(media2)) = (media1, media2) {
         let out_id = Node::get_gstreamer_handle_id(node_id.clone(), OUTPUTS::OUTPUT.to_string());
         return Ok(format!(
-          "concat name='{}' {}. ! {}. {}. ! {}.",
+          "concat name={} {}. ! {}. {}. ! {}.",
           out_id.clone(),
           media1,
           out_id.clone(),

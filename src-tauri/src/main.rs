@@ -3,16 +3,31 @@
   windows_subsystem = "windows"
 )]
 
-use std::{cell::Cell, collections::HashMap};
+use std::{
+  cell::Cell,
+  collections::HashMap,
+  fs::File,
+  io::Write,
+  sync::{mpsc, Arc, Mutex},
+};
 
+use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
-use crate::classes::{
-  clip::{ClipIdentifier, CompositedClip, SourceClip},
-  node::{Node, Position},
-  nodes::{concat_node, get_node_register, media_import_node, output_node},
-  pipeline::{Link, LinkEndpoint, Pipeline},
-  store::{ClipStore, Store},
+use crate::{
+  classes::{
+    clip::{ClipIdentifier, CompositedClip, SourceClip},
+    global::uniq_id,
+    node::{Node, Position},
+    nodes::{concat_node, get_node_register, media_import_node, output_node},
+    pipeline::{Link, LinkEndpoint, Pipeline},
+    store::{ClipStore, Store},
+  },
+  state_manager::{SharedState, SharedStateWrapper, StoredState},
+};
+
+use tauri::{
+  utils::config::AppUrl, CustomMenuItem, Manager, Menu, MenuItem, Submenu, WindowBuilder,
 };
 
 #[macro_use]
@@ -20,130 +35,259 @@ extern crate serde_derive;
 // #[macro_use]
 // extern crate erased_serde;
 // extern crate dirs;
-// extern crate gstreamer;
+extern crate gstreamer;
 extern crate serde;
 extern crate serde_json;
 
 mod classes;
+mod state_manager;
+mod tauri_commands;
 
-fn main() {
-  let mut clip_store = ClipStore::new();
-  let source_clip1;
-  let composited_clip1;
-  let source_clip2;
-  {
-    source_clip1 = Uuid::new_v4().to_string();
-    clip_store.source.insert(
-      source_clip1.clone(),
-      SourceClip {
-        id: source_clip1.clone(),
-        name: "Test Clip".to_string(),
-        file_location: "Test clip 1.mp4".to_string(),
-      },
-    );
+fn execute_pipeline(pipeline: String, timeout: u32) -> Result<(), ()> {
+  let main_loop = glib::MainLoop::new(None, false);
 
-    source_clip2 = Uuid::new_v4().to_string();
-    clip_store.source.insert(
-      source_clip2.clone(),
-      SourceClip {
-        id: source_clip2.clone(),
-        name: "Test Clip".to_string(),
-        file_location: "Test clip 1.mp4".to_string(),
-      },
-    );
+  println!("Pipeline: {}", pipeline);
+  // This creates a pipeline by parsing the gst-launch pipeline syntax.
+  let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+  let bus = pipeline.bus().unwrap();
 
-    composited_clip1 = Uuid::new_v4().to_string();
-    clip_store.composited.insert(
-      composited_clip1.clone(),
-      CompositedClip {
-        id: composited_clip1.clone(),
-        name: "Test Composited Clip".to_string(),
-        pipeline_id: "".to_string(),
-      },
-    );
+  let res = pipeline.set_state(gstreamer::State::Playing);
+  if res.is_err() {
+    println!("Error! {:?}", res.unwrap_err());
+    return Err(());
   }
 
-  let mut media_import_node1 = Node::new(media_import_node::IDENTIFIER.to_string());
-  media_import_node1.properties.insert(
-    media_import_node::INPUTS::CLIP.to_string(),
-    serde_json::to_value(ClipIdentifier {
-      id: source_clip1.clone(),
-      clip_type: classes::clip::ClipType::Source,
-    })
-    .unwrap(),
-  );
+  let pipeline_weak = pipeline.downgrade();
+  glib::timeout_add_seconds(timeout, move || {
+    let pipeline = match pipeline_weak.upgrade() {
+      Some(pipeline) => pipeline,
+      None => return glib::Continue(false),
+    };
 
-  let mut media_import_node2 = Node::new(media_import_node::IDENTIFIER.to_string());
-  media_import_node2.properties.insert(
-    media_import_node::INPUTS::CLIP.to_string(),
-    serde_json::to_value(ClipIdentifier {
-      id: source_clip2.clone(),
-      clip_type: classes::clip::ClipType::Source,
-    })
-    .unwrap(),
-  );
-  let mut concat_node1 = Node::new(concat_node::IDENTIFIER.to_string());
-  let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string());
-  output_node1.properties.insert(
-    output_node::INPUTS::CLIP.to_string(),
-    serde_json::to_value(ClipIdentifier {
-      id: composited_clip1.clone(),
-      clip_type: classes::clip::ClipType::Composited,
-    })
-    .unwrap(),
-  );
+    println!("sending eos");
+    pipeline.send_event(gstreamer::event::Eos::new());
 
-  let mut nodes = HashMap::new();
-  nodes.insert(media_import_node1.id.clone(), media_import_node1.clone());
-  nodes.insert(media_import_node2.id.clone(), media_import_node2.clone());
-  nodes.insert(concat_node1.id.clone(), concat_node1.clone());
-  nodes.insert(output_node1.id.clone(), output_node1.clone());
+    glib::Continue(false)
+  });
 
-  let mut pipelines = HashMap::new();
-  let mut pipeline1 = Pipeline::new();
-  pipeline1.target_node_id = Some(output_node1.id.clone());
-  pipeline1.links.push(Link {
-    from: LinkEndpoint {
-      node_id: media_import_node1.id.clone(),
-      property: media_import_node::OUTPUTS::OUTPUT.to_string(),
-    },
-    to: LinkEndpoint {
-      node_id: concat_node1.id.clone(),
-      property: concat_node::INPUTS::MEDIA1.to_string(),
-    },
-  });
-  pipeline1.links.push(Link {
-    from: LinkEndpoint {
-      node_id: media_import_node2.id.clone(),
-      property: media_import_node::OUTPUTS::OUTPUT.to_string(),
-    },
-    to: LinkEndpoint {
-      node_id: concat_node1.id.clone(),
-      property: concat_node::INPUTS::MEDIA2.to_string(),
-    },
-  });
-  pipeline1.links.push(Link {
-    from: LinkEndpoint {
-      node_id: concat_node1.id.clone(),
-      property: concat_node::OUTPUTS::OUTPUT.to_string(),
-    },
-    to: LinkEndpoint {
-      node_id: output_node1.id.clone(),
-      property: output_node::INPUTS::MEDIA.to_string(),
-    },
-  });
-  // pipelines.insert("main".to_string(), pipeline1);
-  let store = Store {
-    nodes,
-    clips: clip_store,
-    pipelines: pipelines,
-    node_types: get_node_register(),
-    medias: HashMap::new(),
-  };
-  let res = pipeline1.generate_pipeline_string(&store).unwrap();
+  let (tx, rx) = mpsc::channel();
+
+  let main_loop_clone = main_loop.clone();
+  bus
+    .add_watch(move |_, msg| {
+      use gstreamer::MessageView;
+
+      let main_loop = &main_loop_clone;
+      match msg.view() {
+        MessageView::Eos(..) => {
+          main_loop.quit();
+          tx.send(Ok(()));
+        }
+        MessageView::Error(err) => {
+          println!(
+            "Error from {:?}: {} ({:?})",
+            err.src().map(|s| s.path_string()),
+            err.error(),
+            err.debug()
+          );
+          main_loop.quit();
+          tx.send(Err(()));
+        }
+        _ => (),
+      };
+
+      glib::Continue(true)
+    })
+    .expect("Failed to add bus watch");
+
+  main_loop.run();
+
+  pipeline
+    .set_state(gstreamer::State::Null)
+    .expect("Unable to set the pipeline to the `Null` state");
+
+  bus.remove_watch().unwrap();
+
+  let res = rx.recv().unwrap();
+
+  res
+}
+
+fn main() {
+  let store;
+
+  let f = std::fs::read("state.json");
+
+  match f {
+    Ok(data) => {
+      store = serde_json::from_slice(&data).unwrap();
+    }
+    _ => {
+      let mut clip_store = ClipStore::new();
+      let source_clip1;
+      let composited_clip1;
+      let source_clip2;
+      {
+        source_clip1 = uniq_id();
+        clip_store.source.insert(
+          source_clip1.clone(),
+          SourceClip {
+            id: source_clip1.clone(),
+            name: "Test Clip".to_string(),
+            file_location: "input/test_input.mp4".to_string(),
+          },
+        );
+
+        source_clip2 = uniq_id();
+        clip_store.source.insert(
+          source_clip2.clone(),
+          SourceClip {
+            id: source_clip2.clone(),
+            name: "Test Clip".to_string(),
+            file_location: "input/test_input2.mp4".to_string(),
+          },
+        );
+
+        composited_clip1 = uniq_id();
+        clip_store.composited.insert(
+          composited_clip1.clone(),
+          CompositedClip {
+            id: composited_clip1.clone(),
+            name: "Test Composited Clip".to_string(),
+            pipeline_id: "".to_string(),
+          },
+        );
+      }
+
+      let mut media_import_node1 = Node::new(media_import_node::IDENTIFIER.to_string());
+      media_import_node1.properties.insert(
+        media_import_node::INPUTS::CLIP.to_string(),
+        serde_json::to_value(ClipIdentifier {
+          id: source_clip1.clone(),
+          clip_type: classes::clip::ClipType::Source,
+        })
+        .unwrap(),
+      );
+
+      let mut media_import_node2 = Node::new(media_import_node::IDENTIFIER.to_string());
+      media_import_node2.properties.insert(
+        media_import_node::INPUTS::CLIP.to_string(),
+        serde_json::to_value(ClipIdentifier {
+          id: source_clip2.clone(),
+          clip_type: classes::clip::ClipType::Source,
+        })
+        .unwrap(),
+      );
+      let mut concat_node1 = Node::new(concat_node::IDENTIFIER.to_string());
+      let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string());
+      output_node1.properties.insert(
+        output_node::INPUTS::CLIP.to_string(),
+        serde_json::to_value(ClipIdentifier {
+          id: composited_clip1.clone(),
+          clip_type: classes::clip::ClipType::Composited,
+        })
+        .unwrap(),
+      );
+
+      let mut nodes = HashMap::new();
+      nodes.insert(media_import_node1.id.clone(), media_import_node1.clone());
+      nodes.insert(media_import_node2.id.clone(), media_import_node2.clone());
+      nodes.insert(concat_node1.id.clone(), concat_node1.clone());
+      nodes.insert(output_node1.id.clone(), output_node1.clone());
+
+      let mut pipelines = HashMap::new();
+      let mut pipeline1 = Pipeline::new();
+      pipeline1.target_node_id = Some(output_node1.id.clone());
+      pipeline1.links.push(Link {
+        from: LinkEndpoint {
+          node_id: media_import_node1.id.clone(),
+          property: media_import_node::OUTPUTS::OUTPUT.to_string(),
+        },
+        to: LinkEndpoint {
+          node_id: concat_node1.id.clone(),
+          property: concat_node::INPUTS::MEDIA1.to_string(),
+        },
+      });
+      pipeline1.links.push(Link {
+        from: LinkEndpoint {
+          node_id: media_import_node2.id.clone(),
+          property: media_import_node::OUTPUTS::OUTPUT.to_string(),
+        },
+        to: LinkEndpoint {
+          node_id: concat_node1.id.clone(),
+          property: concat_node::INPUTS::MEDIA2.to_string(),
+        },
+      });
+      pipeline1.links.push(Link {
+        from: LinkEndpoint {
+          node_id: concat_node1.id.clone(),
+          property: concat_node::OUTPUTS::OUTPUT.to_string(),
+        },
+        to: LinkEndpoint {
+          node_id: output_node1.id.clone(),
+          property: output_node::INPUTS::MEDIA.to_string(),
+        },
+      });
+      pipelines.insert("main".to_string(), pipeline1);
+      store = Store {
+        nodes,
+        clips: clip_store,
+        pipelines: pipelines,
+        medias: HashMap::new(),
+      };
+    }
+  }
+  let register = get_node_register();
+
+  println!("{}", serde_json::ser::to_string(&store).unwrap());
+
+  let res = store
+    .pipelines
+    .get("main")
+    .unwrap()
+    .generate_pipeline_string(&store, &register)
+    .unwrap();
   println!("Result: {};", res);
 
+  // gstreamer::init().expect("GStreamer could not be initialised");
+  // execute_pipeline(res, 60);
+  // println!("Pipeline executed");
+
+  let mut f = File::create("state.json").unwrap();
+  f.write_all(serde_json::ser::to_string(&store).unwrap().as_bytes())
+    .unwrap();
+  let shared_state = SharedState {
+    stored_state: StoredState {
+      store,
+      file_written: false,
+    },
+    window: None,
+  };
+
+  let shared_state = Arc::new(Mutex::new(shared_state));
+
+  let shared_state_clone = shared_state.clone();
   tauri::Builder::default()
+    .manage(SharedStateWrapper(shared_state))
+    .invoke_handler(tauri::generate_handler![
+      tauri_commands::import_media,
+      tauri_commands::get_initial_data,
+      tauri_commands::change_clip_name
+    ])
+    .setup(move |app| {
+      let window = app.get_window("main").unwrap();
+
+      let shared_state = shared_state_clone.clone();
+      let temp = shared_state.clone();
+      let x = &mut temp.lock().unwrap();
+      x.window = Some(window);
+      drop(x);
+      // thread::spawn(move || {
+      //   pipeline_executor_thread(shared_state);
+      // });
+
+      Ok(())
+    })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }

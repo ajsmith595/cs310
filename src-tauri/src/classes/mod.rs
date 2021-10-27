@@ -1,4 +1,5 @@
 pub mod clip;
+pub mod global;
 pub mod node;
 pub mod nodes;
 pub mod pipeline;

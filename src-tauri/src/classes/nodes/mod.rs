@@ -7,7 +7,9 @@ use super::node::NodeType;
 use crate::classes::nodes::media_import_node::media_import_node;
 use std::{collections::HashMap, fmt::Display};
 
-pub fn get_node_register() -> HashMap<String, NodeType> {
+pub type NodeRegister = HashMap<String, NodeType>;
+
+pub fn get_node_register() -> NodeRegister {
   let mut register = HashMap::new();
 
   register.insert(
