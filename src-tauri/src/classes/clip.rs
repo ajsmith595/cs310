@@ -2,7 +2,7 @@ use crate::classes::node::PipeableType;
 
 use super::{node::Type, pipeline::Pipeline, ID};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ClipType {
   Source,
   Composited,

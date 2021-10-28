@@ -40,6 +40,8 @@ interface State {
 
 class App extends React.Component<Props, State> {
 
+	cache: Map<string, any> = new Map();
+
 	constructor(props: Props) {
 		super(props);
 
@@ -81,7 +83,7 @@ class App extends React.Component<Props, State> {
 						{/* <div style={{ userSelect: 'none' }} className="border-red-500 w-full" onMouseDown={(e) => this.onClick(e)}>TEST DRAG</div> */}
 						<div className="dark:bg-gray-700 flex-grow">
 							<Section width="w-1/2" height="h-2/5" text="media importer" icon={faFolder}>
-								<MediaImporter />
+								<MediaImporter cache={this.cache} />
 							</Section>
 							<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
 								{/* <VideoPreview /> */}

@@ -25,14 +25,22 @@ pub struct Node {
   pub id: ID,
   pub node_type: String,
   pub properties: HashMap<String, Value>, // value from serde_json?
+  pub group: ID,
 }
 impl Node {
-  pub fn new(node_type: String) -> Self {
+  pub fn new(node_type: String, group: Option<ID>) -> Self {
+    let group_id;
+    if group.is_none() {
+      group_id = uniq_id();
+    } else {
+      group_id = group.unwrap();
+    }
     Self {
       position: Position::new(),
       id: uniq_id(),
       node_type,
       properties: HashMap::new(),
+      group: group_id,
     }
   }
 }

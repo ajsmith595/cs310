@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::classes::{
-  clip::{ClipIdentifier, ClipType},
+  clip::{ClipIdentifier, ClipType, CompositedClip},
   node::{Node, NodeType, NodeTypeProperty, PipeableType, Type},
   store::Store,
 };
@@ -47,13 +47,11 @@ pub fn output_node() -> NodeType {
     get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
       let media = properties.get(INPUTS::MEDIA).unwrap();
       if let Value::String(media) = media {
-        let clip = properties.get(INPUTS::CLIP);
-        if clip.is_none() {
-          return Err(String::from("No clip given"));
+        let clip = get_clip(properties, store);
+        if clip.is_err() {
+          return Err(clip.unwrap_err());
         }
-        let clip = clip.unwrap().to_owned();
-        let clip = serde_json::from_value::<ClipIdentifier>(clip).unwrap();
-        let clip = store.clips.composited.get(&clip.id).unwrap();
+        let clip = clip.unwrap();
         return Ok(format!(
           "{}. ! videoconvert name={}",
           media,
@@ -63,4 +61,17 @@ pub fn output_node() -> NodeType {
       return Err(format!("Media is invalid type"));
     },
   }
+}
+
+pub fn get_clip(
+  properties: &HashMap<String, Value>,
+  store: &Store,
+) -> Result<CompositedClip, String> {
+  let clip = properties.get(INPUTS::CLIP);
+  if clip.is_none() {
+    return Err(String::from("No clip given"));
+  }
+  let clip = clip.unwrap().to_owned();
+  let clip = serde_json::from_value::<ClipIdentifier>(clip).unwrap();
+  return Ok(store.clips.composited.get(&clip.id).unwrap().clone());
 }

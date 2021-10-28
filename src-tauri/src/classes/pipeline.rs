@@ -16,12 +16,17 @@ use bimap::BiMap;
 use serde_json::Value;
 
 use crate::classes::{
-  clip::ClipIdentifier,
+  clip::{ClipIdentifier, ClipType},
   node::Type,
   nodes::{self, NodeRegister},
 };
 
-use super::{node::Node, store::Store, ID};
+use super::{
+  node::Node,
+  nodes::{media_import_node, output_node},
+  store::Store,
+  ID,
+};
 
 #[derive(PartialEq, Eq, Serialize, Deserialize, Debug, Clone)]
 pub struct LinkEndpoint {
@@ -128,6 +133,54 @@ impl Pipeline {
     Ok((graph, node_id_to_index))
   }
 
+  fn generate_full_dependency_graph(
+    mut graph: Graph<String, String>,
+    store: &Store,
+    node_id_to_index: &BiMap<String, NodeIndex>,
+  ) -> Result<Graph<String, String>, String> {
+    let mut from: HashMap<String, Vec<ID>> = HashMap::new();
+    for (id, node) in &store.nodes {
+      if node.node_type == media_import_node::IDENTIFIER {
+        let clip_identifier = media_import_node::get_clip_identifier(&node.properties);
+        if clip_identifier.is_err() {
+          return Err(String::from("Could not get clip from media import node!"));
+        }
+        let clip_identifier = clip_identifier.unwrap();
+        if clip_identifier.clip_type == ClipType::Composited {
+          if !from.contains_key(&clip_identifier.id) {
+            from.insert(clip_identifier.id.clone(), Vec::new());
+          }
+          from.get_mut(&clip_identifier.id).unwrap().push(id.clone());
+          // then, go through all output nodes, and connect the output node with every media_importer node in 'from'
+        }
+      }
+    }
+
+    for (id, node) in &store.nodes {
+      if node.node_type == output_node::IDENTIFIER {
+        let clip = output_node::get_clip(&node.properties, store);
+        if clip.is_err() {
+          continue;
+        }
+        let clip = clip.unwrap();
+        let dependent_nodes = from.get(&clip.id);
+        if let Some(dependent_nodes) = dependent_nodes {
+          for node_id in dependent_nodes {
+            graph.add_edge(
+              node_id_to_index.get_by_left(&id.clone()).unwrap().clone(),
+              node_id_to_index
+                .get_by_left(&node_id.clone())
+                .unwrap()
+                .clone(),
+              format!("clip-dependency-{}-{}", id.clone(), node_id.clone()),
+            );
+          }
+        }
+      }
+    }
+    Ok(graph)
+  }
+
   pub fn generate_pipeline_string(
     &self,
     store: &Store,
@@ -141,7 +194,14 @@ impl Pipeline {
       return Err(String::from("Graph could not be generated: ") + res.unwrap_err().as_str());
     }
     let (graph, node_id_to_index) = res.unwrap();
-    if petgraph::algo::is_cyclic_directed(&graph) {
+    let full_graph = Self::generate_full_dependency_graph(graph.clone(), store, &node_id_to_index);
+    if full_graph.is_err() {
+      return Err(
+        String::from("Full graph could not be geneated ") + full_graph.unwrap_err().as_str(),
+      );
+    }
+    let full_graph = full_graph.unwrap();
+    if petgraph::algo::is_cyclic_directed(&full_graph) {
       return Err(String::from("Cycle in pipeline"));
     }
 

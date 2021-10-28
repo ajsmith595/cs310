@@ -13,7 +13,8 @@ import Utils from '../../classes/Utils';
 
 interface Props {
     // props
-    clip: SourceClip
+    clip: SourceClip,
+    cache?: Map<string, any>;
 }
 
 interface State {
@@ -37,15 +38,34 @@ class SourceClipComponent extends React.Component<Props, State> {
 
     componentDidMount() {
         console.log(this.props.clip);
-        if (this.props.clip.thumbnail_location) {
-            fs.readBinaryFile(this.props.clip.thumbnail_location).then(data => {
-                console.log("Got img data!");
-                this.setState({
-                    thumbnailData: Utils.bytesToBase64(data)
+        if (!this.props.cache.get("clips")) {
+            this.props.cache.set("clips", {});
+        }
+        if (!this.props.cache.get("clips").source) {
+            this.props.cache.get("clips").source = {};
+        }
+        if (!this.props.cache.get("clips").source[this.props.clip.id]) {
+            this.props.cache.get("clips").source[this.props.clip.id] = {
+                thumbnail_data: null
+            };
+        }
+        if (!this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data) {
+            if (this.props.clip.thumbnail_location) {
+                fs.readBinaryFile(this.props.clip.thumbnail_location).then(data => {
+                    let new_data = Utils.bytesToBase64(data);
+                    this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data = new_data;
+                    this.setState({
+                        thumbnailData: new_data
+                    });
+                }).catch(e => {
+                    console.log("Thumbnail failure!");
+                    console.log(e);
                 });
-            }).catch(e => {
-                console.log("Thumbnail failure!");
-                console.log(e);
+            }
+        }
+        else {
+            this.setState({
+                thumbnailData: this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data
             });
         }
     }
@@ -104,7 +124,6 @@ class SourceClipComponent extends React.Component<Props, State> {
                     }
                     return l;
                 }
-
                 let img = <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />;
                 if (this.state.thumbnailData) {
                     img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;

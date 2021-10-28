@@ -10,7 +10,7 @@ import { faEdit } from '@fortawesome/free-regular-svg-icons';
 
 
 interface Props {
-    // props
+    cache?: Map<string, any>;
     clip: CompositedClip
 }
 
@@ -76,14 +76,6 @@ class CompositedClipComponent extends React.Component<Props, State> {
                                 this.disableEditingMode(setValue);
                             }
                         }} />;
-                }
-
-                let ellipsisFileLocation = (l: string) => {
-                    const threshold = 45;
-                    if (l.length > threshold) {
-                        return l.substr(0, 3) + "..." + l.substr(l.length - (threshold - 7));
-                    }
-                    return l;
                 }
 
                 return <div className="gap-2 inline-flex w-1/2">

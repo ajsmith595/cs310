@@ -11,7 +11,7 @@ import SourceClipComponent from './SourceClipComponent';
 
 
 interface Props {
-	// props
+	cache?: Map<string, any>;
 }
 
 interface State {
@@ -89,7 +89,7 @@ class MediaImporter extends React.Component<Props, State> {
 				if (this.state.openTab == 'source') {
 					for (let [id, source_clip] of value.clips.source) {
 						files.push(
-							<SourceClipComponent key={id} clip={source_clip} />
+							<SourceClipComponent cache={this.props.cache} key={id} clip={source_clip} />
 						);
 					}
 				}

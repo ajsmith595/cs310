@@ -2,7 +2,7 @@ import React from 'react';
 
 
 interface Props {
-    // props
+    cache?: Map<string, any>;
 }
 
 interface State {

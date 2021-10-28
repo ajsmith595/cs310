@@ -25,7 +25,7 @@ impl ClipStore {
 pub struct Store {
   pub nodes: HashMap<ID, Node>,
   pub clips: ClipStore,
-  pub pipelines: HashMap<ID, Pipeline>,
+  pub pipeline: Pipeline,
   pub medias: HashMap<ID, PipeableType>,
 }
 impl Store {
@@ -33,21 +33,18 @@ impl Store {
     Self {
       nodes: HashMap::new(),
       clips: ClipStore::new(),
-      pipelines: HashMap::new(),
+      pipeline: Pipeline::new(),
       medias: HashMap::new(),
     }
   }
 
   // restructure:
   /*
-    - one pipeline
-    - invisible links between composited clip outputs + where they are used.
-    - generate graph, and check for loops in that - that will cover everything
-    - when displaying, separate the graph into a set of connected graphs
-    - Then, determine which one to show based on the selected clip
-    - positions will be on a per-connected-graph basis
-    - when displaying multiple connected graphs at once, can do a few approaches:
-      - Have a position per-connected-graph store somewhere
-      - Simply use connected-graph boundaries based off min/max position inside the graph. Then just align them in some grid formation automatically
+  - one pipeline
+  - invisible links between composited clip outputs + where they are used.
+  - generate graph, and check for loops in that - that will cover everything
+  - every node will have a "group". Any connected node must have the same group
+  - when displaying a clip's node graph, only show the nodes with the same group
+  - positions will be on a per-group-basis
   */
 }

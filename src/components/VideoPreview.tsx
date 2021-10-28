@@ -2,6 +2,7 @@ import React from 'react';
 
 
 interface Props {
+    cache?: Map<string, any>;
     // props
 }
 

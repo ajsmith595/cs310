@@ -91,7 +91,12 @@ fn main() {
         );
       }
 
-      let mut media_import_node1 = Node::new(media_import_node::IDENTIFIER.to_string());
+      let group_id = uniq_id();
+
+      let mut media_import_node1 = Node::new(
+        media_import_node::IDENTIFIER.to_string(),
+        Some(group_id.clone()),
+      );
       media_import_node1.properties.insert(
         media_import_node::INPUTS::CLIP.to_string(),
         serde_json::to_value(ClipIdentifier {
@@ -101,7 +106,10 @@ fn main() {
         .unwrap(),
       );
 
-      let mut media_import_node2 = Node::new(media_import_node::IDENTIFIER.to_string());
+      let mut media_import_node2 = Node::new(
+        media_import_node::IDENTIFIER.to_string(),
+        Some(group_id.clone()),
+      );
       media_import_node2.properties.insert(
         media_import_node::INPUTS::CLIP.to_string(),
         serde_json::to_value(ClipIdentifier {
@@ -110,8 +118,8 @@ fn main() {
         })
         .unwrap(),
       );
-      let mut concat_node1 = Node::new(concat_node::IDENTIFIER.to_string());
-      let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string());
+      let mut concat_node1 = Node::new(concat_node::IDENTIFIER.to_string(), Some(group_id.clone()));
+      let mut output_node1 = Node::new(output_node::IDENTIFIER.to_string(), Some(group_id.clone()));
       output_node1.properties.insert(
         output_node::INPUTS::CLIP.to_string(),
         serde_json::to_value(ClipIdentifier {
@@ -127,10 +135,9 @@ fn main() {
       nodes.insert(concat_node1.id.clone(), concat_node1.clone());
       nodes.insert(output_node1.id.clone(), output_node1.clone());
 
-      let mut pipelines = HashMap::new();
-      let mut pipeline1 = Pipeline::new();
-      pipeline1.target_node_id = Some(output_node1.id.clone());
-      pipeline1.links.push(Link {
+      let mut pipeline = Pipeline::new();
+      pipeline.target_node_id = Some(output_node1.id.clone());
+      pipeline.links.push(Link {
         from: LinkEndpoint {
           node_id: media_import_node1.id.clone(),
           property: media_import_node::OUTPUTS::OUTPUT.to_string(),
@@ -140,7 +147,7 @@ fn main() {
           property: concat_node::INPUTS::MEDIA1.to_string(),
         },
       });
-      pipeline1.links.push(Link {
+      pipeline.links.push(Link {
         from: LinkEndpoint {
           node_id: media_import_node2.id.clone(),
           property: media_import_node::OUTPUTS::OUTPUT.to_string(),
@@ -150,7 +157,7 @@ fn main() {
           property: concat_node::INPUTS::MEDIA2.to_string(),
         },
       });
-      pipeline1.links.push(Link {
+      pipeline.links.push(Link {
         from: LinkEndpoint {
           node_id: concat_node1.id.clone(),
           property: concat_node::OUTPUTS::OUTPUT.to_string(),
@@ -160,11 +167,10 @@ fn main() {
           property: output_node::INPUTS::MEDIA.to_string(),
         },
       });
-      pipelines.insert("main".to_string(), pipeline1);
       store = Store {
         nodes,
         clips: clip_store,
-        pipelines: pipelines,
+        pipeline,
         medias: HashMap::new(),
       };
     }
@@ -174,9 +180,7 @@ fn main() {
   println!("{}", serde_json::ser::to_string(&store).unwrap());
 
   let res = store
-    .pipelines
-    .get("main")
-    .unwrap()
+    .pipeline
     .generate_pipeline_string(&store, &register)
     .unwrap();
   println!("Result: {};", res);

@@ -65,13 +65,10 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Clip ID is invalid"));
           }
           let composited_clip = composited_clip.unwrap();
-          let pipeline = store.pipelines.get(&composited_clip.pipeline_id);
-          if pipeline.is_none() {
-            return Err(String::from("Pipeline ID of clip is invalid"));
-          }
-          let pipeline = pipeline.unwrap();
           let prop_type =
-            pipeline.get_output_type(composited_clip.id.clone(), store, node_register);
+            store
+              .pipeline
+              .get_output_type(composited_clip.id.clone(), store, node_register);
           if prop_type.is_err() {
             return Err(String::from(
               "Failed to get output type for composited clip",
@@ -93,21 +90,15 @@ pub fn media_import_node() -> NodeType {
       return Ok(hm);
     },
     get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
-      let clip = properties.get(INPUTS::CLIP);
-      if clip.is_none() {
-        return Err(String::from("No clip given"));
+      let clip_identifier = get_clip_identifier(properties);
+      if clip_identifier.is_err() {
+        return Err(clip_identifier.unwrap_err());
       }
-      let clip = clip.unwrap().to_owned();
-      let clip = serde_json::from_value::<ClipIdentifier>(clip);
-      if clip.is_err() {
-        return Err(String::from("Clip identifier is malformed"));
-      }
-      let clip = clip.unwrap();
-
-      match &clip.clip_type {
+      let clip_identifier = clip_identifier.unwrap();
+      match &clip_identifier.clip_type {
         ClipType::Source => {
           // If it's a source clip, we get the relevant source clip from the store, and we get its clip type directly (by looking at the file)
-          let source_clip = store.clips.source.get(&clip.id);
+          let source_clip = store.clips.source.get(&clip_identifier.id);
           if source_clip.is_none() {
             return Err(String::from("Clip ID is invalid"));
           }
@@ -119,7 +110,7 @@ pub fn media_import_node() -> NodeType {
           ));
         }
         ClipType::Composited => {
-          let composited_clip = store.clips.composited.get(&clip.id);
+          let composited_clip = store.clips.composited.get(&clip_identifier.id);
           if composited_clip.is_none() {
             return Err(String::from("Clip ID is invalid"));
           }
@@ -133,4 +124,19 @@ pub fn media_import_node() -> NodeType {
       }
     },
   }
+}
+
+pub fn get_clip_identifier(properties: &HashMap<String, Value>) -> Result<ClipIdentifier, String> {
+  let clip = properties.get(INPUTS::CLIP);
+  if clip.is_none() {
+    return Err(String::from("No clip given"));
+  }
+  let clip = clip.unwrap().to_owned();
+  let clip = serde_json::from_value::<ClipIdentifier>(clip);
+  if clip.is_err() {
+    return Err(String::from("Clip identifier is malformed"));
+  }
+  let clip = clip.unwrap();
+
+  Ok(clip)
 }
