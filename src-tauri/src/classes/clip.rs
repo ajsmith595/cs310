@@ -19,6 +19,7 @@ pub struct SourceClip {
   pub id: ID,
   pub name: String,
   pub file_location: String,
+  pub thumbnail_location: Option<String>,
 }
 
 impl SourceClip {

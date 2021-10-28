@@ -2,8 +2,10 @@ use std::{
   borrow::{Borrow, BorrowMut},
   collections::HashMap,
   hash::Hash,
+  sync::mpsc,
 };
 
+use gstreamer::{glib, prelude::*};
 use petgraph::{
   data::Build,
   graph::{DiGraph, NodeIndex},
@@ -299,5 +301,81 @@ impl Pipeline {
       }
     }
     return None;
+  }
+
+  pub fn execute_pipeline(pipeline: String, timeout: u32) -> Result<(), ()> {
+    let main_loop = glib::MainLoop::new(None, false);
+
+    println!("Pipeline: {}", pipeline);
+    // This creates a pipeline by parsing the gst-launch pipeline syntax.
+    let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+    let bus = pipeline.bus().unwrap();
+
+    let res = pipeline.set_state(gstreamer::State::Playing);
+    if res.is_err() {
+      println!("Error! {:?}", res.unwrap_err());
+      return Err(());
+    }
+
+    let pipeline_weak = pipeline.downgrade();
+    glib::timeout_add_seconds(timeout, move || {
+      let pipeline = match pipeline_weak.upgrade() {
+        Some(pipeline) => pipeline,
+        None => return glib::Continue(false),
+      };
+
+      println!("sending eos");
+      pipeline.send_event(gstreamer::event::Eos::new());
+
+      glib::Continue(false)
+    });
+
+    let (tx, rx) = mpsc::channel();
+
+    let main_loop_clone = main_loop.clone();
+    bus
+      .add_watch(move |_, msg| {
+        use gstreamer::MessageView;
+
+        let main_loop = &main_loop_clone;
+        match msg.view() {
+          MessageView::Eos(..) => {
+            main_loop.quit();
+            tx.send(Ok(()));
+          }
+          MessageView::Error(err) => {
+            println!(
+              "Error from {:?}: {} ({:?})",
+              err.src().map(|s| s.path_string()),
+              err.error(),
+              err.debug()
+            );
+            main_loop.quit();
+            tx.send(Err(()));
+          }
+          _ => (),
+        };
+
+        glib::Continue(true)
+      })
+      .expect("Failed to add bus watch");
+
+    main_loop.run();
+
+    pipeline
+      .set_state(gstreamer::State::Null)
+      .expect("Unable to set the pipeline to the `Null` state");
+
+    bus.remove_watch().unwrap();
+
+    let res = rx.recv().unwrap();
+
+    res
+  }
+
+  pub fn get_video_thumbnail(path: String, id: String) {
+    let path = path.replace("\\", "/");
+    let pipeline = format!("filesrc location=\"{}\" ! decodebin ! jpegenc snapshot=TRUE ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
+    Self::execute_pipeline(pipeline, 10).unwrap();
   }
 }

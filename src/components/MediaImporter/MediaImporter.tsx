@@ -1,10 +1,11 @@
-import { faFileImport } from '@fortawesome/free-solid-svg-icons';
+import { faFileImport, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { SourceClip } from '../../classes/Clip';
 import Communicator from '../../classes/Communicator';
 import Store from '../../classes/Store';
 import StoreContext from '../../contexts/StoreContext';
+import CompositedClipComponent from './CompositedClipComponent';
 import SourceClipComponent from './SourceClipComponent';
 
 
@@ -18,6 +19,9 @@ interface State {
 }
 
 class MediaImporter extends React.Component<Props, State> {
+	private references: {
+		composited: { [k: string]: React.RefObject<CompositedClipComponent> }
+	} = { composited: {} };
 	constructor(props: Props) {
 		super(props);
 
@@ -25,8 +29,9 @@ class MediaImporter extends React.Component<Props, State> {
 			openTab: 'source',
 		};
 
+
+
 		this.onImportMediaButtonClick = this.onImportMediaButtonClick.bind(this);
-		this.changeClipName = this.changeClipName.bind(this);
 	}
 	setOpenTab(t: 'source' | 'composited') {
 		this.setState({
@@ -37,24 +42,24 @@ class MediaImporter extends React.Component<Props, State> {
 	onImportMediaButtonClick(setStore) {
 		this.setOpenTab('source');
 		Communicator.invoke('import_media', null, (data) => {
-			console.log("new data");
-			console.log(data);
 			setStore(Store.deserialise(data));
 		});
 	}
 
+	onCreateCompositedClipButtonClick(setStore) {
+		this.setOpenTab('composited');
+		Communicator.invoke('create_composited_clip', null, ([new_id, store]) => {
+			setStore(Store.deserialise(store));
 
-	changeClipName(id, newName, setStore) {
-		Communicator.invoke('change_clip_name', {
-			clipType: 'source',
-			id: id,
-			name: newName
-		}, (data) => {
-			setStore(Store.deserialise(data));
+			requestAnimationFrame(() => {
+				this.references.composited[new_id].current.enableEditingMode();
+			});
 		});
 	}
+
 
 	render() {
+
 		let tabSelection = (type: 'source' | 'composited', title: string, className = "") => {
 			return (
 				<button
@@ -79,11 +84,22 @@ class MediaImporter extends React.Component<Props, State> {
 
 		return <StoreContext.Consumer>
 			{({ value, setValue }) => {
+
 				let files = [];
 				if (this.state.openTab == 'source') {
 					for (let [id, source_clip] of value.clips.source) {
 						files.push(
-							<SourceClipComponent clip={source_clip} />
+							<SourceClipComponent key={id} clip={source_clip} />
+						);
+					}
+				}
+				else {
+					for (let [id, composited_clip] of value.clips.composited) {
+						if (!this.references.composited[id]) {
+							this.references.composited[id] = React.createRef();
+						}
+						files.push(
+							<CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
 						);
 					}
 				}
@@ -91,7 +107,16 @@ class MediaImporter extends React.Component<Props, State> {
 
 				return <div className="flex w-full h-full flex-col gap-2">
 					<div className="flex">
-						{tabSelection('composited', 'Composited Clips')}
+						<button
+							className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-r-none block leading-normal border border-r-0 text-white"
+								+ (this.state.openTab === 'composited'
+									? "text-white bg-pink-600 dark:text-white border-red-800"
+									: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
+							onClick={() => this.onCreateCompositedClipButtonClick(setValue)}
+							data-toggle="tab"
+							role="tablist"
+						><FontAwesomeIcon icon={faPlusSquare} /></button>
+						{tabSelection('composited', 'Composited Clips', 'rounded-l-none')}
 						{tabSelection('source', 'Source Clips', "rounded-r-none")}
 						<button
 							className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-l-none block leading-normal border border-l-0 text-white"

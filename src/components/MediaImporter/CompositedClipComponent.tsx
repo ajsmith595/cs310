@@ -4,56 +4,37 @@ import React from 'react';
 import Communicator from '../../classes/Communicator';
 import Store from '../../classes/Store';
 import StoreContext from '../../contexts/StoreContext';
-import { SourceClip } from '../../classes/Clip';
+import { CompositedClip } from '../../classes/Clip';
 import { faEdit } from '@fortawesome/free-regular-svg-icons';
-import { fs } from '@tauri-apps/api';
-import Utils from '../../classes/Utils';
 
 
 
 interface Props {
     // props
-    clip: SourceClip
+    clip: CompositedClip
 }
 
 interface State {
-    editing: boolean,
-    thumbnailData: string
+    editing: boolean
 }
 
-class SourceClipComponent extends React.Component<Props, State> {
+class CompositedClipComponent extends React.Component<Props, State> {
     private inputRef = React.createRef<HTMLInputElement>();
     constructor(props: Props) {
         super(props);
 
         this.state = {
-            editing: false,
-            thumbnailData: null
+            editing: false
         };
         this.changeClipName = this.changeClipName.bind(this);
         this.enableEditingMode = this.enableEditingMode.bind(this);
         this.disableEditingMode = this.disableEditingMode.bind(this);
     }
 
-    componentDidMount() {
-        console.log(this.props.clip);
-        if (this.props.clip.thumbnail_location) {
-            fs.readBinaryFile(this.props.clip.thumbnail_location).then(data => {
-                console.log("Got img data!");
-                this.setState({
-                    thumbnailData: Utils.bytesToBase64(data)
-                });
-            }).catch(e => {
-                console.log("Thumbnail failure!");
-                console.log(e);
-            });
-        }
-    }
-
 
     changeClipName(newName, setStore) {
         Communicator.invoke('change_clip_name', {
-            clipType: 'source',
+            clipType: 'composited',
             id: this.props.clip.id,
             name: newName.trim()
         }, (data) => {
@@ -84,12 +65,12 @@ class SourceClipComponent extends React.Component<Props, State> {
             {({ value, setValue }) => {
                 let text = (
                     <div>
-                        <h1 className="text-gray-200 text-lg inline" onDoubleClick={this.enableEditingMode}>{this.props.clip.name.replaceAll(' ', '\u00a0')}</h1>
+                        <h1 className="text-gray-200 text-xl inline" onDoubleClick={this.enableEditingMode}>{this.props.clip.name.replaceAll(' ', '\u00a0')}</h1>
                         <button className="inline pt-2 ml-3 text-sm text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
                     </div>
                 );
                 if (this.state.editing) {
-                    text = <input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-lg focus:outline-none w-full"
+                    text = <input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xl focus:outline-none w-full"
                         defaultValue={this.props.clip.name} onBlur={() => this.disableEditingMode(setValue)} onKeyDown={(e) => {
                             if (e.key == "Enter") {
                                 this.disableEditingMode(setValue);
@@ -105,19 +86,13 @@ class SourceClipComponent extends React.Component<Props, State> {
                     return l;
                 }
 
-                let img = <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />;
-                if (this.state.thumbnailData) {
-                    img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;
-                }
-
                 return <div className="gap-2 inline-flex w-1/2">
                     <div>
-                        {img}
+                        <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />
                     </div>
                     <div className="flex items-center">
                         <div>
                             {text}
-                            <p className="text-gray-400 text-xs">{ellipsisFileLocation(this.props.clip.file_location)}</p>
                         </div>
                     </div>
                 </div>
@@ -128,4 +103,4 @@ class SourceClipComponent extends React.Component<Props, State> {
 
 }
 
-export default SourceClipComponent;
+export default CompositedClipComponent;
