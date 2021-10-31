@@ -10,6 +10,10 @@ export class LinkEndpoint {
         this.property = property;
     }
 
+    get id() {
+        return this.node_id + "." + this.property;
+    }
+
     static deserialise(obj: any) {
         if (Utils.propsUndefined(obj.node_id, obj.property)) {
             throw new Error("Could not deserialise");
@@ -26,6 +30,10 @@ export class Link {
     constructor(from: LinkEndpoint, to: LinkEndpoint) {
         this.from = from;
         this.to = to;
+    }
+
+    get id() {
+        return this.from.id + "-" + this.to.id;
     }
 
     static deserialise(obj: any) {

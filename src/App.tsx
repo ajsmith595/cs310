@@ -62,6 +62,7 @@ class App extends React.Component<Props, State> {
 
 	componentDidMount() {
 		Communicator.invoke('get_initial_data', null, (data) => {
+			console.log(data);
 			this.setState({
 				Store: Store.deserialise(data)
 			})
@@ -89,7 +90,7 @@ class App extends React.Component<Props, State> {
 								{/* <VideoPreview /> */}
 							</Section>
 							<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
-								{/* <NodeEditor /> */}
+								<NodeEditor />
 							</Section>
 							<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
 								{/* <PropertiesPanel /> */}
