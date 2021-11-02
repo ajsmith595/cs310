@@ -65,4 +65,15 @@ export default class Pipeline {
 
         return new Pipeline(links, obj.target_node_id);
     }
+
+
+    containsLinkForNodeProperty(node_id, property) {
+        for (let link of this.links) {
+            if ((link.from.node_id == node_id && link.from.property == property)
+                || (link.to.node_id == node_id && link.to.property == property)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

@@ -3,13 +3,15 @@ import { faCog, faFilm, faProjectDiagram } from '@fortawesome/free-solid-svg-ico
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import React from 'react'
 import MediaImporter from './components/MediaImporter/MediaImporter'
-import NodeEditor from './components/NodeEditor'
+import NodeEditor from './components/NodeEditor/NodeEditor'
 import PropertiesPanel from './components/PropertiesPanel'
 import VideoPreview from './components/VideoPreview'
 import { appWindow } from '@tauri-apps/api/window';
 import StoreContext from './contexts/StoreContext'
 import Store from './classes/Store'
 import Communicator from './classes/Communicator'
+import EditorNode from './classes/Node'
+import NodeAddMenu from './components/NodeAddMenu'
 
 function Section(props: { width: string, height: string, text: string, children: any, icon: IconDefinition, className?: string }) {
 	let children = props.children;
@@ -41,6 +43,7 @@ interface State {
 class App extends React.Component<Props, State> {
 
 	cache: Map<string, any> = new Map();
+	nodeEditor: React.RefObject<NodeEditor>;
 
 	constructor(props: Props) {
 		super(props);
@@ -48,6 +51,7 @@ class App extends React.Component<Props, State> {
 		this.state = {
 			Store: null
 		}
+		this.nodeEditor = React.createRef<NodeEditor>();
 
 		this.onClick = this.onClick.bind(this);
 	}
@@ -62,9 +66,13 @@ class App extends React.Component<Props, State> {
 
 	componentDidMount() {
 		Communicator.invoke('get_initial_data', null, (data) => {
-			console.log(data);
+			let node_register = data[1];
+
+			for (let node_type in node_register) {
+				EditorNode.NodeRegister.set(node_type, node_register[node_type]);
+			}
 			this.setState({
-				Store: Store.deserialise(data)
+				Store: Store.deserialise(data[0])
 			})
 		});
 	}
@@ -90,7 +98,8 @@ class App extends React.Component<Props, State> {
 								{/* <VideoPreview /> */}
 							</Section>
 							<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
-								<NodeEditor />
+								<NodeAddMenu />
+								<NodeEditor ref={this.nodeEditor} />
 							</Section>
 							<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
 								{/* <PropertiesPanel /> */}

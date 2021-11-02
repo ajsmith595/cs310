@@ -198,6 +198,7 @@ fn main() {
       file_written: false,
     },
     window: None,
+    node_register: register.clone(),
   };
 
   let shared_state = Arc::new(Mutex::new(shared_state));
@@ -210,6 +211,8 @@ fn main() {
       tauri_commands::get_initial_data,
       tauri_commands::change_clip_name,
       tauri_commands::create_composited_clip,
+      tauri_commands::get_node_outputs,
+      tauri_commands::update_node
     ])
     .setup(move |app| {
       let window = app.get_window("main").unwrap();

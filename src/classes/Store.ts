@@ -1,5 +1,5 @@
 import { ID } from "./Communicator";
-import Node, { PipeableType } from './Node';
+import EditorNode, { PipeableType } from './Node';
 import Pipeline from "./Pipeline";
 import { CompositedClip, SourceClip } from "./Clip";
 import Utils from "./Utils";
@@ -30,13 +30,13 @@ export class ClipStore {
 }
 
 export default class Store {
-    nodes: Map<ID, Node>;
+    nodes: Map<ID, EditorNode>;
     clips: ClipStore;
     pipeline: Pipeline;
     medias: Map<ID, PipeableType>;
 
     constructor(
-        nodes?: Map<ID, Node>,
+        nodes?: Map<ID, EditorNode>,
         clips?: ClipStore,
         pipeline?: Pipeline,
         medias?: Map<ID, PipeableType>,
@@ -61,7 +61,7 @@ export default class Store {
 
         let nodes = new Map();
         for (let id in obj.nodes) {
-            nodes.set(id, Node.deserialise(obj.nodes[id]));
+            nodes.set(id, EditorNode.deserialise(obj.nodes[id]));
         }
 
         let medias = new Map();

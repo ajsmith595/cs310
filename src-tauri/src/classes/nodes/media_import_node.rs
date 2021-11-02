@@ -4,8 +4,9 @@ use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType},
-  node::{Node, NodeType, NodeTypeProperty, Type},
+  node::{self, Node, NodeType, NodeTypeProperty, PipeableType, Type},
   nodes::NodeRegister,
+  pipeline,
   store::Store,
 };
 
@@ -40,7 +41,17 @@ pub fn media_import_node() -> NodeType {
                        node_register: &NodeRegister| {
       let clip = properties.get(INPUTS::CLIP);
       if clip.is_none() {
-        return Err(String::from("No clip given"));
+        let mut hm = HashMap::new();
+        hm.insert(
+          String::from(OUTPUTS::OUTPUT),
+          NodeTypeProperty {
+            name: String::from(OUTPUTS::OUTPUT),
+            display_name: String::from("Output"),
+            description: String::from("The clip itself"),
+            property_type: vec![node::Type::Pipeable(None)],
+          },
+        );
+        return Ok(hm);
       }
       let clip = clip.unwrap().to_owned();
       let clip = serde_json::from_value::<ClipIdentifier>(clip);

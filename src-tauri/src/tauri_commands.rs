@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write};
+use std::{collections::HashMap, fs::File, io::Write};
 
 use rfd::AsyncFileDialog;
 
@@ -6,6 +6,8 @@ use crate::{
   classes::{
     clip::{CompositedClip, SourceClip},
     global::uniq_id,
+    node::{Node, NodeTypeProperty},
+    nodes::NodeRegister,
     pipeline::Pipeline,
     store::Store,
     ID,
@@ -94,8 +96,12 @@ pub fn create_composited_clip(
 }
 
 #[tauri::command]
-pub fn get_initial_data(state: tauri::State<SharedStateWrapper>) -> Store {
-  state.0.lock().unwrap().stored_state.store.clone()
+pub fn get_initial_data(state: tauri::State<SharedStateWrapper>) -> (Store, NodeRegister) {
+  let state = state.0.lock().unwrap();
+  (
+    state.stored_state.store.clone(),
+    state.node_register.clone(),
+  )
 }
 
 #[tauri::command]
@@ -145,4 +151,46 @@ pub fn change_clip_name(
   f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
     .unwrap();
   Ok(state)
+}
+
+#[tauri::command]
+pub fn get_node_outputs(
+  state: tauri::State<SharedStateWrapper>,
+  node: Node,
+) -> Result<HashMap<String, NodeTypeProperty>, String> {
+  let state = state.0.lock().unwrap();
+  let node_registration = state.node_register.get(&node.node_type);
+  if node_registration.is_none() {
+    return Err(String::from("Could not find relevant registration"));
+  }
+  let node_registration = node_registration.unwrap();
+
+  let outputs = (node_registration.get_output_types)(
+    node.id,
+    &node.properties,
+    &state.stored_state.store,
+    &state.node_register,
+  );
+
+  if outputs.is_err() {
+    return Err(format!(
+      "Outputs could not be calculated: {}",
+      outputs.unwrap_err()
+    ));
+  }
+  let outputs = outputs.unwrap();
+
+  Ok(outputs)
+}
+
+#[tauri::command]
+pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Result<(), String> {
+  let mut state = state.0.lock().unwrap();
+  state
+    .stored_state
+    .store
+    .nodes
+    .insert(node.id.clone(), node.clone());
+  state.stored_state.file_written = false;
+  Ok(())
 }

@@ -45,6 +45,7 @@ export default class Communicator {
     }
 
     static invoke(event: string, args?: InvokeArgs, callback?: Callback) {
+        console.log("Invoking " + event + "...");
         let promise = invoke(event, args);
         if (callback) {
             promise.then(callback);
