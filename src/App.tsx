@@ -98,8 +98,12 @@ class App extends React.Component<Props, State> {
 								{/* <VideoPreview /> */}
 							</Section>
 							<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
-								<NodeAddMenu />
-								<NodeEditor ref={this.nodeEditor} />
+								<div className="relative h-full w-full">
+									<div className="absolute z-20 right-2 top-2">
+										<NodeAddMenu />
+									</div>
+									<NodeEditor ref={this.nodeEditor} />
+								</div>
 							</Section>
 							<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
 								{/* <PropertiesPanel /> */}

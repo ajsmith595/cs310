@@ -1,7 +1,8 @@
 import React from 'react';
-import ReactFlow, { ReactFlowProvider, useStoreState } from 'react-flow-renderer';
+import ReactFlow, { Connection, Edge, ReactFlowProvider, useStoreState } from 'react-flow-renderer';
 import EventBus from '../../classes/EventBus';
 import EditorNode from '../../classes/Node';
+import { Link, LinkEndpoint } from '../../classes/Pipeline';
 import Store from '../../classes/Store';
 import NodeEditorContext from '../../contexts/NodeEditorContext';
 import StoreContext from '../../contexts/StoreContext';
@@ -64,6 +65,18 @@ class NodeEditor extends React.Component<Props, State> {
         });
     }
 
+    addLink(e: Edge<any> | Connection) {
+        for (let link of this.store.pipeline.links) {
+            if (link.from.node_id == e.source && link.from.property == e.sourceHandle
+                && link.to.node_id == e.target && link.to.property == e.targetHandle) {
+                return;
+            }
+        }
+        let link = new Link(new LinkEndpoint(e.source, e.sourceHandle), new LinkEndpoint(e.target, e.targetHandle));
+        this.store.pipeline.links.push(link);
+        this.setStore(this.store);
+    }
+
     deleteLinks(node_id, property) {
         let links = [];
         for (let link of this.store.pipeline.links) {
@@ -115,12 +128,13 @@ class NodeEditor extends React.Component<Props, State> {
                         });
                     }
                     return (
-                        <div style={{ width: "100%", height: "100%" }}>
+                        <div style={{ width: "100%", height: "100%" }} className="border-2 border-gray-400">
                             <ReactFlow ref={this.reactFlowRef} elements={elements} nodeTypes={{
                                 editor_node: EditorNodeComponent
                             }} onNodeDragStop={(_, node) => value.nodes.get(node.id).savePosition(node.position)}
                                 onNodeDragStart={(e, n) => {
                                 }}
+                                onConnect={(e) => this.addLink(e)}
                             />
                         </div>
                     );
