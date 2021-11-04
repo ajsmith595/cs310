@@ -1,4 +1,4 @@
-import { faArrowDown, faChevronDown, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faArrowDown, faChevronDown, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { Handle, Position } from 'react-flow-renderer';
@@ -11,6 +11,7 @@ interface Props {
     data: {
         node: EditorNode,
         deleteLinks: (property: string) => void;
+        deleteNode: () => void;
     }
 }
 
@@ -90,7 +91,16 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                     return (
                         <div className="bg-gray-300 rounded-sm border-2  border-gray-900">
                             <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-2 ${this.state.expanded ? "border-gray-500" : 'border-transparent'} `}>
-                                <h1>{node_registration.display_name}<button className="float-right" onClick={() => this.setState({ expanded: !this.state.expanded })}><FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} mr-2 transform  ${!this.state.expanded ? 'rotate-90' : ''}`} /></button></h1>
+                                <h1>{node_registration.display_name}
+                                    <button className="float-right mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>
+                                        <FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} transform  ${!this.state.expanded ? 'rotate-90' : ''}`} />
+                                    </button>
+
+                                    <button className="float-right text-red-600 mr-2" onClick={() => this.props.data.deleteNode()}>
+                                        <FontAwesomeIcon icon={faTrash} />
+                                    </button>
+
+                                </h1>
                                 <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                                     <small className={`block overflow-hidden`}>{node_registration.description}</small>
                                 </AnimateHeight>

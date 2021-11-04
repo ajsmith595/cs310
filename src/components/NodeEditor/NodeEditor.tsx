@@ -80,14 +80,20 @@ class NodeEditor extends React.Component<Props, State> {
     deleteLinks(node_id, property) {
         let links = [];
         for (let link of this.store.pipeline.links) {
-            if ((link.from.node_id == node_id && link.from.property == property)
-                || (link.to.node_id == node_id && link.to.property == property)) {
+            if ((link.from.node_id == node_id && (link.from.property == property || property == null))
+                || (link.to.node_id == node_id && (link.to.property == property || property == null))) {
                 continue;
             }
             links.push(link);
         }
         this.store.pipeline.links = links;
         this.setStore(this.store);
+    }
+
+
+    deleteNode(node_id) {
+        this.deleteLinks(node_id, null);
+
     }
 
     render() {
@@ -109,7 +115,8 @@ class NodeEditor extends React.Component<Props, State> {
                             position: node.position,
                             data: {
                                 node: node,
-                                deleteLinks: (property: string) => this.deleteLinks(node.id, property)
+                                deleteLinks: (property: string) => this.deleteLinks(node.id, property),
+                                deleteNode: () => this.deleteNode(node.id),
                             },
                             type: 'editor_node'
                         });
