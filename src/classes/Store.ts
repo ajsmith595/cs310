@@ -3,6 +3,7 @@ import EditorNode, { PipeableType } from './Node';
 import Pipeline from "./Pipeline";
 import { CompositedClip, SourceClip } from "./Clip";
 import Utils from "./Utils";
+import EventBus from "./EventBus";
 export class ClipStore {
     source: Map<ID, SourceClip>;
     composited: Map<ID, CompositedClip>;
@@ -26,6 +27,19 @@ export class ClipStore {
             composited.set(id, CompositedClip.deserialise(obj.composited[id]));
         }
         return new ClipStore(source, composited);
+    }
+
+    serialise() {
+
+        let source: any = {};
+        for (let [k, v] of this.source.entries()) {
+            source[k] = v;
+        }
+        let composited: any = {};
+        for (let [k, v] of this.composited.entries()) {
+            composited[k] = v;
+        }
+        return { source, composited };
     }
 }
 
@@ -69,5 +83,27 @@ export default class Store {
             medias.set(id, obj.medias[id]);
         }
         return new Store(nodes, ClipStore.deserialise(obj.clips), Pipeline.deserialise(obj.pipeline), medias);
+    }
+    serialise() {
+        let nodes: any = {};
+        for (let [k, v] of this.nodes.entries()) {
+            nodes[k] = v;
+        }
+        return {
+            nodes,
+            clips: this.clips.serialise(),
+            pipeline: this.pipeline,
+            medias: this.medias
+        }
+    }
+
+    static getCurrentStore(): Store {
+        return EventBus.getValue(EventBus.GETTERS.APP.STORE);
+    }
+    static setStore(newStore?: Store) {
+        if (!newStore) {
+            newStore = this.getCurrentStore();
+        }
+        EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE, newStore);
     }
 }

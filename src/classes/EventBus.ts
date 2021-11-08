@@ -3,6 +3,7 @@ function doc() {
 }
 
 const NODE_EDITOR_BASE = "node_editor.";
+const APP_BASE = "app.";
 
 const EventBus = {
     on(event, callback) {
@@ -38,12 +39,22 @@ const EventBus = {
 
     EVENTS: {
         NODE_EDITOR: {
-            ADD_NODE: NODE_EDITOR_BASE + "add_node"
+            ADD_NODE: NODE_EDITOR_BASE + "add_node",
+            CHANGE_GROUP: NODE_EDITOR_BASE + "change_group"
+        },
+        APP: {
+            SET_STORE: APP_BASE + "set_store",
+            SET_STORE_UI: APP_BASE + "set_store_ui_only",
+            SET_SELECTION: APP_BASE + "set_selection"
         }
     },
     GETTERS: {
         NODE_EDITOR: {
             CURRENT_GROUP: NODE_EDITOR_BASE + "current_group"
+        },
+        APP: {
+            STORE: APP_BASE + "store",
+            CURRENT_SELECTION: APP_BASE + "selection"
         }
     }
 };

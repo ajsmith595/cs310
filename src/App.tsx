@@ -7,11 +7,12 @@ import NodeEditor from './components/NodeEditor/NodeEditor'
 import PropertiesPanel from './components/PropertiesPanel'
 import VideoPreview from './components/VideoPreview'
 import { appWindow } from '@tauri-apps/api/window';
-import StoreContext from './contexts/StoreContext'
 import Store from './classes/Store'
 import Communicator from './classes/Communicator'
 import EditorNode from './classes/Node'
 import NodeAddMenu from './components/NodeAddMenu'
+import EventBus from './classes/EventBus'
+import { CompositedClip, SourceClip } from './classes/Clip'
 
 function Section(props: { width: string, height: string, text: string, children: any, icon: IconDefinition, className?: string }) {
 	let children = props.children;
@@ -36,8 +37,12 @@ interface Props {
 	// props
 }
 
+
+type Selectable = EditorNode | SourceClip | CompositedClip;
+
 interface State {
-	Store: Store
+	Store: Store,
+	selection: Selectable
 }
 
 class App extends React.Component<Props, State> {
@@ -49,7 +54,8 @@ class App extends React.Component<Props, State> {
 		super(props);
 
 		this.state = {
-			Store: null
+			Store: null,
+			selection: null
 		}
 		this.nodeEditor = React.createRef<NodeEditor>();
 
@@ -66,7 +72,10 @@ class App extends React.Component<Props, State> {
 
 	componentDidMount() {
 		Communicator.invoke('get_initial_data', null, (data) => {
+			console.log(data);
+
 			let node_register = data[1];
+			console.log(node_register);
 
 			for (let node_type in node_register) {
 				EditorNode.NodeRegister.set(node_type, node_register[node_type]);
@@ -75,6 +84,38 @@ class App extends React.Component<Props, State> {
 				Store: Store.deserialise(data[0])
 			})
 		});
+
+		EventBus.registerGetter(EventBus.GETTERS.APP.CURRENT_SELECTION, () => {
+			return this.state.selection;
+		})
+
+		EventBus.on(EventBus.EVENTS.APP.SET_SELECTION, (value: Selectable) => {
+			this.setState({
+				selection: value
+			});
+		});
+
+		EventBus.registerGetter(EventBus.GETTERS.APP.STORE, () => {
+			return this.state.Store;
+		});
+		EventBus.on(EventBus.EVENTS.APP.SET_STORE, (value: Store) => {
+			this.setState({
+				Store: value
+			});
+			Communicator.invoke('store_update', {
+				store: value.serialise()
+			});
+		});
+		EventBus.on(EventBus.EVENTS.APP.SET_STORE_UI, (value: any) => {
+			this.setState({
+				Store: value
+			});
+		});
+	}
+
+	componentWillUnmount() {
+		EventBus.unregisterGetter(EventBus.GETTERS.APP.STORE);
+		EventBus.unregisterGetter(EventBus.GETTERS.APP.CURRENT_SELECTION);
 	}
 
 	render() {
@@ -82,35 +123,28 @@ class App extends React.Component<Props, State> {
 		if (this.state.Store) {
 
 			return (
-				<StoreContext.Provider value={{
-					value: this.state.Store,
-					setValue: (val) => this.setState({
-						Store: val
-					})
-				}}>
-					<div className="h-screen w-screen flex flex-col">
-						{/* <div style={{ userSelect: 'none' }} className="border-red-500 w-full" onMouseDown={(e) => this.onClick(e)}>TEST DRAG</div> */}
-						<div className="dark:bg-gray-700 flex-grow">
-							<Section width="w-1/2" height="h-2/5" text="media importer" icon={faFolder}>
-								<MediaImporter cache={this.cache} />
-							</Section>
-							<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
-								{/* <VideoPreview /> */}
-							</Section>
-							<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
-								<div className="relative h-full w-full">
-									<div className="absolute z-20 right-2 top-2">
-										<NodeAddMenu />
-									</div>
-									<NodeEditor ref={this.nodeEditor} />
+				<div className="h-screen w-screen flex flex-col">
+					{/* <div style={{ userSelect: 'none' }} className="border-red-500 w-full" onMouseDown={(e) => this.onClick(e)}>TEST DRAG</div> */}
+					<div className="dark:bg-gray-700 flex-grow">
+						<Section width="w-1/2" height="h-2/5" text="media importer" icon={faFolder}>
+							<MediaImporter cache={this.cache} />
+						</Section>
+						<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
+							{/* <VideoPreview /> */}
+						</Section>
+						<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
+							<div className="relative h-full w-full">
+								<div className="absolute z-20 right-2 top-2">
+									<NodeAddMenu />
 								</div>
-							</Section>
-							<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
-								{/* <PropertiesPanel /> */}
-							</Section>
-						</div>
+								<NodeEditor ref={this.nodeEditor} />
+							</div>
+						</Section>
+						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
+							<PropertiesPanel />
+						</Section>
 					</div>
-				</StoreContext.Provider>
+				</div>
 			)
 		}
 		return <h1>Loading...</h1>;

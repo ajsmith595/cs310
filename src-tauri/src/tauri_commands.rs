@@ -19,7 +19,7 @@ use crate::{
 pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
-) -> Result<Store, String> {
+) -> Result<HashMap<String, SourceClip>, String> {
   let dialog = AsyncFileDialog::new()
     .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"))
     .add_filter("Video", &["mp4"]);
@@ -27,9 +27,8 @@ pub async fn import_media(
   match file {
     None => Err(String::from("No file selected")),
     Some(paths) => {
+      let mut hm = HashMap::new();
       for path in paths {
-        println!("Starting return...");
-
         let file_path = path.path().to_str().unwrap().to_string();
         let id = uniq_id();
         Pipeline::get_video_thumbnail(file_path.clone(), id.clone());
@@ -46,6 +45,8 @@ pub async fn import_media(
           thumbnail_location: Some(thumbnail),
         };
 
+        hm.insert(clip.id.clone(), clip.clone());
+
         (&mut state
           .0
           .clone()
@@ -55,13 +56,9 @@ pub async fn import_media(
           .store
           .clips
           .source)
-          .insert(clip.id.clone(), clip);
+          .insert(clip.id.clone(), clip.clone());
       }
-      let state = state.0.clone().lock().unwrap().stored_state.store.clone();
-      let mut f = File::create("state.json").unwrap();
-      f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
-        .unwrap();
-      Ok(state)
+      Ok(hm)
     }
   }
 }
@@ -98,6 +95,7 @@ pub fn create_composited_clip(
 #[tauri::command]
 pub fn get_initial_data(state: tauri::State<SharedStateWrapper>) -> (Store, NodeRegister) {
   let state = state.0.lock().unwrap();
+  println!("{:?}", state.stored_state.store);
   (
     state.stored_state.store.clone(),
     state.node_register.clone(),
@@ -191,6 +189,18 @@ pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Resul
     .store
     .nodes
     .insert(node.id.clone(), node.clone());
+  state.stored_state.file_written = false;
+  Ok(())
+}
+
+#[tauri::command]
+pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
+  let mut state = state.0.lock().unwrap();
+  println!(
+    "Old Store: {:#?}; New Store: {:#?}",
+    state.stored_state.store, store
+  );
+  state.stored_state.store = store.clone();
   state.stored_state.file_written = false;
   Ok(())
 }

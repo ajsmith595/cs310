@@ -1,13 +1,13 @@
-import { faFileImport, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
+import { faFileImport, faLayerGroup, faPhotoVideo, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
-import { SourceClip } from '../../classes/Clip';
+import { CompositedClip, SourceClip } from '../../classes/Clip';
 import Communicator from '../../classes/Communicator';
+import EventBus from '../../classes/EventBus';
 import Store from '../../classes/Store';
-import StoreContext from '../../contexts/StoreContext';
 import CompositedClipComponent from './CompositedClipComponent';
 import SourceClipComponent from './SourceClipComponent';
-
+import { v4 } from 'uuid';
 
 
 interface Props {
@@ -39,21 +39,28 @@ class MediaImporter extends React.Component<Props, State> {
 		})
 	}
 
-	onImportMediaButtonClick(setStore) {
+	onImportMediaButtonClick() {
 		this.setOpenTab('source');
 		Communicator.invoke('import_media', null, (data) => {
-			setStore(Store.deserialise(data));
+
+			let store = Store.getCurrentStore();
+			for (let id in data) {
+				let source_clip = SourceClip.deserialise(data[id]);
+				store.clips.source.set(source_clip.id, source_clip);
+			}
+			EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE_UI, store);
 		});
 	}
 
-	onCreateCompositedClipButtonClick(setStore) {
+	onCreateCompositedClipButtonClick() {
 		this.setOpenTab('composited');
-		Communicator.invoke('create_composited_clip', null, ([new_id, store]) => {
-			setStore(Store.deserialise(store));
+		let new_composited_clip = new CompositedClip(v4(), "New Clip", "");
+		let store = Store.getCurrentStore();
+		store.clips.composited.set(new_composited_clip.id, new_composited_clip);
+		Store.setStore(store);
 
-			requestAnimationFrame(() => {
-				this.references.composited[new_id].current.enableEditingMode();
-			});
+		requestAnimationFrame(() => {
+			this.references.composited[new_composited_clip.id].current.enableEditingMode();
 		});
 	}
 
@@ -76,66 +83,64 @@ class MediaImporter extends React.Component<Props, State> {
 					data-toggle="tab"
 					role="tablist"
 				>
+					<FontAwesomeIcon className="mr-2" icon={type == 'source' ? faPhotoVideo : faLayerGroup} />
 					{title}
 				</button>
 			);
 		}
 
 
-		return <StoreContext.Consumer>
-			{({ value, setValue }) => {
 
-				let files = [];
-				if (this.state.openTab == 'source') {
-					for (let [id, source_clip] of value.clips.source) {
-						files.push(
-							<SourceClipComponent cache={this.props.cache} key={id} clip={source_clip} />
-						);
-					}
+		let files = [];
+		let store = Store.getCurrentStore();
+		if (this.state.openTab == 'source') {
+			for (let [id, source_clip] of store.clips.source) {
+				files.push(
+					<SourceClipComponent cache={this.props.cache} key={id} clip={source_clip} />
+				);
+			}
+		}
+		else {
+			for (let [id, composited_clip] of store.clips.composited) {
+				if (!this.references.composited[id]) {
+					this.references.composited[id] = React.createRef();
 				}
-				else {
-					for (let [id, composited_clip] of value.clips.composited) {
-						if (!this.references.composited[id]) {
-							this.references.composited[id] = React.createRef();
-						}
-						files.push(
-							<CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
-						);
-					}
-				}
+				files.push(
+					<CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
+				);
+			}
+		}
 
 
-				return <div className="flex w-full h-full flex-col gap-2">
-					<div className="flex">
-						<button
-							className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-r-none block leading-normal border border-r-0 text-white"
-								+ (this.state.openTab === 'composited'
-									? "text-white bg-pink-600 dark:text-white border-red-800"
-									: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
-							onClick={() => this.onCreateCompositedClipButtonClick(setValue)}
-							data-toggle="tab"
-							role="tablist"
-						><FontAwesomeIcon icon={faPlusSquare} /></button>
-						{tabSelection('composited', 'Composited Clips', 'rounded-l-none')}
-						{tabSelection('source', 'Source Clips', "rounded-r-none")}
-						<button
-							className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-l-none block leading-normal border border-l-0 text-white"
-								+ (this.state.openTab === 'source'
-									? "text-white bg-pink-600 dark:text-white border-red-800"
-									: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
-							onClick={() => this.onImportMediaButtonClick(setValue)}
-							data-toggle="tab"
-							role="tablist"
-						><FontAwesomeIcon icon={faFileImport} /></button>
-					</div>
-					<div className="flex-grow border border-gray-800 relative overflow-y-scroll">
-						<div className="h-full w-full absolute">
-							{files}
-						</div>
-					</div>
+		return <div className="flex w-full h-full flex-col gap-2">
+			<div className="flex">
+				<button
+					className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-r-none block leading-normal border border-r-0 text-white"
+						+ (this.state.openTab === 'composited'
+							? "text-white bg-pink-600 dark:text-white border-red-800"
+							: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
+					onClick={() => this.onCreateCompositedClipButtonClick()}
+					data-toggle="tab"
+					role="tablist"
+				><FontAwesomeIcon icon={faPlusSquare} /></button>
+				{tabSelection('composited', 'Composited Clips', 'rounded-l-none')}
+				{tabSelection('source', 'Source Clips', "rounded-r-none")}
+				<button
+					className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-l-none block leading-normal border border-l-0 text-white"
+						+ (this.state.openTab === 'source'
+							? "text-white bg-pink-600 dark:text-white border-red-800"
+							: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
+					onClick={() => this.onImportMediaButtonClick()}
+					data-toggle="tab"
+					role="tablist"
+				><FontAwesomeIcon icon={faFileImport} /></button>
+			</div>
+			<div className="flex-grow border border-gray-800 relative overflow-y-scroll">
+				<div className="h-full w-full absolute">
+					{files}
 				</div>
-			}}
-		</StoreContext.Consumer>;
+			</div>
+		</div>
 	}
 
 }

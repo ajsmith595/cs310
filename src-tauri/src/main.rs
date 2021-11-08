@@ -212,9 +212,11 @@ fn main() {
       tauri_commands::change_clip_name,
       tauri_commands::create_composited_clip,
       tauri_commands::get_node_outputs,
-      tauri_commands::update_node
+      tauri_commands::update_node,
+      tauri_commands::store_update
     ])
     .setup(move |app| {
+      println!("Setting up...");
       let window = app.get_window("main").unwrap();
 
       let shared_state = shared_state_clone.clone();
