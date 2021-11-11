@@ -1,13 +1,14 @@
 import { faFileImport, faLayerGroup, faPhotoVideo, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
-import { CompositedClip, SourceClip } from '../../classes/Clip';
+import { ClipIdentifier, CompositedClip, SourceClip } from '../../classes/Clip';
 import Communicator from '../../classes/Communicator';
 import EventBus from '../../classes/EventBus';
 import Store from '../../classes/Store';
 import CompositedClipComponent from './CompositedClipComponent';
 import SourceClipComponent from './SourceClipComponent';
 import { v4 } from 'uuid';
+import EditorNode, { Position } from '../../classes/Node';
 
 
 interface Props {
@@ -56,11 +57,25 @@ class MediaImporter extends React.Component<Props, State> {
 		this.setOpenTab('composited');
 		let new_composited_clip = new CompositedClip(v4(), "New Clip", "");
 		let store = Store.getCurrentStore();
+
+		let pos;
+		{
+			let state = EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_INTERNAL_STATE);
+			let x = (state.width / 2 - state.transform[0]) / state.transform[2];
+			let y = (state.height / 2 - state.transform[1]) / state.transform[2];
+
+			pos = new Position(x, y);
+		}
+
+		let node = EditorNode.createNode('output', v4(), pos);
+		node.properties.set('clip', new ClipIdentifier(new_composited_clip.id, 'Composited'));
+		store.nodes.set(node.id, node);
 		store.clips.composited.set(new_composited_clip.id, new_composited_clip);
 		Store.setStore(store);
 
 		requestAnimationFrame(() => {
 			this.references.composited[new_composited_clip.id].current.enableEditingMode();
+			EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
 		});
 	}
 

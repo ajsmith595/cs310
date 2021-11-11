@@ -29,6 +29,8 @@ class CompositedClipComponent extends React.Component<Props, State> {
         this.changeClipName = this.changeClipName.bind(this);
         this.enableEditingMode = this.enableEditingMode.bind(this);
         this.disableEditingMode = this.disableEditingMode.bind(this);
+        this.openInEditor = this.openInEditor.bind(this);
+        this.onDragStart = this.onDragStart.bind(this);
     }
 
 
@@ -56,6 +58,26 @@ class CompositedClipComponent extends React.Component<Props, State> {
         })
     }
 
+    openInEditor() {
+        let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
+        let nodes = store.nodes;
+        for (let [id, node] of nodes.entries()) {
+            if (node.node_type == 'output') {
+                let clip = node.properties.get("clip");
+                if (clip && clip.id == this.props.clip.id) {
+                    EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
+                    return;
+                }
+            }
+        }
+    }
+
+
+    onDragStart(e: React.DragEvent) {
+        e.dataTransfer.setData('application/json', JSON.stringify(this.props.clip.getIdentifier()));
+        e.dataTransfer.dropEffect = 'link';
+    }
+
     render() {
         let text = (
             <div>
@@ -72,13 +94,15 @@ class CompositedClipComponent extends React.Component<Props, State> {
                 }} />;
         }
 
-        return <div className="gap-2 inline-flex w-1/2">
+        return <div className="gap-2 inline-flex w-1/2" draggable="true" onDragStart={this.onDragStart}>
             <div>
                 <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />
             </div>
             <div className="flex items-center">
                 <div>
                     {text}
+
+                    <button className="text-xs p-1 bg-blue-600 text-white" onClick={this.openInEditor}>Open</button>
                 </div>
             </div>
         </div>

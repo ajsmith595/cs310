@@ -63,7 +63,7 @@ fn main() {
           source_clip1.clone(),
           SourceClip {
             id: source_clip1.clone(),
-            name: "Test Clip".to_string(),
+            name: "Test Clip 1".to_string(),
             file_location: "input/test_input.mp4".to_string(),
             thumbnail_location: None,
           },
@@ -74,7 +74,7 @@ fn main() {
           source_clip2.clone(),
           SourceClip {
             id: source_clip2.clone(),
-            name: "Test Clip".to_string(),
+            name: "Test Clip 2".to_string(),
             file_location: "input/test_input2.mp4".to_string(),
             thumbnail_location: None,
           },
@@ -216,7 +216,6 @@ fn main() {
       tauri_commands::store_update
     ])
     .setup(move |app| {
-      println!("Setting up...");
       let window = app.get_window("main").unwrap();
 
       let shared_state = shared_state_clone.clone();

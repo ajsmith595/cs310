@@ -41,6 +41,9 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
     }
 
     onDropClip(property, event: React.DragEvent) {
+        if (this.props.data.node.node_type == "output") {
+            return;
+        }
         event.preventDefault();
         event.stopPropagation();
         let data = JSON.parse(event.dataTransfer.getData('application/json'));
@@ -95,12 +98,15 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                             name = clip.name;
                         }
                     }
+                    let onDragOver = (e) => { e.preventDefault(); e.stopPropagation() };
+                    if (this.props.data.node.node_type == "output") {
+                        onDragOver = () => { };
+                    }
                     properties.push(
-
                         <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
-                            <div className="px-4">
+                            <div className="px-2">
                                 <p>{prop.display_name}</p>
-                                <div className="p-2 bg-gray-400" onDrop={(e) => this.onDropClip(property, e)} onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}>
+                                <div className="p-2 bg-gray-400" onDrop={(e) => this.onDropClip(property, e)} onDragOver={onDragOver}>
                                     <p>{name}</p>
                                 </div>
                             </div>
@@ -131,18 +137,24 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         if (EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.data.node) {
             border = "border-pink-600";
         }
+
+        let delete_btn = (
+            <button className="float-right text-red-600 mr-2" onClick={(e) => { this.props.data.deleteNode(); e.stopPropagation() }}>
+                <FontAwesomeIcon icon={faTrash} />
+            </button>
+        );
+        if (this.props.data.node.node_type == 'output') {
+            delete_btn = null;
+        }
         return (
-            <div className={`bg-gray-200 rounded-md border-2 ${border}`} onClick={(e) => { console.log("Clicked for selection!"); EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node) }}>
+            <div className={`bg-gray-200 rounded-md border-2 ${border}`} onClick={(e) => EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node)}>
                 <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-2 ${this.state.expanded ? "border-gray-500" : 'border-transparent'} `}>
                     <h1>{node_registration.display_name}
                         <button className="float-right mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>
                             <FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} transform  ${!this.state.expanded ? 'rotate-90' : ''}`} />
                         </button>
 
-                        <button className="float-right text-red-600 mr-2" onClick={(e) => { this.props.data.deleteNode(); e.stopPropagation() }}>
-                            <FontAwesomeIcon icon={faTrash} />
-                        </button>
-
+                        {delete_btn}
                     </h1>
                     <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                         <small className={`block overflow-hidden`}>{node_registration.description}</small>

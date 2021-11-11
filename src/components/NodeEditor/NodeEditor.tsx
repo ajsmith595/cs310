@@ -6,6 +6,9 @@ import { Link, LinkEndpoint } from '../../classes/Pipeline';
 import Store from '../../classes/Store';
 import NodeEditorContext from '../../contexts/NodeEditorContext';
 import EditorNodeComponent from './EditorNodeComponent';
+import { ReactReduxContext } from 'react-redux';
+import NodeEditorStateManager from './NodeEditorStateManager';
+import { getBoundsofRects } from 'react-flow-renderer/dist/utils/graph';
 
 interface Props {
 }
@@ -118,7 +121,20 @@ class NodeEditor extends React.Component<Props, State> {
     addImportNode(event: React.DragEvent) {
         event.preventDefault();
         let data = JSON.parse(event.dataTransfer.getData('application/json'));
-        let node = EditorNode.createNode('clip_import', this.state.group, new Position(0, 0));
+
+        let state = EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_INTERNAL_STATE);
+
+        let bounds = event.currentTarget.getBoundingClientRect();
+        let [mouseX, mouseY] = [event.clientX - bounds.left, event.clientY - bounds.top];
+
+
+
+        let x = (mouseX - state.transform[0]) / state.transform[2];
+        let y = (mouseY - state.transform[1]) / state.transform[2];
+
+        let pos = new Position(x, y);
+
+        let node = EditorNode.createNode('clip_import', this.state.group, pos);
         node.properties.set('clip', data);
         this.addNode(node);
     }
@@ -133,22 +149,29 @@ class NodeEditor extends React.Component<Props, State> {
                 nodesInPreparation.push(node);
                 continue;
             }
-            elements.push({
-                id,
-                position: node.position,
-                data: {
-                    node: node,
-                    deleteLinks: (property: string) => this.deleteLinks(node.id, property),
-                    deleteNode: () => this.deleteNode(node.id),
-                },
-                type: 'editor_node'
-            });
+            if (node.group == this.state.group) {
+                elements.push({
+                    id,
+                    position: node.position,
+                    data: {
+                        node: node,
+                        deleteLinks: (property: string) => this.deleteLinks(node.id, property),
+                        deleteNode: () => this.deleteNode(node.id),
+                    },
+                    type: 'editor_node'
+                });
+            }
         }
         if (nodesInPreparation.length > 0) {
             this.prepareNodes(nodesInPreparation);
         }
         for (let link of store.pipeline.links) {
+
             let from_node = store.nodes.get(link.from.node_id);
+            let to_node = store.nodes.get(link.to.node_id);
+            if (from_node.group != this.state.group || to_node.group != this.state.group) {
+                continue;
+            }
             if (from_node.outputs) {
                 let output = from_node.outputs[link.from.property];
                 if (output) {
@@ -173,13 +196,16 @@ class NodeEditor extends React.Component<Props, State> {
             <div style={{ width: "100%", height: "100%" }} className="border-2 border-gray-400"
                 onDrop={(e) => this.addImportNode(e)}
                 onDragOver={(e) => e.preventDefault()} >
-                <ReactFlow ref={this.reactFlowRef} elements={elements} nodeTypes={{
-                    editor_node: EditorNodeComponent
-                }} onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
-                    onNodeDragStart={(e, n) => {
-                    }}
-                    onConnect={(e) => this.addLink(e)}
-                />
+                <ReactFlowProvider>
+                    <ReactFlow ref={this.reactFlowRef} elements={elements} nodeTypes={{
+                        editor_node: EditorNodeComponent
+                    }} onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
+                        onNodeDragStart={(e, n) => {
+                        }}
+                        onConnect={(e) => this.addLink(e)}
+                    />
+                    <NodeEditorStateManager />
+                </ReactFlowProvider>
             </div >
         );
 

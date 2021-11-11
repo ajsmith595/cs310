@@ -2,11 +2,24 @@
 import { Menu, Transition } from '@headlessui/react'
 import React from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react'
+import { ReactFlowProvider } from 'react-flow-renderer';
 import EventBus from '../classes/EventBus';
 import EditorNode, { Position } from '../classes/Node'
 import NodeEditorContext from '../contexts/NodeEditorContext';
 
 export default function NodeAddMenu() {
+
+    function dispatchAddNode(node_type) {
+        let state = EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_INTERNAL_STATE);
+        let x = (state.width / 2 - state.transform[0]) / state.transform[2];
+        let y = (state.height / 2 - state.transform[1]) / state.transform[2];
+
+        let pos = new Position(x, y);
+        let node = EditorNode.createNode(node_type.id, EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP), pos);
+
+        EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.ADD_NODE, node);
+    };
+
     let register = EditorNode.NodeRegister;
     let items = [];
     for (let [id, node_type] of register.entries()) {
@@ -16,12 +29,13 @@ export default function NodeAddMenu() {
                     <button
                         className={`${active ? 'bg-pink-600' : ''
                             } group flex rounded-md items-center w-full px-2 py-2 text-sm text-white`}
-                        onClick={() => EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.ADD_NODE, EditorNode.createNode(node_type.id, EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP), new Position(0, 0)))}
+                        onClick={() => dispatchAddNode(node_type)}
                     >
                         {node_type.display_name}
                     </button>
-                )}
-            </Menu.Item>
+                )
+                }
+            </Menu.Item >
         );
     }
 

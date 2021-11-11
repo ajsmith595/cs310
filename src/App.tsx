@@ -1,7 +1,7 @@
 import { faFolder, IconDefinition } from '@fortawesome/free-regular-svg-icons'
 import { faCog, faFilm, faProjectDiagram } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import React from 'react'
+import React, { ReactNode } from 'react'
 import MediaImporter from './components/MediaImporter/MediaImporter'
 import NodeEditor from './components/NodeEditor/NodeEditor'
 import PropertiesPanel from './components/PropertiesPanel'
@@ -14,7 +14,7 @@ import NodeAddMenu from './components/NodeAddMenu'
 import EventBus from './classes/EventBus'
 import { CompositedClip, SourceClip } from './classes/Clip'
 
-function Section(props: { width: string, height: string, text: string, children: any, icon: IconDefinition, className?: string }) {
+function Section(props: { width: string, height: string, text: string, children: any, icon: IconDefinition, className?: string, rightContent?: ReactNode }) {
 	let children = props.children;
 	if (!React.Children.count(children)) {
 		children = <div className="flex items-center w-full h-full">
@@ -23,7 +23,9 @@ function Section(props: { width: string, height: string, text: string, children:
 	}
 	return (<div className={`${props.width} ${props.height} p-3 border-gray-800 dark:border-gray-500 border ${props.className || ''} align-top inline-flex flex-col`}>
 		<div>
-			<h1 className="font-bold text-black dark:text-white text-xl"><FontAwesomeIcon icon={props.icon} className="mr-2" />{props.text.toUpperCase()}</h1>
+			<h1 className="font-bold text-black dark:text-white text-xl"><FontAwesomeIcon icon={props.icon} className="mr-2" />{props.text.toUpperCase()}
+				<span className="float-right">{props.rightContent}</span>
+			</h1>
 			<hr className="border-gray-800 dark:border-gray-500 my-2" />
 		</div>
 		<div className="flex-grow">
@@ -111,6 +113,10 @@ class App extends React.Component<Props, State> {
 				Store: value
 			});
 		});
+
+		EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, () => {
+			this.forceUpdate();
+		});
 	}
 
 	componentWillUnmount() {
@@ -132,7 +138,7 @@ class App extends React.Component<Props, State> {
 						<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
 							{/* <VideoPreview /> */}
 						</Section>
-						<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0">
+						<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0" rightContent={<p>Group: {EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP)}</p>}>
 							<div className="relative h-full w-full">
 								<div className="absolute z-20 right-2 top-2">
 									<NodeAddMenu />

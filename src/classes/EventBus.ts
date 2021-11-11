@@ -19,6 +19,9 @@ const EventBus = {
         if (!doc()._getters) {
             return null;
         }
+        if (!doc()._getters[value]) {
+            return null;
+        }
         return doc()._getters[value]();
     },
     registerGetter(name: string, callback: () => any) {
@@ -50,7 +53,8 @@ const EventBus = {
     },
     GETTERS: {
         NODE_EDITOR: {
-            CURRENT_GROUP: NODE_EDITOR_BASE + "current_group"
+            CURRENT_GROUP: NODE_EDITOR_BASE + "current_group",
+            CURRENT_INTERNAL_STATE: NODE_EDITOR_BASE + "current_internal_state"
         },
         APP: {
             STORE: APP_BASE + "store",

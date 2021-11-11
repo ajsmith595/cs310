@@ -46,6 +46,15 @@ export class CompositedClip {
         }
         return new CompositedClip(obj.id, obj.name, obj.pipeline_id);
     }
+
+
+
+    getIdentifier() {
+        return {
+            clip_type: 'Composited',
+            id: this.id
+        }
+    }
 }
 
 export class ClipIdentifier {
