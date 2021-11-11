@@ -1,4 +1,4 @@
-import { faArrowDown, faChevronDown, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faArrowDown, faChevronDown, faLayerGroup, faPhotoVideo, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { Handle, Position } from 'react-flow-renderer';
@@ -92,10 +92,12 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                 if (accepted_type == 'Clip') {
                     let clip_identifier = ClipIdentifier.deserialise(this.props.data.node.properties.get(property));
                     let name = "Not selected";
+                    let icon = null;
                     if (clip_identifier) {
                         let clip = Store.getCurrentStore().clips[clip_identifier.clip_type.toLowerCase()].get(clip_identifier.id);
                         if (clip) {
                             name = clip.name;
+                            icon = <FontAwesomeIcon className="mr-2" icon={clip_identifier.clip_type.toLowerCase() == 'source' ? faPhotoVideo : faLayerGroup} />;
                         }
                     }
                     let onDragOver = (e) => { e.preventDefault(); e.stopPropagation() };
@@ -107,7 +109,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                             <div className="px-2">
                                 <p>{prop.display_name}</p>
                                 <div className="p-2 bg-gray-400" onDrop={(e) => this.onDropClip(property, e)} onDragOver={onDragOver}>
-                                    <p>{name}</p>
+                                    <p>{icon} {name}</p>
                                 </div>
                             </div>
                         </AnimateHeight>
