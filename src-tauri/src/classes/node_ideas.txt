@@ -1,0 +1,61 @@
+Nodes to add/have:
+	Concatentation (dynamic to number of streams required)
+		with transition support
+	Stream Splitter (again dynamic; as many splits as required, and hence will output (no splits + 1) number of streams)
+	Subtitle injector
+	Audio Video Splitter
+	Video Layering
+		With different layering methods e.g. add, subtract, difference, etc.
+	Text Overlay
+	Colour Grading
+	Audio volume modulator
+	Audio equaliser
+		+ presets
+	Audio layering (add two audio streams together)
+	Audio volume normaliser
+	Video Masking
+	Video Alpha Masking
+	Video Color to Alpha
+	Shape generation - ellipse, polygon
+		Also allow SVG path import?
+	Video opacity
+	Video Transform (position, rotation, scale, 3d skew, curving of video, etc)
+	Video Border
+	Video Blur
+	Video Speed
+	Audio Speed
+	Audio Pitch modulator
+	Audio BG noise removal
+	Video Green Screen removal
+	Video RGB splitter
+	Video RGB merger
+	Audio -> text voice recognition?
+	Video: get nth frame/get frame at timestamp/get frame by %
+	Audio gain - allow clipping
+	Video upscale/downscaler
+
+
+	Video - Object Tracking - would also require new stream type of number (which would therefore mean implcitly 2 streams of numbers for the two axes) - these could be used for transform numbers?
+		This same idea of number streaming could be used to power keyframing. 
+
+	Subtitle auto-translator?
+
+	Video - auto-deepfake
+
+	Subtitle/Text -> text-to-speech
+
+	Video colorizer
+
+	
+
+
+
+	Media import will now output a 'container', then you will use the following to get the raw streams:
+		Container video-only splitter - outputs one container per-video, with all the audio streams + that particular video stream attached
+		Container splitter - outputs all the video + audio streams
+		Audio + video merger - will merge one video stream with one or more audio streams
+		Stream merge - will merge any number of video + audio streams into one container
+
+
+
+	Keyframer - per-composited node?

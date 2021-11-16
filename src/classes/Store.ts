@@ -85,9 +85,10 @@ export default class Store {
         return new Store(nodes, ClipStore.deserialise(obj.clips), Pipeline.deserialise(obj.pipeline), medias);
     }
     serialise() {
+
         let nodes: any = {};
         for (let [k, v] of this.nodes.entries()) {
-            nodes[k] = v;
+            nodes[k] = v.serialise();
         }
         return {
             nodes,

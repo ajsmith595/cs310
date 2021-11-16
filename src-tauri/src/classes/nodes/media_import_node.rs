@@ -81,8 +81,9 @@ pub fn media_import_node() -> NodeType {
               .pipeline
               .get_output_type(composited_clip.id.clone(), store, node_register);
           if prop_type.is_err() {
-            return Err(String::from(
-              "Failed to get output type for composited clip",
+            return Err(format!(
+              "Failed to get output type for composited clip ({})",
+              prop_type.unwrap_err()
             ));
           }
           property_type = prop_type.unwrap();

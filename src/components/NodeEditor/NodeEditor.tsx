@@ -76,6 +76,10 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     addLink(e: Edge<any> | Connection) {
+        if (e.source == e.target) {
+            return;
+        }
+
         let store = Store.getCurrentStore();
         for (let link of store.pipeline.links) {
             if (link.from.node_id == e.source && link.from.property == e.sourceHandle
@@ -85,7 +89,16 @@ class NodeEditor extends React.Component<Props, State> {
         }
         this.deleteLinks(e.target, e.targetHandle, false);
         let link = new Link(new LinkEndpoint(e.source, e.sourceHandle), new LinkEndpoint(e.target, e.targetHandle));
+
+
         store.pipeline.links.push(link);
+
+        if (store.pipeline.hasCycles(store)) {
+            // if it has cycles, remove the link that caused the cycle to occur
+            store.pipeline.links = store.pipeline.links.filter(e => e != link);
+
+            alert("Link caused cycle");
+        }
         Store.setStore(store);
     }
 

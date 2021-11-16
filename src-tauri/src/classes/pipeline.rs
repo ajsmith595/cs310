@@ -12,6 +12,8 @@ use petgraph::{
   Graph,
 };
 
+use gstreamer_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
+
 use bimap::BiMap;
 use serde_json::Value;
 
@@ -368,6 +370,7 @@ impl Pipeline {
 
     println!("Pipeline: {}", pipeline);
     // This creates a pipeline by parsing the gst-launch pipeline syntax.
+
     let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
     let bus = pipeline.bus().unwrap();
 

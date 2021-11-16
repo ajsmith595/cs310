@@ -1,5 +1,8 @@
 import { ID } from "./Communicator";
+import Graph from "./Graph";
+import Store from "./Store";
 import Utils from "./Utils";
+// import { DiGraph, Graph } from 'js-graph-algorithms';
 
 export class LinkEndpoint {
     node_id: ID;
@@ -75,5 +78,28 @@ export default class Pipeline {
             }
         }
         return false;
+    }
+
+
+    hasCycles(store: Store) {
+
+        let g = new Graph();
+
+        for (let [id, node] of store.nodes.entries()) {
+            g.addNode(id);
+        }
+
+        console.log(this.links);
+        let links_done = [];
+        for (let link of this.links) {
+            let id = link.from.node_id + "_" + link.to.node_id;
+            if (!links_done.includes(id)) {
+                g.addEdge(link.from.node_id, link.to.node_id);
+                links_done.push(id);
+            }
+        }
+        console.log(g);
+        return !g.isAcyclic();
+
     }
 }

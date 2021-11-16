@@ -26,6 +26,10 @@ gstreamer = "0.17.3"
 rfd = "0.4.3"
 # dirs = "3.0"
 
+gstreamer-audio = "0.17.2"
+gstreamer-video = "0.17.2"
+gstreamer-pbutils = "0.17.2"
+
 [features]
 default = [ "custom-protocol" ]
 custom-protocol = [ "tauri/custom-protocol" ]

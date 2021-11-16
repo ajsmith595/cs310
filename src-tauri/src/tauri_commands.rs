@@ -1,6 +1,8 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
+use gstreamer_pbutils::Discoverer;
 use rfd::AsyncFileDialog;
+use serde_json::{Number, Value};
 
 use crate::{
   classes::{
@@ -61,6 +63,39 @@ pub async fn import_media(
       Ok(hm)
     }
   }
+}
+
+#[tauri::command]
+pub async fn get_file_info(
+  clip_id: ID,
+  state: tauri::State<'_, SharedStateWrapper>,
+) -> Result<(), String> {
+  let state = state.0.lock().unwrap();
+  let clip = state.stored_state.store.clips.source.get(&clip_id);
+  if clip.is_none() {
+    return Err(format!("Clip not found"));
+  }
+
+  let clip = clip.unwrap();
+
+  let discoverer = Discoverer::new(gstreamer::ClockTime::from_seconds(10)).unwrap();
+  let info = discoverer.discover_uri(&clip.file_location);
+  if info.is_err() {
+    return Err(format!(
+      "Error occurred when finding info!: {}",
+      info.unwrap_err()
+    ));
+  }
+  let info = info.unwrap();
+
+  let duration = info.duration().unwrap();
+  let mut hm = HashMap::new();
+  hm.insert(
+    "duration".to_string(),
+    Value::Number(Number::from(duration.seconds())),
+  );
+
+  Ok(())
 }
 
 #[tauri::command]
