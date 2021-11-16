@@ -1,4 +1,6 @@
 import { ID } from "./Communicator";
+import EventBus from "./EventBus";
+import Store from "./Store";
 import Utils from "./Utils";
 
 export class SourceClip {
@@ -53,6 +55,19 @@ export class CompositedClip {
         return {
             clip_type: 'Composited',
             id: this.id
+        }
+    }
+
+    getClipGroup() {
+        let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
+        let nodes = store.nodes;
+        for (let [id, node] of nodes.entries()) {
+            if (node.node_type == 'output') {
+                let clip = node.properties.get("clip");
+                if (clip && clip.id == this.id) {
+                    return node.group;
+                }
+            }
         }
     }
 }

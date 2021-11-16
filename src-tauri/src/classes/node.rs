@@ -52,9 +52,10 @@ impl Node {
 }
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub struct Restrictions {
-  pub min: f32,
-  pub max: f32,
-  pub step: f32,
+  pub min: f64,
+  pub max: f64,
+  pub step: f64,
+  pub default: f64,
 }
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub enum PipeableType {

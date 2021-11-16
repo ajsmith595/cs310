@@ -1,6 +1,7 @@
 import Communicator, { ID } from "./Communicator";
 import Utils from "./Utils";
 import { v4 } from 'uuid';
+import Store from "./Store";
 
 
 export enum PipeableType {
@@ -130,6 +131,70 @@ export default class EditorNode {
     }
 
     static createNode(type: string, group: string, position: Position) {
-        return new EditorNode(position, v4(), type, new Map(), group);
+        let register_entry = EditorNode.NodeRegister.get(type);
+
+        let props = new Map();
+        for (let prop in register_entry.properties) {
+            let property_details = register_entry.properties[prop];
+            for (let type of property_details.property_type) {
+                if (type.hasOwnProperty('Number')) {
+                    props.set(prop, type['Number'].default);
+                }
+            }
+        }
+
+        return new EditorNode(position, v4(), type, props, group);
+    }
+
+
+    onDropClip(property, event: React.DragEvent) {
+        if (this.node_type == "output") {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        let data = JSON.parse(event.dataTransfer.getData('application/json'));
+        this.properties.set(property, data);
+        Store.setStore();
+    }
+
+    changeProperty(property, newValue) {
+        let register_entry = EditorNode.NodeRegister.get(this.node_type);
+        let property_entry = register_entry.properties[property];
+
+        let hasChanged = false;
+        if (property_entry.property_type[0].hasOwnProperty('Number')) {
+            let restrictions = property_entry.property_type[0]['Number'];
+
+
+            let originalValue: number = parseFloat(newValue);
+            if (isNaN(originalValue)) {
+                originalValue = 0;
+            }
+            originalValue = parseFloat(originalValue.toPrecision(12));
+            if (restrictions.min > newValue) {
+                newValue = restrictions.min;
+            }
+            else if (restrictions.max < newValue) {
+                newValue = restrictions.max;
+            }
+            newValue = Math.round(newValue / restrictions.step) * restrictions.step;
+
+            newValue = newValue.toPrecision(12);
+            if (originalValue != newValue) {
+                hasChanged = true;
+            }
+        }
+
+
+        if (this.properties.get(property) != newValue || typeof newValue == 'object') {
+            // if the value is an object, they'll still point to the same object, but we want to still update the display
+
+            this.properties.set(property, newValue);
+            hasChanged = true;
+        }
+
+        if (hasChanged)
+            Store.setStore();
     }
 }

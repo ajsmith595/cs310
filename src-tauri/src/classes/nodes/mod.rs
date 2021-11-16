@@ -1,7 +1,9 @@
+pub mod blur_node;
 pub mod concat_node;
 pub mod media_import_node;
 pub mod output_node;
-use self::{concat_node::concat_node, output_node::output_node};
+
+use self::{blur_node::blur_node, concat_node::concat_node, output_node::output_node};
 
 use super::node::NodeType;
 use crate::classes::nodes::media_import_node::media_import_node;
@@ -18,6 +20,7 @@ pub fn get_node_register() -> NodeRegister {
   );
   register.insert(String::from(output_node::IDENTIFIER), output_node());
   register.insert(String::from(concat_node::IDENTIFIER), concat_node());
+  register.insert(String::from(blur_node::IDENTIFIER), blur_node());
 
   register
 }

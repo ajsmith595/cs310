@@ -1,20 +1,20 @@
 import { faArrowDown, faChevronDown, faLayerGroup, faPhotoVideo, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
-import { Handle, Position } from 'react-flow-renderer';
+import { Connection, Handle, Position } from 'react-flow-renderer';
 import Communicator from '../../classes/Communicator';
 import EditorNode from '../../classes/Node';
 import AnimateHeight from 'react-animate-height';
 import EventBus from '../../classes/EventBus';
 import { ClipIdentifier } from '../../classes/Clip';
 import Store from '../../classes/Store';
-import store from 'react-flow-renderer/dist/store';
 
 interface Props {
     data: {
         node: EditorNode,
         deleteLinks: (property: string) => void;
         deleteNode: () => void;
+        isValidConnection: (property: string, connection: Connection) => boolean;
     }
 }
 
@@ -41,14 +41,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
     }
 
     onDropClip(property, event: React.DragEvent) {
-        if (this.props.data.node.node_type == "output") {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        let data = JSON.parse(event.dataTransfer.getData('application/json'));
-        this.props.data.node.properties.set(property, data);
-        Store.setStore();
+        this.props.data.node.onDropClip(property, event);
     }
 
     render() {
@@ -77,6 +70,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
                             <Handle type='target' position={Position.Left} id={property}
                                 style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
+                                isValidConnection={(connection) => this.props.data.isValidConnection(property, connection)}
                             >
                                 {btn}
                             </Handle>
@@ -124,7 +118,9 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}
                     onMouseLeave={() => this.setState({ hovered_property: null })}>
                     <Handle type="source" position={Position.Right} id={output_type}
-                        style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }} />
+                        style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
+                        isValidConnection={(connection) => this.props.data.isValidConnection(output_type, connection)}
+                    />
                     <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                         <p className="text-right">{output.display_name}</p>
                     </AnimateHeight>

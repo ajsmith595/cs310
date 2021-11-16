@@ -81,7 +81,7 @@ export default class Pipeline {
     }
 
 
-    hasCycles(store: Store) {
+    hasCyclesWithLink(store: Store, link_to_add: Link) {
 
         let g = new Graph();
 
@@ -89,16 +89,19 @@ export default class Pipeline {
             g.addNode(id);
         }
 
-        console.log(this.links);
         let links_done = [];
         for (let link of this.links) {
+            if (link.to.id == link_to_add.to.id) continue;
             let id = link.from.node_id + "_" + link.to.node_id;
             if (!links_done.includes(id)) {
                 g.addEdge(link.from.node_id, link.to.node_id);
                 links_done.push(id);
             }
         }
-        console.log(g);
+        let new_id = link_to_add.from.node_id + "_" + link_to_add.to.node_id;
+        if (!links_done.includes(new_id)) {
+            g.addEdge(link_to_add.from.node_id, link_to_add.to.node_id);
+        }
         return !g.isAcyclic();
 
     }

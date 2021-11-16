@@ -231,11 +231,18 @@ pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Resul
 #[tauri::command]
 pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
   let mut state = state.0.lock().unwrap();
-  println!(
-    "Old Store: {:#?}; New Store: {:#?}",
-    state.stored_state.store, store
-  );
   state.stored_state.store = store.clone();
   state.stored_state.file_written = false;
+
+  let pipeline_result = state
+    .stored_state
+    .store
+    .pipeline
+    .generate_pipeline_string(&state.stored_state.store, &state.node_register);
+  let pipeline_string = match pipeline_result {
+    Ok(str) => str,
+    Err(str) => str,
+  };
+  println!("New store received; pipeline string: {}", pipeline_string);
   Ok(())
 }

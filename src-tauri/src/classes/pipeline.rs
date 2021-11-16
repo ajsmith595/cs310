@@ -239,7 +239,10 @@ impl Pipeline {
       *target_idx,
     );
     if out_str.is_err() {
-      return Err(String::from("Could not get output"));
+      return Err(format!(
+        "Could not get output due to : {}",
+        out_str.unwrap_err()
+      ));
     }
     let out_str = out_str.unwrap();
 
@@ -288,7 +291,10 @@ impl Pipeline {
       let node_string =
         Self::get_node_output_string(graph, store, node_register, node_id_to_index, node);
       if node_string.is_err() {
-        return Err(String::from("An error occured in a dependent node"));
+        return Err(format!(
+          "An error occured in a dependent node: {}",
+          node_string.unwrap_err()
+        ));
       }
       let node_string = node_string.unwrap();
       str = format!("{} {}", str, node_string);
@@ -296,8 +302,11 @@ impl Pipeline {
     let node_id = node_id_to_index.get_by_right(&node_index).unwrap();
     let node = store.nodes.get(node_id).unwrap();
     let node_type = node_register.get(&node.node_type).unwrap();
-    let out =
-      (node_type.get_output)(node.id.clone(), &node.properties, store, node_register).unwrap();
+    let out = (node_type.get_output)(node.id.clone(), &node.properties, store, node_register);
+    if out.is_err() {
+      return Err(out.unwrap_err());
+    }
+    let out = out.unwrap();
     str = format!("{} {}", str, out);
     return Ok(str);
   }

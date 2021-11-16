@@ -3,9 +3,9 @@ import { Menu, Transition } from '@headlessui/react'
 import React from 'react';
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ReactFlowProvider } from 'react-flow-renderer';
-import EventBus from '../classes/EventBus';
-import EditorNode, { Position } from '../classes/Node'
-import NodeEditorContext from '../contexts/NodeEditorContext';
+import EventBus from '../../classes/EventBus';
+import EditorNode, { Position } from '../../classes/Node'
+import NodeEditorContext from '../../contexts/NodeEditorContext';
 
 export default function NodeAddMenu() {
 

@@ -59,17 +59,9 @@ class CompositedClipComponent extends React.Component<Props, State> {
     }
 
     openInEditor() {
-        let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
-        let nodes = store.nodes;
-        for (let [id, node] of nodes.entries()) {
-            if (node.node_type == 'output') {
-                let clip = node.properties.get("clip");
-                if (clip && clip.id == this.props.clip.id) {
-                    EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
-                    return;
-                }
-            }
-        }
+        let group = this.props.clip.getClipGroup();
+
+        EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, group);
     }
 
 

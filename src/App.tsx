@@ -10,7 +10,7 @@ import { appWindow } from '@tauri-apps/api/window';
 import Store from './classes/Store'
 import Communicator from './classes/Communicator'
 import EditorNode from './classes/Node'
-import NodeAddMenu from './components/NodeAddMenu'
+import NodeAddMenu from './components/NodeEditor/NodeAddMenu'
 import EventBus from './classes/EventBus'
 import { CompositedClip, SourceClip } from './classes/Clip'
 
@@ -127,6 +127,7 @@ class App extends React.Component<Props, State> {
 	render() {
 
 		if (this.state.Store) {
+			let firstClip: CompositedClip = this.state.Store.clips.composited.values().next().value;
 
 			return (
 				<div className="h-screen w-screen flex flex-col">
@@ -143,7 +144,7 @@ class App extends React.Component<Props, State> {
 								<div className="absolute z-20 right-2 top-2">
 									<NodeAddMenu />
 								</div>
-								<NodeEditor ref={this.nodeEditor} />
+								<NodeEditor ref={this.nodeEditor} initial_group={firstClip.getClipGroup()} />
 							</div>
 						</Section>
 						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">

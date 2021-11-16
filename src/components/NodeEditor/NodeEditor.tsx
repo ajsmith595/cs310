@@ -9,24 +9,39 @@ import EditorNodeComponent from './EditorNodeComponent';
 import { ReactReduxContext } from 'react-redux';
 import NodeEditorStateManager from './NodeEditorStateManager';
 import { getBoundsofRects } from 'react-flow-renderer/dist/utils/graph';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faExclamationCircle, faTemperatureLow } from '@fortawesome/free-solid-svg-icons';
+import { Transition, animated } from 'react-spring'
+import { v4 } from 'uuid';
 
 interface Props {
+    initial_group?: string;
 }
+
+type NotificationType = 'error' | 'warning' | 'success' | 'info';
 
 interface State {
     loading: boolean,
-    group: string
+    group: string,
+    notifications: Array<{
+        title: string,
+        message: string,
+        type: NotificationType,
+        id: string
+    }>
 }
 
 class NodeEditor extends React.Component<Props, State> {
+    static NOTIFICATION_TIMEOUT = 5000;
+
 
     reactFlowRef: React.Ref<HTMLDivElement>;
-
     constructor(props: Props) {
         super(props);
         this.state = {
             loading: true,
-            group: "",
+            group: props.initial_group || "",
+            notifications: []
         }
 
         this.addNode = this.addNode.bind(this);
@@ -61,6 +76,26 @@ class NodeEditor extends React.Component<Props, State> {
         });
     }
 
+    addNotification(message: string, type: NotificationType) {
+        setTimeout(() => {
+            this.setState({
+                notifications: this.state.notifications.slice(1)
+            });
+        }, NodeEditor.NOTIFICATION_TIMEOUT);
+        let notification = {
+            title: type.toUpperCase(),
+            message,
+            type,
+            id: v4()
+        };
+        this.setState({
+            notifications: [
+                ...this.state.notifications,
+                notification
+            ]
+        });
+    }
+
     async prepareNodes(nodes: Array<EditorNode>) {
         let promises = [];
         for (let node of nodes) {
@@ -87,19 +122,28 @@ class NodeEditor extends React.Component<Props, State> {
                 return;
             }
         }
-        this.deleteLinks(e.target, e.targetHandle, false);
         let link = new Link(new LinkEndpoint(e.source, e.sourceHandle), new LinkEndpoint(e.target, e.targetHandle));
 
 
-        store.pipeline.links.push(link);
 
-        if (store.pipeline.hasCycles(store)) {
-            // if it has cycles, remove the link that caused the cycle to occur
-            store.pipeline.links = store.pipeline.links.filter(e => e != link);
-
-            alert("Link caused cycle");
+        if (store.pipeline.hasCyclesWithLink(store, link)) {
+            this.addNotification('Link caused cycle in pipeline', 'error');
         }
-        Store.setStore(store);
+        else {
+            this.deleteLinks(e.target, e.targetHandle, false);
+            store.pipeline.links.push(link);
+            Store.setStore(store);
+        }
+    }
+
+    isValidConnection(connection: Connection) {
+        return true;
+        // let store = Store.getCurrentStore();
+
+        // let link = new Link(new LinkEndpoint(connection.source, connection.sourceHandle), new LinkEndpoint(connection.target, connection.targetHandle));
+        // if (store.pipeline.hasCyclesWithLink(store, link))
+        //     return false;
+        // return true;
     }
 
     deleteLinks(node_id, property = null, do_update = true) {
@@ -170,6 +214,7 @@ class NodeEditor extends React.Component<Props, State> {
                         node: node,
                         deleteLinks: (property: string) => this.deleteLinks(node.id, property),
                         deleteNode: () => this.deleteNode(node.id),
+                        isValidConnection: (property: string, connection: Connection) => this.isValidConnection(connection)
                     },
                     type: 'editor_node'
                 });
@@ -205,8 +250,14 @@ class NodeEditor extends React.Component<Props, State> {
             }
         }
 
+        let notificationStyles = {
+            '--tw-backdrop-opacity': 'opacity(0.2)'
+        } as React.CSSProperties;
+
+        notificationStyles = {};
+
         return (
-            <div style={{ width: "100%", height: "100%" }} className="border-2 border-gray-400"
+            <div style={{ width: "100%", height: "100%" }} className="border-2 border-gray-400 relative"
                 onDrop={(e) => this.addImportNode(e)}
                 onDragOver={(e) => e.preventDefault()} >
                 <ReactFlowProvider>
@@ -215,10 +266,30 @@ class NodeEditor extends React.Component<Props, State> {
                     }} onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
                         onNodeDragStart={(e, n) => {
                         }}
+
                         onConnect={(e) => this.addLink(e)}
                     />
                     <NodeEditorStateManager />
                 </ReactFlowProvider>
+                <div className="absolute right-2 bottom-2 z-50">
+                    <Transition items={this.state.notifications}
+                        keys={item => item.id}
+                        from={{ opacity: 0 }}
+                        enter={{ opacity: 1 }}
+                        leave={{ opacity: 0 }}
+                    >
+                        {(styles, notification) => (
+                            <animated.div className="text-white backdrop-filter backdrop-blur mb-2" style={styles}>
+                                <div className="bg-red-600 px-2 py-1 bg-opacity-75 rounded-t">
+                                    <h1 className="text-sm"><FontAwesomeIcon icon={faExclamationCircle} /> {notification.title}</h1>
+                                </div>
+                                <div className="px-4 py-2 bg-gray-900 bg-opacity-75 rounded-b">
+                                    <p>{notification.message}</p>
+                                </div>
+                            </animated.div>
+                        )}
+                    </Transition>
+                </div>
             </div >
         );
 
