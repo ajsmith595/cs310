@@ -5,10 +5,9 @@ import { ClipIdentifier, CompositedClip, SourceClip } from '../../classes/Clip';
 import Communicator from '../../classes/Communicator';
 import EventBus from '../../classes/EventBus';
 import Store from '../../classes/Store';
-import CompositedClipComponent from './CompositedClipComponent';
-import SourceClipComponent from './SourceClipComponent';
 import { v4 } from 'uuid';
 import EditorNode, { Position } from '../../classes/Node';
+import ClipComponent from './ClipComponent';
 
 
 interface Props {
@@ -21,7 +20,7 @@ interface State {
 
 class MediaImporter extends React.Component<Props, State> {
 	private references: {
-		composited: { [k: string]: React.RefObject<CompositedClipComponent> }
+		composited: { [k: string]: React.RefObject<ClipComponent> }
 	} = { composited: {} };
 	constructor(props: Props) {
 		super(props);
@@ -55,7 +54,7 @@ class MediaImporter extends React.Component<Props, State> {
 
 	onCreateCompositedClipButtonClick() {
 		this.setOpenTab('composited');
-		let new_composited_clip = new CompositedClip(v4(), "New Clip", "");
+		let new_composited_clip = new CompositedClip(v4(), "New Clip");
 		let store = Store.getCurrentStore();
 
 		let pos;
@@ -111,7 +110,7 @@ class MediaImporter extends React.Component<Props, State> {
 		if (this.state.openTab == 'source') {
 			for (let [id, source_clip] of store.clips.source) {
 				files.push(
-					<SourceClipComponent cache={this.props.cache} key={id} clip={source_clip} />
+					<ClipComponent cache={this.props.cache} key={"source_" + id} clip={source_clip} />
 				);
 			}
 		}
@@ -121,7 +120,8 @@ class MediaImporter extends React.Component<Props, State> {
 					this.references.composited[id] = React.createRef();
 				}
 				files.push(
-					<CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
+					<ClipComponent key={"composited" + id} clip={composited_clip} ref={this.references.composited[id]} />
+					// <CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
 				);
 			}
 		}

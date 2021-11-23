@@ -278,14 +278,14 @@ impl Pipeline {
         .neighbors_directed(input, petgraph::EdgeDirection::Incoming)
         .next();
       if output.is_none() {
-        panic!("Graph not generated properly!");
+        return Err(format!("Graph not generated properly!"));
       }
       let output = output.unwrap();
       let node = graph
         .neighbors_directed(output, petgraph::EdgeDirection::Incoming)
         .next();
       if node.is_none() {
-        panic!("Graph not generated properly!");
+        return Err(format!("Graph not generated properly!"));
       }
       let node = node.unwrap();
       let node_string =

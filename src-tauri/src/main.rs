@@ -87,7 +87,6 @@ fn main() {
           CompositedClip {
             id: composited_clip1.clone(),
             name: "Test Composited Clip".to_string(),
-            pipeline_id: "".to_string(),
           },
         );
       }
@@ -180,11 +179,8 @@ fn main() {
 
   println!("{}", serde_json::ser::to_string(&store).unwrap());
 
-  let res = store
-    .pipeline
-    .generate_pipeline_string(&store, &register)
-    .unwrap();
-  println!("Result: {};", res);
+  let res = store.pipeline.generate_pipeline_string(&store, &register);
+  println!("Result: {:#?};", res);
 
   gstreamer::init().expect("GStreamer could not be initialised");
   // execute_pipeline(res, 60);
@@ -214,7 +210,8 @@ fn main() {
       tauri_commands::create_composited_clip,
       tauri_commands::get_node_outputs,
       tauri_commands::update_node,
-      tauri_commands::store_update
+      tauri_commands::store_update,
+      tauri_commands::get_file_info
     ])
     .setup(move |app| {
       let window = app.get_window("main").unwrap();

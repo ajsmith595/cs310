@@ -32,7 +32,6 @@ impl SourceClip {
 pub struct CompositedClip {
   pub id: ID,
   pub name: String,
-  pub pipeline_id: ID,
 }
 impl CompositedClip {
   pub fn get_gstreamer_id(&self) -> String {

@@ -1,5 +1,6 @@
 import { ID } from "./Communicator";
-import EditorNode, { PipeableType } from './Node';
+import EditorNode from './Node';
+import { PipeableType } from "./NodeRegistration";
 import Pipeline from "./Pipeline";
 import { CompositedClip, SourceClip } from "./Clip";
 import Utils from "./Utils";

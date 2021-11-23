@@ -28,7 +28,7 @@ function Section(props: { width: string, height: string, text: string, children:
 			</h1>
 			<hr className="border-gray-800 dark:border-gray-500 my-2" />
 		</div>
-		<div className="flex-grow">
+		<div style={{ flex: "1 1 auto" }} className="min-h-0">
 			{children}
 		</div>
 	</div>)
@@ -74,14 +74,8 @@ class App extends React.Component<Props, State> {
 
 	componentDidMount() {
 		Communicator.invoke('get_initial_data', null, (data) => {
-			console.log(data);
-
 			let node_register = data[1];
-			console.log(node_register);
-
-			for (let node_type in node_register) {
-				EditorNode.NodeRegister.set(node_type, node_register[node_type]);
-			}
+			EditorNode.deserialiseRegister(node_register);
 			this.setState({
 				Store: Store.deserialise(data[0])
 			})
@@ -104,6 +98,8 @@ class App extends React.Component<Props, State> {
 			this.setState({
 				Store: value
 			});
+			console.log("NEW STORE:");
+			console.log(value.serialise());
 			Communicator.invoke('store_update', {
 				store: value.serialise()
 			});
@@ -130,9 +126,9 @@ class App extends React.Component<Props, State> {
 			let firstClip: CompositedClip = this.state.Store.clips.composited.values().next().value;
 
 			return (
-				<div className="h-screen w-screen flex flex-col">
+				<div className="h-screen w-screen flex flex-col dark:bg-gray-700">
 					{/* <div style={{ userSelect: 'none' }} className="border-red-500 w-full" onMouseDown={(e) => this.onClick(e)}>TEST DRAG</div> */}
-					<div className="dark:bg-gray-700 flex-grow">
+					<div className="dark:bg-gray-700 flex-grow max-h-full">
 						<Section width="w-1/2" height="h-2/5" text="media importer" icon={faFolder}>
 							<MediaImporter cache={this.cache} />
 						</Section>
@@ -148,7 +144,7 @@ class App extends React.Component<Props, State> {
 							</div>
 						</Section>
 						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
-							<PropertiesPanel />
+							<PropertiesPanel cache={this.cache} />
 						</Section>
 					</div>
 				</div>

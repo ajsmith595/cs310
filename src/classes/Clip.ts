@@ -35,18 +35,16 @@ export class SourceClip {
 export class CompositedClip {
     public id: ID;
     public name: string;
-    public pipeline_id: ID;
-    constructor(id: ID, name: string, pipeline_id: ID) {
+    constructor(id: ID, name: string) {
         this.id = id;
         this.name = name;
-        this.pipeline_id = pipeline_id;
     }
 
     static deserialise(obj: any) {
-        if (Utils.propsUndefined(obj.id, obj.name, obj.pipeline_id)) {
+        if (Utils.propsUndefined(obj.id, obj.name)) {
             throw new Error("Could not deserialise! Malformed object");
         }
-        return new CompositedClip(obj.id, obj.name, obj.pipeline_id);
+        return new CompositedClip(obj.id, obj.name);
     }
 
 

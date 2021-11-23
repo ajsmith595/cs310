@@ -3,18 +3,17 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import Communicator from '../../classes/Communicator';
 import Store from '../../classes/Store';
-import { SourceClip } from '../../classes/Clip';
+import { CompositedClip, SourceClip } from '../../classes/Clip';
 import { faEdit } from '@fortawesome/free-regular-svg-icons';
-import { fs } from '@tauri-apps/api';
-import Utils from '../../classes/Utils';
 import EventBus from '../../classes/EventBus';
+import Utils from '../../classes/Utils';
+import { fs } from '@tauri-apps/api';
 
 
 
 interface Props {
-    // props
-    clip: SourceClip,
     cache?: Map<string, any>;
+    clip: CompositedClip | SourceClip
 }
 
 interface State {
@@ -22,22 +21,27 @@ interface State {
     thumbnailData: string
 }
 
-class SourceClipComponent extends React.Component<Props, State> {
+class ClipComponent extends React.Component<Props, State> {
     private inputRef = React.createRef<HTMLInputElement>();
     constructor(props: Props) {
         super(props);
 
         this.state = {
             editing: false,
-            thumbnailData: null
+            thumbnailData: ""
         };
         this.changeClipName = this.changeClipName.bind(this);
         this.enableEditingMode = this.enableEditingMode.bind(this);
         this.disableEditingMode = this.disableEditingMode.bind(this);
+        this.openInEditor = this.openInEditor.bind(this);
         this.onDragStart = this.onDragStart.bind(this);
+        this.selectClip = this.selectClip.bind(this);
     }
 
+
     componentDidMount() {
+        if (this.props.clip instanceof CompositedClip) return;
+
         if (!this.props.cache.get("clips")) {
             this.props.cache.set("clips", {});
         }
@@ -73,7 +77,9 @@ class SourceClipComponent extends React.Component<Props, State> {
 
     changeClipName(newName) {
         let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
-        store.clips.source.get(this.props.clip.id).name = newName.trim();
+
+        let map = store.clips[(this.props.clip instanceof SourceClip) ? 'source' : 'composited'];
+        map.get(this.props.clip.id).name = newName.trim();
         EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE, store);
     }
 
@@ -95,6 +101,19 @@ class SourceClipComponent extends React.Component<Props, State> {
         })
     }
 
+    selectClip() {
+        EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.clip);
+    }
+
+    openInEditor() {
+        if (this.props.clip instanceof SourceClip) return;
+
+        let group = this.props.clip.getClipGroup();
+
+        EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, group);
+    }
+
+
     onDragStart(e: React.DragEvent) {
         e.dataTransfer.setData('application/json', JSON.stringify(this.props.clip.getIdentifier()));
         e.dataTransfer.dropEffect = 'link';
@@ -103,12 +122,12 @@ class SourceClipComponent extends React.Component<Props, State> {
     render() {
         let text = (
             <div>
-                <h1 className="text-gray-200 text-lg inline" onDoubleClick={this.enableEditingMode}>{this.props.clip.name.replaceAll(' ', '\u00a0')}</h1>
+                <h1 className="text-gray-200 text-xl inline" onDoubleClick={this.enableEditingMode}>{this.props.clip.name.replaceAll(' ', '\u00a0')}</h1>
                 <button className="inline pt-2 ml-3 text-sm text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
             </div>
         );
         if (this.state.editing) {
-            text = <input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-lg focus:outline-none w-full"
+            text = <input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xl focus:outline-none w-full"
                 defaultValue={this.props.clip.name} onBlur={() => this.disableEditingMode()} onKeyDown={(e) => {
                     if (e.key == "Enter") {
                         this.disableEditingMode();
@@ -116,26 +135,32 @@ class SourceClipComponent extends React.Component<Props, State> {
                 }} />;
         }
 
-        let ellipsisFileLocation = (l: string) => {
-            const threshold = 45;
-            if (l.length > threshold) {
-                return l.substr(0, 3) + "..." + l.substr(l.length - (threshold - 7));
-            }
-            return l;
+        let extraDisplay = null;
+        if (this.props.clip instanceof SourceClip) {
+            extraDisplay = <p className="text-gray-400 text-xs">{this.props.clip.file_location}</p>;
         }
+        else {
+            extraDisplay = <button className="text-xs p-1 bg-blue-600 text-white" onClick={this.openInEditor}>Open</button>;
+        }
+
+
         let img = <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />;
-        if (this.state.thumbnailData) {
+        if (this.props.clip instanceof SourceClip && this.state.thumbnailData) {
             img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;
         }
 
-        return <div className="gap-2 inline-flex w-1/2" draggable="true" onDragStart={this.onDragStart}>
+        let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip;
+        return <div className={`gap-2 inline-flex w-1/2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
+            draggable="true"
+            onDragStart={this.onDragStart}
+            onClick={this.selectClip}>
             <div>
                 {img}
             </div>
             <div className="flex items-center">
                 <div>
                     {text}
-                    <p className="text-gray-400 text-xs">{ellipsisFileLocation(this.props.clip.file_location)}</p>
+                    {extraDisplay}
                 </div>
             </div>
         </div>
@@ -144,4 +169,4 @@ class SourceClipComponent extends React.Component<Props, State> {
 
 }
 
-export default SourceClipComponent;
+export default ClipComponent;

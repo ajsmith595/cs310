@@ -1,13 +1,12 @@
-import { faArrowDown, faChevronDown, faLayerGroup, faPhotoVideo, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faChevronDown, faTimesCircle, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { Connection, Handle, Position } from 'react-flow-renderer';
-import Communicator from '../../classes/Communicator';
 import EditorNode from '../../classes/Node';
 import AnimateHeight from 'react-animate-height';
 import EventBus from '../../classes/EventBus';
-import { ClipIdentifier } from '../../classes/Clip';
 import Store from '../../classes/Store';
+import ClipDropComponent from '../shared/ClipDropComponent';
 
 interface Props {
     data: {
@@ -40,8 +39,9 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
     }
 
-    onDropClip(property, event: React.DragEvent) {
-        this.props.data.node.onDropClip(property, event);
+    setNodeProperty(property: string, value: any) {
+        this.props.data.node.properties.set(property, value);
+        Store.setStore();
     }
 
     render() {
@@ -53,18 +53,17 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             width = "100%";
             height = "100%";
         }
-        for (let property in node_registration.properties) {
-            let prop = node_registration.properties[property];
+        for (let [property, prop] of node_registration.properties.entries()) {
             for (let accepted_type of prop.property_type) {
-                if (accepted_type.hasOwnProperty('Pipeable')) {
+                if (accepted_type.type === 'Pipeable') {
                     let btn = null;
-                    if (this.state.hovered_property == property && Store.getCurrentStore().pipeline.containsLinkForNodeProperty(this.props.data.node.id, property)) {
+                    if (this.state.hovered_property === property && Store.getCurrentStore().pipeline.containsLinkForNodeProperty(this.props.data.node.id, property)) {
                         btn = <button onClick={() => this.props.data.deleteLinks(property)} className="absolute" style={{ left: -6, top: -8 }}><FontAwesomeIcon className="text-red-600 rounded-full bg-white" icon={faTimesCircle} /></button>;
                     }
 
 
                     properties.push(
-                        <div className={`relative p-2 transition-colors rounded-md ${this.state.hovered_property == property && this.state.expanded ? 'bg-gray-300' : ''}`}
+                        <div className={`relative p-2 transition-colors rounded-md ${this.state.hovered_property === property && this.state.expanded ? 'bg-gray-300' : ''}`}
                             onMouseEnter={() => this.setState({ hovered_property: property })}
                             onMouseLeave={() => this.setState({ hovered_property: null })}>
 
@@ -83,38 +82,22 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                     break;
                 }
 
-                if (accepted_type == 'Clip') {
-                    let clip_identifier = ClipIdentifier.deserialise(this.props.data.node.properties.get(property));
-                    let name = "Not selected";
-                    let icon = null;
-                    if (clip_identifier) {
-                        let clip = Store.getCurrentStore().clips[clip_identifier.clip_type.toLowerCase()].get(clip_identifier.id);
-                        if (clip) {
-                            name = clip.name;
-                            icon = <FontAwesomeIcon className="mr-2" icon={clip_identifier.clip_type.toLowerCase() == 'source' ? faPhotoVideo : faLayerGroup} />;
-                        }
-                    }
-                    let onDragOver = (e) => { e.preventDefault(); e.stopPropagation() };
-                    if (this.props.data.node.node_type == "output") {
-                        onDragOver = () => { };
-                    }
+                if (accepted_type.type === 'Clip') {
                     properties.push(
                         <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                             <div className="px-2">
                                 <p>{prop.display_name}</p>
-                                <div className="p-2 bg-gray-400" onDrop={(e) => this.onDropClip(property, e)} onDragOver={onDragOver}>
-                                    <p>{icon} {name}</p>
-                                </div>
+                                <ClipDropComponent identifier={this.props.data.node.properties.get(property)} onDropClip={(clip_id) => this.setNodeProperty(property, clip_id)} disable_drag={this.props.data.node.node_type === 'output'} />
                             </div>
                         </AnimateHeight>
                     );
                 }
             }
         }
-        for (let output_type in this.props.data.node.outputs) {
-            let output = this.props.data.node.outputs[output_type];
+        for (let [output_type, output] of this.props.data.node.outputs.entries()) {
+            console.log(output);
             properties.push(
-                <div className={`relative p-2 rounded-md transition-colors ${this.state.hovered_property == output_type && this.state.expanded ? 'bg-gray-300' : ''}`}
+                <div className={`relative p-2 rounded-md transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-gray-300' : ''}`}
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}
                     onMouseLeave={() => this.setState({ hovered_property: null })}>
                     <Handle type="source" position={Position.Right} id={output_type}
@@ -132,7 +115,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
 
         let border = "border-gray-900";
-        if (EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.data.node) {
+        if (EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) === this.props.data.node) {
             border = "border-pink-600";
         }
 
@@ -141,7 +124,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                 <FontAwesomeIcon icon={faTrash} />
             </button>
         );
-        if (this.props.data.node.node_type == 'output') {
+        if (this.props.data.node.node_type === 'output') {
             delete_btn = null;
         }
         return (

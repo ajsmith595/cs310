@@ -1,6 +1,9 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
-use gstreamer_pbutils::Discoverer;
+use gstreamer::prelude::Cast;
+use gstreamer_pbutils::{
+  Discoverer, DiscovererAudioInfo, DiscovererStreamInfo, DiscovererVideoInfo,
+};
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
 
@@ -24,7 +27,7 @@ pub async fn import_media(
 ) -> Result<HashMap<String, SourceClip>, String> {
   let dialog = AsyncFileDialog::new()
     .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"))
-    .add_filter("Video", &["mp4"]);
+    .add_filter("Video", &["mp4", "mkv"]);
   let file = dialog.pick_files().await;
   match file {
     None => Err(String::from("No file selected")),
@@ -69,7 +72,7 @@ pub async fn import_media(
 pub async fn get_file_info(
   clip_id: ID,
   state: tauri::State<'_, SharedStateWrapper>,
-) -> Result<(), String> {
+) -> Result<HashMap<String, Value>, String> {
   let state = state.0.lock().unwrap();
   let clip = state.stored_state.store.clips.source.get(&clip_id);
   if clip.is_none() {
@@ -78,8 +81,11 @@ pub async fn get_file_info(
 
   let clip = clip.unwrap();
 
+  let file_location = format!("file:///{}", clip.file_location.replace("\\", "/"));
+
   let discoverer = Discoverer::new(gstreamer::ClockTime::from_seconds(10)).unwrap();
-  let info = discoverer.discover_uri(&clip.file_location);
+
+  let info = discoverer.discover_uri(&file_location);
   if info.is_err() {
     return Err(format!(
       "Error occurred when finding info!: {}",
@@ -92,10 +98,89 @@ pub async fn get_file_info(
   let mut hm = HashMap::new();
   hm.insert(
     "duration".to_string(),
-    Value::Number(Number::from(duration.seconds())),
+    Value::Number(Number::from(duration.mseconds())),
   );
+  let exact_duration = (duration.nseconds() as f64) / (1000000000 as f64);
+  let mut video_streams_vec = Vec::new();
+  let video_streams = info.video_streams();
+  for video_stream in video_streams {
+    let video_info = video_stream.clone().downcast::<DiscovererVideoInfo>();
+    if let Ok(video_info) = video_info {
+      let mut video_stream_hm = serde_json::Map::new();
+      let width = video_info.width();
+      let height = video_info.height();
+      let (fps_num, fps_den): (i32, i32) = video_info.framerate().into();
+      let (fps_num, fps_den): (f64, f64) = (fps_num.into(), fps_den.into());
+      let fps = fps_num / fps_den;
 
-  Ok(())
+      let total_frames = exact_duration * fps_num / fps_den;
+      println!(
+        "Frames: {}; numerator: {}; denominator: {}; duration (s): {}; exact duration (ns): {}",
+        total_frames,
+        fps_num,
+        fps_den,
+        exact_duration,
+        duration.nseconds()
+      );
+
+      let total_frames = total_frames.round() as i64;
+
+      let bitrate = video_info.bitrate();
+      {
+        video_stream_hm.insert("width".to_string(), Value::Number(Number::from(width)));
+        video_stream_hm.insert("height".to_string(), Value::Number(Number::from(height)));
+        video_stream_hm.insert(
+          "fps".to_string(),
+          Value::Number(Number::from_f64(fps).unwrap()),
+        );
+        video_stream_hm.insert("bitrate".to_string(), Value::Number(Number::from(bitrate)));
+        video_stream_hm.insert(
+          "frames".to_string(),
+          Value::Number(Number::from(total_frames)),
+        );
+      }
+      let val = Value::Object(video_stream_hm);
+      video_streams_vec.push(val);
+    }
+  }
+  let mut audio_streams_vec = Vec::new();
+  let audio_streams = info.audio_streams();
+  for audio_stream in audio_streams {
+    let audio_info = audio_stream.clone().downcast::<DiscovererAudioInfo>();
+    if let Ok(audio_info) = audio_info {
+      let mut audio_stream_hm = serde_json::Map::new();
+
+      let bitrate = audio_info.bitrate();
+      let sample_rate = audio_info.sample_rate();
+      let language = audio_info
+        .language()
+        .unwrap_or(gstreamer::glib::GString::from("und".to_string()))
+        .to_string();
+
+      let num_channels = audio_info.channels();
+      {
+        audio_stream_hm.insert("bitrate".to_string(), Value::Number(Number::from(bitrate)));
+        audio_stream_hm.insert(
+          "sample_rate".to_string(),
+          Value::Number(Number::from(sample_rate)),
+        );
+        audio_stream_hm.insert("language".to_string(), Value::String(language));
+        audio_stream_hm.insert(
+          "num_channels".to_string(),
+          Value::Number(Number::from(num_channels)),
+        );
+      }
+
+      let val = Value::Object(audio_stream_hm);
+      audio_streams_vec.push(val);
+    } else {
+      println!("Could not cast to audio info");
+    }
+  }
+  hm.insert("video_streams".to_string(), Value::Array(video_streams_vec));
+  hm.insert("audio_streams".to_string(), Value::Array(audio_streams_vec));
+
+  Ok(hm)
 }
 
 #[tauri::command]
@@ -106,7 +191,6 @@ pub fn create_composited_clip(
   let clip = CompositedClip {
     id: uniq_id(),
     name: "New Clip".to_string(),
-    pipeline_id: uniq_id(),
   };
   let id = clip.id.clone();
   (&mut state
@@ -243,6 +327,11 @@ pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Re
     Ok(str) => str,
     Err(str) => str,
   };
-  println!("New store received; pipeline string: {}", pipeline_string);
+
+  let state = state.stored_state.store.clone();
+  let mut f = File::create("state.json").unwrap();
+  f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
+    .unwrap();
+
   Ok(())
 }

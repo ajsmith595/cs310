@@ -1,18 +1,16 @@
 import React from 'react';
-import ReactFlow, { Connection, Edge, ReactFlowProvider, useStoreState } from 'react-flow-renderer';
+import ReactFlow, { Connection, Edge, ReactFlowProvider } from 'react-flow-renderer';
 import EventBus from '../../classes/EventBus';
 import EditorNode, { Position } from '../../classes/Node';
 import { Link, LinkEndpoint } from '../../classes/Pipeline';
 import Store from '../../classes/Store';
-import NodeEditorContext from '../../contexts/NodeEditorContext';
 import EditorNodeComponent from './EditorNodeComponent';
-import { ReactReduxContext } from 'react-redux';
 import NodeEditorStateManager from './NodeEditorStateManager';
-import { getBoundsofRects } from 'react-flow-renderer/dist/utils/graph';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExclamationCircle, faTemperatureLow } from '@fortawesome/free-solid-svg-icons';
+import { faExclamationCircle } from '@fortawesome/free-solid-svg-icons';
 import { Transition, animated } from 'react-spring'
 import { v4 } from 'uuid';
+import CustomEdgeComponent from './CustomEdgeComponent';
 
 interface Props {
     initial_group?: string;
@@ -111,14 +109,14 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     addLink(e: Edge<any> | Connection) {
-        if (e.source == e.target) {
+        if (e.source === e.target) {
             return;
         }
 
         let store = Store.getCurrentStore();
         for (let link of store.pipeline.links) {
-            if (link.from.node_id == e.source && link.from.property == e.sourceHandle
-                && link.to.node_id == e.target && link.to.property == e.targetHandle) {
+            if (link.from.node_id === e.source && link.from.property === e.sourceHandle
+                && link.to.node_id === e.target && link.to.property === e.targetHandle) {
                 return;
             }
         }
@@ -150,8 +148,8 @@ class NodeEditor extends React.Component<Props, State> {
         let links = [];
         let store = Store.getCurrentStore();
         for (let link of store.pipeline.links) {
-            if ((link.from.node_id == node_id && (link.from.property == property || property == null))
-                || (link.to.node_id == node_id && (link.to.property == property || property == null))) {
+            if ((link.from.node_id === node_id && (link.from.property === property || property === null))
+                || (link.to.node_id === node_id && (link.to.property === property || property === null))) {
                 continue;
             }
             links.push(link);
@@ -168,7 +166,7 @@ class NodeEditor extends React.Component<Props, State> {
 
         let store = Store.getCurrentStore();
         let selection = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION);
-        if (selection instanceof EditorNode && selection.id == node_id) {
+        if (selection instanceof EditorNode && selection.id === node_id) {
             EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, null);
         }
         store.nodes.delete(node_id);
@@ -202,11 +200,11 @@ class NodeEditor extends React.Component<Props, State> {
 
         let nodesInPreparation = [];
         for (let [id, node] of store.nodes.entries()) {
-            if (node.outputs == null) {
+            if (node.outputs === null) {
                 nodesInPreparation.push(node);
                 continue;
             }
-            if (node.group == this.state.group) {
+            if (node.group === this.state.group) {
                 elements.push({
                     id,
                     position: node.position,
@@ -227,16 +225,13 @@ class NodeEditor extends React.Component<Props, State> {
 
             let from_node = store.nodes.get(link.from.node_id);
             let to_node = store.nodes.get(link.to.node_id);
-            if (from_node.group != this.state.group || to_node.group != this.state.group) {
+            let to_node_type = EditorNode.NodeRegister.get(to_node.node_type).properties.get(link.to.property).property_type;
+            if (from_node.group !== this.state.group || to_node.group !== this.state.group) {
                 continue;
             }
             if (from_node.outputs) {
-                let output = from_node.outputs[link.from.property];
+                let output = from_node.outputs.get(link.from.property);
                 if (output) {
-                    let style: any = {};
-                    if (output.property_type.length == 1) {
-                        style.stroke = 'red';
-                    }
                     elements.push({
                         id: link.id,
                         source: link.from.node_id,
@@ -244,17 +239,16 @@ class NodeEditor extends React.Component<Props, State> {
                         target: link.to.node_id,
                         targetHandle: link.to.property,
                         arrowHeadType: 'arrowclosed',
-                        style,
+                        type: 'custom_edge',
+                        data: {
+                            sourceType: output.property_type,
+                            targetType: to_node_type
+                        }
                     });
                 }
             }
         }
 
-        let notificationStyles = {
-            '--tw-backdrop-opacity': 'opacity(0.2)'
-        } as React.CSSProperties;
-
-        notificationStyles = {};
 
         return (
             <div style={{ width: "100%", height: "100%" }} className="border-2 border-gray-400 relative"
@@ -263,7 +257,9 @@ class NodeEditor extends React.Component<Props, State> {
                 <ReactFlowProvider>
                     <ReactFlow ref={this.reactFlowRef} elements={elements} nodeTypes={{
                         editor_node: EditorNodeComponent
-                    }} onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
+                    }} edgeTypes={{ custom_edge: CustomEdgeComponent }}
+
+                        onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
                         onNodeDragStart={(e, n) => {
                         }}
 

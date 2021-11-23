@@ -2,13 +2,7 @@ import Communicator, { ID } from "./Communicator";
 import Utils from "./Utils";
 import { v4 } from 'uuid';
 import Store from "./Store";
-
-
-export enum PipeableType {
-    Video = "Video",
-    Audio = "Audio",
-    Image = "Image"
-}
+import { NodeRegistration, NodeRegistrationProperty } from "./NodeRegistration";
 
 
 export class Position {
@@ -33,19 +27,13 @@ export class Position {
             y: this.y
         };
     }
-}
 
-export class NodeRegistration {
-    description: string;
-    display_name: string;
-    id: string;
-    properties: {
-        [k: string]: {
-            description: string;
-            display_name: string;
-            name: string;
-            property_type: Array<string>;
-        }
+
+    multiply(t: number) {
+        return new Position(this.x * t, this.y * t);
+    }
+    add(other: Position) {
+        return new Position(this.x + other.x, this.y + other.y);
     }
 }
 
@@ -57,6 +45,13 @@ export default class EditorNode {
     group: ID;
 
     public static NodeRegister: Map<string, NodeRegistration> = new Map();
+
+
+    public static deserialiseRegister(obj: any) {
+        for (let node_type in obj) {
+            EditorNode.NodeRegister.set(node_type, NodeRegistration.deserialise(obj[node_type]));
+        }
+    }
 
     constructor(
         position: Position,
@@ -101,21 +96,18 @@ export default class EditorNode {
 
 
 
-    public outputs: {
-        [k: string]: {
-            description: string;
-            display_name: string;
-            name: string;
-            property_type: Array<string>;
-        }
-    } = null;
+    public outputs: Map<string, NodeRegistrationProperty> = null;
     async getOutputs() {
         if (this.outputs != null) {
             return this.outputs;
         }
         Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
-            this.outputs = data;
-            return data;
+            let outputs = new Map();
+            for (let prop in data) {
+                outputs.set(prop, NodeRegistrationProperty.deserialise(data[prop]));
+            }
+            this.outputs = outputs;
+            return outputs;
         });
     }
 
@@ -134,11 +126,10 @@ export default class EditorNode {
         let register_entry = EditorNode.NodeRegister.get(type);
 
         let props = new Map();
-        for (let prop in register_entry.properties) {
-            let property_details = register_entry.properties[prop];
+        for (let [prop, property_details] of register_entry.properties.entries()) {
             for (let type of property_details.property_type) {
-                if (type.hasOwnProperty('Number')) {
-                    props.set(prop, type['Number'].default);
+                if (type.type == 'Number') {
+                    props.set(prop, type.getNumberRestrictions().default);
                 }
             }
         }
@@ -160,12 +151,11 @@ export default class EditorNode {
 
     changeProperty(property, newValue) {
         let register_entry = EditorNode.NodeRegister.get(this.node_type);
-        let property_entry = register_entry.properties[property];
+        let property_entry = register_entry.properties.get(property);
 
         let hasChanged = false;
-        if (property_entry.property_type[0].hasOwnProperty('Number')) {
-            let restrictions = property_entry.property_type[0]['Number'];
-
+        if (property_entry.property_type[0].type == 'Number') {
+            let restrictions = property_entry.property_type[0].getNumberRestrictions();
 
             let originalValue: number = parseFloat(newValue);
             if (isNaN(originalValue)) {

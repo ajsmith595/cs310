@@ -1,11 +1,8 @@
 
 import { Menu, Transition } from '@headlessui/react'
-import React from 'react';
-import { Fragment, useEffect, useRef, useState } from 'react'
-import { ReactFlowProvider } from 'react-flow-renderer';
+import { Fragment } from 'react';
 import EventBus from '../../classes/EventBus';
-import EditorNode, { Position } from '../../classes/Node'
-import NodeEditorContext from '../../contexts/NodeEditorContext';
+import EditorNode, { Position } from '../../classes/Node';
 
 export default function NodeAddMenu() {
 
