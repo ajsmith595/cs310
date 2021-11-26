@@ -98,6 +98,7 @@ class NodeEditor extends React.Component<Props, State> {
         let promises = [];
         for (let node of nodes) {
             promises.push(node.getOutputs());
+            promises.push(node.getInputs());
         }
         for (let p of promises) {
             await p;
@@ -200,7 +201,7 @@ class NodeEditor extends React.Component<Props, State> {
 
         let nodesInPreparation = [];
         for (let [id, node] of store.nodes.entries()) {
-            if (node.outputs === null) {
+            if (node.outputs === null || node.inputs == null) {
                 nodesInPreparation.push(node);
                 continue;
             }
@@ -221,15 +222,19 @@ class NodeEditor extends React.Component<Props, State> {
         if (nodesInPreparation.length > 0) {
             this.prepareNodes(nodesInPreparation);
         }
+
         for (let link of store.pipeline.links) {
 
             let from_node = store.nodes.get(link.from.node_id);
             let to_node = store.nodes.get(link.to.node_id);
-            let to_node_type = EditorNode.NodeRegister.get(to_node.node_type).properties.get(link.to.property).property_type;
-            if (from_node.group !== this.state.group || to_node.group !== this.state.group) {
+            if (!from_node.outputs || !to_node.inputs || from_node.group !== this.state.group || to_node.group !== this.state.group)
                 continue;
-            }
-            if (from_node.outputs) {
+
+
+
+            let input = to_node.inputs.get(link.to.property);
+            if (input) {
+                let to_node_type = input.property_type;
                 let output = from_node.outputs.get(link.from.property);
                 if (output) {
                     elements.push({
@@ -242,7 +247,7 @@ class NodeEditor extends React.Component<Props, State> {
                         type: 'custom_edge',
                         data: {
                             sourceType: output.property_type,
-                            targetType: to_node_type
+                            targetType: to_node_type.getPipeableType()
                         }
                     });
                 }

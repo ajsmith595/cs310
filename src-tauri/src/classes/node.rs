@@ -43,9 +43,7 @@ impl Node {
       group: group_id,
     }
   }
-}
 
-impl Node {
   pub fn get_gstreamer_handle_id(node_id: String, property: String) -> String {
     format!("{}-{}", node_id, property)
   }
@@ -57,46 +55,96 @@ pub struct Restrictions {
   pub step: f64,
   pub default: f64,
 }
+
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
-pub enum PipeableType {
-  Video,
-  Audio,
-  Image,
+pub struct PipeableType {
+  pub video: i32,
+  pub audio: i32,
+  pub subtitles: i32,
 }
 
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub enum Type {
-  Pipeable(Option<PipeableType>),
+  Pipeable(PipeableType, PipeableType),
   Number(Restrictions),
   String(i32), // TODO: make these easier to read + add more properties. e.g. min string length, max string length, regex for valid string, etc.
   // Maybe some restrictions on video min/max duration, resolution, etc?
   Clip,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NodeTypeProperty {
+pub struct NodeTypeInput {
   pub name: String,
   pub display_name: String,
   pub description: String,
-  pub property_type: Vec<Type>,
+  pub property_type: Type,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NodeTypeOutput {
+  pub name: String,
+  pub display_name: String,
+  pub description: String,
+  pub property_type: PipeableType,
+}
+
+type NodeTypeFunc<T> = fn(
+  node_id: String,
+  properties: &HashMap<String, Value>,
+  store: &Store,
+  node_register: &NodeRegister,
+) -> Result<T, String>;
+
 #[derive(Serialize, Clone)]
 pub struct NodeType {
   pub id: String,
   pub display_name: String,
   pub description: String,
-  pub properties: HashMap<String, NodeTypeProperty>,
+  pub default_properties: HashMap<String, NodeTypeInput>,
+
   #[serde(skip_serializing)]
-  pub get_output_types: fn(
-    node_id: String,
-    properties: &HashMap<String, Value>,
-    store: &Store,
-    node_register: &NodeRegister,
-  ) -> Result<HashMap<String, NodeTypeProperty>, String>,
+  pub get_properties: NodeTypeFunc<HashMap<String, NodeTypeInput>>,
   #[serde(skip_serializing)]
-  pub get_output: fn(
-    node_id: String,
-    properties: &HashMap<String, Value>,
-    store: &Store,
-    node_register: &NodeRegister,
-  ) -> Result<String, String>,
+  pub get_output_types: NodeTypeFunc<HashMap<String, NodeTypeOutput>>,
+  #[serde(skip_serializing)]
+  pub get_output: NodeTypeFunc<String>,
 }
+
+// impl NodeType {
+//   pub fn new(
+//     id: String,
+//     display_name: String,
+//     description: String,
+
+//     get_properties: fn(
+//       properties: &HashMap<String, Value>,
+//       store: &Store,
+//       node_register: &NodeRegister,
+//     ) -> Result<HashMap<String, NodeTypeInput>, String>,
+
+//     get_output_types: fn(
+//       node_id: String,
+//       properties: &HashMap<String, Value>,
+//       store: &Store,
+//       node_register: &NodeRegister,
+//     ) -> Result<HashMap<String, NodeTypeOutput>, String>,
+//     get_output: fn(
+//       node_id: String,
+//       properties: &HashMap<String, Value>,
+//       store: &Store,
+//       node_register: &NodeRegister,
+//     ) -> Result<String, String>,
+
+//     store: &Store,
+//   ) -> Self {
+//     let default_properties = get_properties(HashMap::new(), store, )
+//     Self {
+//       id,
+//     display_name,
+//     description,
+//     get_properties,
+//     get_output_types,
+//     get_output,
+
+//     }
+//   }
+// }

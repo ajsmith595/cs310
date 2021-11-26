@@ -56,27 +56,20 @@ class PropertiesPanel extends React.Component<Props, State> {
             let registration = EditorNode.NodeRegister.get(selection.node_type);
             let props = [];
 
-            for (let [prop, prop_detail] of registration.properties.entries()) {
-                let is_piped = false;
-                for (let type of prop_detail.property_type) {
-                    if (type.type === 'Pipeable') {
-                        is_piped = true;
-                        break;
-                    }
-                }
-                if (is_piped) {
+            for (let [prop, prop_detail] of selection.inputs.entries()) {
+                let is_piped = prop_detail.property_type.type == 'Pipeable';
+                if (is_piped)
                     continue;
-                }
 
                 let value = selection.properties.get(prop);
                 let display = null;
 
-                if (prop_detail.property_type[0].type === 'Clip') {
+                if (prop_detail.property_type.type === 'Clip') {
                     let clip_identifier = ClipIdentifier.deserialise(value);
                     display = <ClipDropComponent identifier={clip_identifier} onDropClip={(clip_identifier) => selection.changeProperty(prop, clip_identifier)} disable_drag={selection.node_type === 'output'} />;
                 }
-                else if (prop_detail.property_type[0].type === 'Number') {
-                    let details = prop_detail.property_type[0].getNumberRestrictions();
+                else if (prop_detail.property_type.type === 'Number') {
+                    let details = prop_detail.property_type.getNumberRestrictions();
                     value = Math.round(value / details.step) * details.step;
                     display = (
                         <div>

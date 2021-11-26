@@ -8,10 +8,10 @@ use crate::classes::{
   store::Store,
 };
 
-pub const IDENTIFIER: &str = "blur";
+pub const IDENTIFIER: &str = "audio_gain";
 pub mod INPUTS {
   pub const MEDIA: &str = "media";
-  pub const SIGMA: &str = "sigma";
+  pub const SIGMA: &str = "gain";
 }
 pub mod OUTPUTS {
   pub const OUTPUT: &str = "output";
@@ -25,15 +25,15 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
       NodeTypeInput {
         name: String::from(INPUTS::MEDIA),
         display_name: String::from("Media"),
-        description: String::from("The media to be blurred"),
+        description: String::from("The media to be gained"),
         property_type: Type::Pipeable(
           PipeableType {
-            video: 1,
-            audio: 0,
+            video: 0,
+            audio: 1,
             subtitles: 0,
           },
           PipeableType {
-            video: 1,
+            video: i32::MAX,
             audio: i32::MAX,
             subtitles: i32::MAX,
           },
@@ -45,15 +45,13 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
       String::from(INPUTS::SIGMA),
       NodeTypeInput {
         name: String::from(INPUTS::SIGMA),
-        display_name: String::from("Blur Amount"),
-        description: String::from(
-          "The sigma value for the blur; the higher the value, the more the media is blurred",
-        ),
+        display_name: String::from("Gain Amount"),
+        description: String::from("The amount to gain by"),
         property_type: Type::Number(Restrictions {
-          min: (0.0 as f64),
-          max: (100.0 as f64),
-          step: (0.01 as f64),
-          default: (1.2 as f64),
+          min: (-12 as f64),
+          max: (12 as f64),
+          step: (0.1 as f64),
+          default: (0 as f64),
         }),
       },
     );
@@ -61,11 +59,11 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
   default_properties
 }
 
-pub fn blur_node() -> NodeType {
+pub fn audio_gain() -> NodeType {
   NodeType {
     id: String::from(IDENTIFIER),
-    display_name: String::from("Blur"),
-    description: String::from("Blur a media source"),
+    display_name: String::from("Audio Gain"),
+    description: String::from("Increase the volume of a source"),
     default_properties: default_properties(),
     get_properties: |_, _, _, _| Ok(default_properties()),
     get_output_types: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
@@ -74,11 +72,11 @@ pub fn blur_node() -> NodeType {
         OUTPUTS::OUTPUT.to_string(),
         NodeTypeOutput {
           name: OUTPUTS::OUTPUT.to_string(),
-          description: "The blurred media".to_string(),
+          description: "The gained media".to_string(),
           display_name: "Output".to_string(),
           property_type: PipeableType {
-            video: 1,
-            audio: 0,
+            video: 0,
+            audio: 1,
             subtitles: 0,
           }, // TODO: get prev node's type and analyse or whatevs
         },

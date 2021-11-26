@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType},
-  node::{self, Node, NodeType, NodeTypeProperty, PipeableType, Type},
+  node::{self, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, Type},
   nodes::NodeRegister,
   pipeline,
   store::Store,
@@ -17,24 +17,29 @@ pub mod INPUTS {
 pub mod OUTPUTS {
   pub const OUTPUT: &str = "output";
 }
-pub fn media_import_node() -> NodeType {
-  let mut properties = HashMap::new();
 
-  properties.insert(
+fn default_properties() -> HashMap<String, NodeTypeInput> {
+  let mut default_properties = HashMap::new();
+
+  default_properties.insert(
     String::from(INPUTS::CLIP),
-    NodeTypeProperty {
+    NodeTypeInput {
       name: String::from("clip"),
       display_name: String::from("Clip"),
       description: String::from("Clip to import"),
-      property_type: vec![Type::Clip],
+      property_type: Type::Clip,
     },
   );
+  default_properties
+}
 
+pub fn media_import_node() -> NodeType {
   NodeType {
     id: String::from(IDENTIFIER),
     display_name: String::from("Clip Import"),
     description: String::from("Import a source or composited clip"),
-    properties,
+    default_properties: default_properties(),
+    get_properties: |_, _, _, _| Ok(default_properties()),
     get_output_types: |_,
                        properties: &HashMap<String, Value>,
                        store: &Store,
@@ -44,11 +49,15 @@ pub fn media_import_node() -> NodeType {
         let mut hm = HashMap::new();
         hm.insert(
           String::from(OUTPUTS::OUTPUT),
-          NodeTypeProperty {
+          NodeTypeOutput {
             name: String::from(OUTPUTS::OUTPUT),
             display_name: String::from("Output"),
             description: String::from("The clip itself"),
-            property_type: vec![node::Type::Pipeable(None)],
+            property_type: PipeableType {
+              video: 2,
+              audio: 0,
+              subtitles: 0,
+            },
           },
         );
         return Ok(hm);
@@ -92,11 +101,11 @@ pub fn media_import_node() -> NodeType {
       let mut hm = HashMap::new();
       hm.insert(
         String::from(OUTPUTS::OUTPUT),
-        NodeTypeProperty {
+        NodeTypeOutput {
           name: String::from(OUTPUTS::OUTPUT),
           display_name: String::from("Output"),
           description: String::from("The clip itself"),
-          property_type: vec![property_type],
+          property_type: property_type,
         },
       );
       return Ok(hm);
@@ -115,11 +124,20 @@ pub fn media_import_node() -> NodeType {
             return Err(String::from("Clip ID is invalid"));
           }
           let source_clip = source_clip.unwrap();
-          return Ok(format!(
-            "filesrc location=\"{}\" ! qtdemux ! h264parse ! d3d11h264dec ! videoconvert name={}",
-            source_clip.file_location,
-            Node::get_gstreamer_handle_id(node_id, OUTPUTS::OUTPUT.to_string())
-          ));
+          if source_clip.file_location.to_lowercase().ends_with(".mp4") {
+            return Ok(format!(
+              "filesrc location=\"{}\" ! qtdemux ! h264parse ! d3d11h264dec ! videoconvert name={}",
+              source_clip.file_location,
+              Node::get_gstreamer_handle_id(node_id, OUTPUTS::OUTPUT.to_string())
+            ));
+          } else {
+            // if it's MP3
+            return Ok(format!(
+              "filesrc location=\"{}\" ! mpegaudioparse ! mpg123audiodec ! audioconvert name={}",
+              source_clip.file_location,
+              Node::get_gstreamer_handle_id(node_id, OUTPUTS::OUTPUT.to_string())
+            ));
+          }
         }
         ClipType::Composited => {
           let composited_clip = store.clips.composited.get(&clip_identifier.id);

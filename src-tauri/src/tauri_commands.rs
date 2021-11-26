@@ -1,8 +1,9 @@
 use std::{collections::HashMap, fs::File, io::Write};
 
-use gstreamer::prelude::Cast;
+use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
 use gstreamer_pbutils::{
-  Discoverer, DiscovererAudioInfo, DiscovererStreamInfo, DiscovererVideoInfo,
+  Discoverer, DiscovererAudioInfo, DiscovererStreamInfo, DiscovererSubtitleInfo,
+  DiscovererVideoInfo,
 };
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
@@ -11,7 +12,7 @@ use crate::{
   classes::{
     clip::{CompositedClip, SourceClip},
     global::uniq_id,
-    node::{Node, NodeTypeProperty},
+    node::{Node, NodeTypeInput, NodeTypeOutput},
     nodes::NodeRegister,
     pipeline::Pipeline,
     store::Store,
@@ -27,7 +28,7 @@ pub async fn import_media(
 ) -> Result<HashMap<String, SourceClip>, String> {
   let dialog = AsyncFileDialog::new()
     .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"))
-    .add_filter("Video", &["mp4", "mkv"]);
+    .add_filter("Media", &["mp4", "mkv", "mp3"]);
   let file = dialog.pick_files().await;
   match file {
     None => Err(String::from("No file selected")),
@@ -35,32 +36,39 @@ pub async fn import_media(
       let mut hm = HashMap::new();
       for path in paths {
         let file_path = path.path().to_str().unwrap().to_string();
-        let id = uniq_id();
-        Pipeline::get_video_thumbnail(file_path.clone(), id.clone());
 
-        let thumbnail = format!(
-          "{}/thumbnails/source/{}.jpg",
-          std::env::current_dir().unwrap().to_str().unwrap(),
-          id.clone()
-        );
+        let info = SourceClip::get_file_info(file_path.clone());
+        if info.is_err() {
+          return Err(format!(
+            "Could not get info for file: {}",
+            info.unwrap_err()
+          ));
+        }
+        let info = info.unwrap();
+
+        let id = uniq_id();
+        let mut thumbnail = None;
+        if info.clone().video_streams.len() > 0 {
+          Pipeline::get_video_thumbnail(file_path.clone(), id.clone());
+
+          thumbnail = Some(format!(
+            "{}/thumbnails/source/{}.jpg",
+            std::env::current_dir().unwrap().to_str().unwrap(),
+            id.clone()
+          ));
+        }
+
         let clip = SourceClip {
           id,
           name: path.file_name(),
           file_location: file_path,
-          thumbnail_location: Some(thumbnail),
+          thumbnail_location: thumbnail,
+          info: Some(info),
         };
 
         hm.insert(clip.id.clone(), clip.clone());
 
-        (&mut state
-          .0
-          .clone()
-          .lock()
-          .unwrap()
-          .stored_state
-          .store
-          .clips
-          .source)
+        (&mut state.0.clone().lock().unwrap().store.clips.source)
           .insert(clip.id.clone(), clip.clone());
       }
       Ok(hm)
@@ -74,7 +82,7 @@ pub async fn get_file_info(
   state: tauri::State<'_, SharedStateWrapper>,
 ) -> Result<HashMap<String, Value>, String> {
   let state = state.0.lock().unwrap();
-  let clip = state.stored_state.store.clips.source.get(&clip_id);
+  let clip = state.store.clips.source.get(&clip_id);
   if clip.is_none() {
     return Err(format!("Clip not found"));
   }
@@ -177,6 +185,14 @@ pub async fn get_file_info(
       println!("Could not cast to audio info");
     }
   }
+
+  let subtitle_streams = info.subtitle_streams();
+  for subtitle_stream in subtitle_streams {
+    let subtitle_info = subtitle_stream.clone().downcast::<DiscovererSubtitleInfo>();
+    if let Ok(subtitle_info) = subtitle_info {
+      subtitle_info.language();
+    }
+  }
   hm.insert("video_streams".to_string(), Value::Array(video_streams_vec));
   hm.insert("audio_streams".to_string(), Value::Array(audio_streams_vec));
 
@@ -193,18 +209,9 @@ pub fn create_composited_clip(
     name: "New Clip".to_string(),
   };
   let id = clip.id.clone();
-  (&mut state
-    .0
-    .clone()
-    .lock()
-    .unwrap()
-    .stored_state
-    .store
-    .clips
-    .composited)
-    .insert(clip.id.clone(), clip);
+  (&mut state.0.clone().lock().unwrap().store.clips.composited).insert(clip.id.clone(), clip);
 
-  let state = state.0.clone().lock().unwrap().stored_state.store.clone();
+  let state = state.0.clone().lock().unwrap().store.clone();
   let mut f = File::create("state.json").unwrap();
   f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
     .unwrap();
@@ -214,11 +221,7 @@ pub fn create_composited_clip(
 #[tauri::command]
 pub fn get_initial_data(state: tauri::State<SharedStateWrapper>) -> (Store, NodeRegister) {
   let state = state.0.lock().unwrap();
-  println!("{:?}", state.stored_state.store);
-  (
-    state.stored_state.store.clone(),
-    state.node_register.clone(),
-  )
+  (state.store.clone(), state.node_register.clone())
 }
 
 #[tauri::command]
@@ -231,39 +234,19 @@ pub fn change_clip_name(
 ) -> Result<Store, String> {
   match clip_type.as_str() {
     "source" => {
-      if let Some(x) = (&mut state
-        .0
-        .clone()
-        .lock()
-        .unwrap()
-        .stored_state
-        .store
-        .clips
-        .source)
-        .get_mut(&id)
-      {
+      if let Some(x) = (&mut state.0.clone().lock().unwrap().store.clips.source).get_mut(&id) {
         x.name = name;
       }
     }
     "composited" => {
-      if let Some(x) = (&mut state
-        .0
-        .clone()
-        .lock()
-        .unwrap()
-        .stored_state
-        .store
-        .clips
-        .composited)
-        .get_mut(&id)
-      {
+      if let Some(x) = (&mut state.0.clone().lock().unwrap().store.clips.composited).get_mut(&id) {
         x.name = name;
       }
     }
     _ => {}
   }
 
-  let state = state.0.clone().lock().unwrap().stored_state.store.clone();
+  let state = state.0.clone().lock().unwrap().store.clone();
   let mut f = File::create("state.json").unwrap();
   f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
     .unwrap();
@@ -274,7 +257,7 @@ pub fn change_clip_name(
 pub fn get_node_outputs(
   state: tauri::State<SharedStateWrapper>,
   node: Node,
-) -> Result<HashMap<String, NodeTypeProperty>, String> {
+) -> Result<HashMap<String, NodeTypeOutput>, String> {
   let state = state.0.lock().unwrap();
   let node_registration = state.node_register.get(&node.node_type);
   if node_registration.is_none() {
@@ -285,7 +268,7 @@ pub fn get_node_outputs(
   let outputs = (node_registration.get_output_types)(
     node.id,
     &node.properties,
-    &state.stored_state.store,
+    &state.store,
     &state.node_register,
   );
 
@@ -301,37 +284,58 @@ pub fn get_node_outputs(
 }
 
 #[tauri::command]
+pub fn get_node_inputs(
+  state: tauri::State<SharedStateWrapper>,
+  node: Node,
+) -> Result<HashMap<String, NodeTypeInput>, String> {
+  let state = state.0.lock().unwrap();
+  let node_registration = state.node_register.get(&node.node_type);
+  if node_registration.is_none() {
+    return Err(String::from("Could not find relevant registration"));
+  }
+  let node_registration = node_registration.unwrap();
+
+  let inputs = (node_registration.get_properties)(
+    node.id,
+    &node.properties,
+    &state.store,
+    &state.node_register,
+  );
+
+  if inputs.is_err() {
+    return Err(format!(
+      "Inputs could not be calculated: {}",
+      inputs.unwrap_err()
+    ));
+  }
+  let inputs = inputs.unwrap();
+
+  Ok(inputs)
+}
+
+#[tauri::command]
 pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Result<(), String> {
   let mut state = state.0.lock().unwrap();
-  state
-    .stored_state
-    .store
-    .nodes
-    .insert(node.id.clone(), node.clone());
-  state.stored_state.file_written = false;
+  state.store.nodes.insert(node.id.clone(), node.clone());
+  state.file_written = false;
   Ok(())
 }
 
 #[tauri::command]
 pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
   let mut state = state.0.lock().unwrap();
-  state.stored_state.store = store.clone();
-  state.stored_state.file_written = false;
+  state.store = store.clone();
+  state.file_written = false;
 
-  let pipeline_result = state
-    .stored_state
-    .store
-    .pipeline
-    .generate_pipeline_string(&state.stored_state.store, &state.node_register);
-  let pipeline_string = match pipeline_result {
-    Ok(str) => str,
-    Err(str) => str,
-  };
-
-  let state = state.stored_state.store.clone();
-  let mut f = File::create("state.json").unwrap();
-  f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
-    .unwrap();
+  // let pipeline_result = state
+  //   .stored_state
+  //   .store
+  //   .pipeline
+  //   .generate_pipeline_string(&state.stored_state.store, &state.node_register);
+  // let pipeline_string = match pipeline_result {
+  //   Ok(str) => str,
+  //   Err(str) => str,
+  // };
 
   Ok(())
 }

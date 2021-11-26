@@ -74,6 +74,7 @@ class App extends React.Component<Props, State> {
 
 	componentDidMount() {
 		Communicator.invoke('get_initial_data', null, (data) => {
+			console.log(data);
 			let node_register = data[1];
 			EditorNode.deserialiseRegister(node_register);
 			this.setState({
@@ -124,6 +125,10 @@ class App extends React.Component<Props, State> {
 
 		if (this.state.Store) {
 			let firstClip: CompositedClip = this.state.Store.clips.composited.values().next().value;
+			let firstClipGroup = "";
+			if (firstClip) {
+				firstClipGroup = firstClip.getClipGroup();
+			}
 
 			return (
 				<div className="h-screen w-screen flex flex-col dark:bg-gray-700">
@@ -140,7 +145,7 @@ class App extends React.Component<Props, State> {
 								<div className="absolute z-20 right-2 top-2">
 									<NodeAddMenu />
 								</div>
-								<NodeEditor ref={this.nodeEditor} initial_group={firstClip.getClipGroup()} />
+								<NodeEditor ref={this.nodeEditor} initial_group={firstClipGroup} />
 							</div>
 						</Section>
 						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">

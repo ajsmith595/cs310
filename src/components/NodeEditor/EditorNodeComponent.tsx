@@ -53,45 +53,44 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             width = "100%";
             height = "100%";
         }
-        for (let [property, prop] of node_registration.properties.entries()) {
-            for (let accepted_type of prop.property_type) {
-                if (accepted_type.type === 'Pipeable') {
-                    let btn = null;
-                    if (this.state.hovered_property === property && Store.getCurrentStore().pipeline.containsLinkForNodeProperty(this.props.data.node.id, property)) {
-                        btn = <button onClick={() => this.props.data.deleteLinks(property)} className="absolute" style={{ left: -6, top: -8 }}><FontAwesomeIcon className="text-red-600 rounded-full bg-white" icon={faTimesCircle} /></button>;
-                    }
 
+        for (let [property, prop] of this.props.data.node.inputs.entries()) {
+            let accepted_type = prop.property_type;
 
-                    properties.push(
-                        <div className={`relative p-2 transition-colors rounded-md ${this.state.hovered_property === property && this.state.expanded ? 'bg-gray-300' : ''}`}
-                            onMouseEnter={() => this.setState({ hovered_property: property })}
-                            onMouseLeave={() => this.setState({ hovered_property: null })}>
-
-                            <Handle type='target' position={Position.Left} id={property}
-                                style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
-                                isValidConnection={(connection) => this.props.data.isValidConnection(property, connection)}
-                            >
-                                {btn}
-                            </Handle>
-
-                            <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
-                                <p>{prop.display_name}</p>
-                            </AnimateHeight>
-                        </div>
-                    )
-                    break;
+            if (accepted_type.type === 'Pipeable') {
+                let btn = null;
+                if (this.state.hovered_property === property && Store.getCurrentStore().pipeline.containsLinkForNodeProperty(this.props.data.node.id, property)) {
+                    btn = <button onClick={() => this.props.data.deleteLinks(property)} className="absolute" style={{ left: -6, top: -8 }}><FontAwesomeIcon className="text-red-600 rounded-full bg-white" icon={faTimesCircle} /></button>;
                 }
 
-                if (accepted_type.type === 'Clip') {
-                    properties.push(
+
+                properties.push(
+                    <div className={`relative p-2 transition-colors rounded-md ${this.state.hovered_property === property && this.state.expanded ? 'bg-gray-300' : ''}`}
+                        onMouseEnter={() => this.setState({ hovered_property: property })}
+                        onMouseLeave={() => this.setState({ hovered_property: null })}>
+
+                        <Handle type='target' position={Position.Left} id={property}
+                            style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
+                            isValidConnection={(connection) => this.props.data.isValidConnection(property, connection)}
+                        >
+                            {btn}
+                        </Handle>
+
                         <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
-                            <div className="px-2">
-                                <p>{prop.display_name}</p>
-                                <ClipDropComponent identifier={this.props.data.node.properties.get(property)} onDropClip={(clip_id) => this.setNodeProperty(property, clip_id)} disable_drag={this.props.data.node.node_type === 'output'} />
-                            </div>
+                            <p>{prop.display_name}</p>
                         </AnimateHeight>
-                    );
-                }
+                    </div>
+                )
+            }
+            else if (accepted_type.type === 'Clip') {
+                properties.push(
+                    <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
+                        <div className="px-2">
+                            <p>{prop.display_name}</p>
+                            <ClipDropComponent identifier={this.props.data.node.properties.get(property)} onDropClip={(clip_id) => this.setNodeProperty(property, clip_id)} disable_drag={this.props.data.node.node_type === 'output'} />
+                        </div>
+                    </AnimateHeight>
+                );
             }
         }
         for (let [output_type, output] of this.props.data.node.outputs.entries()) {

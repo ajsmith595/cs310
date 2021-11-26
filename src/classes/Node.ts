@@ -2,7 +2,9 @@ import Communicator, { ID } from "./Communicator";
 import Utils from "./Utils";
 import { v4 } from 'uuid';
 import Store from "./Store";
-import { NodeRegistration, NodeRegistrationProperty } from "./NodeRegistration";
+import { NodeRegistration, NodeRegistrationOutput, NodeRegistrationInput } from "./NodeRegistration";
+
+
 
 
 export class Position {
@@ -51,6 +53,7 @@ export default class EditorNode {
         for (let node_type in obj) {
             EditorNode.NodeRegister.set(node_type, NodeRegistration.deserialise(obj[node_type]));
         }
+        console.log(EditorNode.NodeRegister);
     }
 
     constructor(
@@ -94,9 +97,22 @@ export default class EditorNode {
         return obj;
     }
 
+    public inputs: Map<string, NodeRegistrationInput> = null;
+    async getInputs() {
+        if (this.inputs != null) {
+            return this.inputs;
+        }
+        Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
+            let inputs = new Map();
+            for (let prop in data) {
+                inputs.set(prop, NodeRegistrationInput.deserialise(data[prop]));
+            }
+            this.inputs = inputs;
+            return inputs;
+        });
+    }
 
-
-    public outputs: Map<string, NodeRegistrationProperty> = null;
+    public outputs: Map<string, NodeRegistrationOutput> = null;
     async getOutputs() {
         if (this.outputs != null) {
             return this.outputs;
@@ -104,7 +120,7 @@ export default class EditorNode {
         Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
             let outputs = new Map();
             for (let prop in data) {
-                outputs.set(prop, NodeRegistrationProperty.deserialise(data[prop]));
+                outputs.set(prop, NodeRegistrationOutput.deserialise(data[prop]));
             }
             this.outputs = outputs;
             return outputs;
@@ -117,20 +133,17 @@ export default class EditorNode {
     }
 
     async save() {
-        Communicator.invoke('update_node', { node: this.serialise() }, (data) => {
-            return true;
-        });
+        Store.setStore();
     }
 
     static createNode(type: string, group: string, position: Position) {
         let register_entry = EditorNode.NodeRegister.get(type);
 
         let props = new Map();
-        for (let [prop, property_details] of register_entry.properties.entries()) {
-            for (let type of property_details.property_type) {
-                if (type.type == 'Number') {
-                    props.set(prop, type.getNumberRestrictions().default);
-                }
+        for (let [prop, property_details] of register_entry.default_properties.entries()) {
+            let type = property_details.property_type;
+            if (type.type == 'Number') {
+                props.set(prop, type.getNumberRestrictions().default);
             }
         }
 
@@ -150,12 +163,12 @@ export default class EditorNode {
     }
 
     changeProperty(property, newValue) {
-        let register_entry = EditorNode.NodeRegister.get(this.node_type);
-        let property_entry = register_entry.properties.get(property);
+        //let register_entry = EditorNode.NodeRegister.get(this.node_type);
+        let property_entry = this.inputs.get(property);
 
         let hasChanged = false;
-        if (property_entry.property_type[0].type == 'Number') {
-            let restrictions = property_entry.property_type[0].getNumberRestrictions();
+        if (property_entry.property_type.type == 'Number') {
+            let restrictions = property_entry.property_type.getNumberRestrictions();
 
             let originalValue: number = parseFloat(newValue);
             if (isNaN(originalValue)) {
@@ -174,6 +187,7 @@ export default class EditorNode {
             if (originalValue != newValue) {
                 hasChanged = true;
             }
+            newValue = Number(newValue);
         }
 
 

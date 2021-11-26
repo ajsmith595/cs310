@@ -14,23 +14,17 @@ REDO TYPES - instead of specifying types, we shall instead specify minimum + max
 
 */
 
-export enum PipeableType {
+export interface PipeableType {
+    video: number,
+    audio: number,
+    subtitles: number
+};
 
-    Container,
-    Video,
-    Audio,
-    Image,
-    Subtitle
+export interface PipeableTypeRestriction {
+    min: PipeableType,
+    max: PipeableType
 }
-
-function getTypeFromString(t: string) {
-    return {
-        [(null as any)]: PipeableType.Container,
-        "Video": PipeableType.Video,
-        "Audio": PipeableType.Audio,
-        "Image": PipeableType.Image
-    }[t];
-}
+// export type PipeableTypeRestriction = FixedLengthArray<[PipeableType, PipeableType]>;
 
 
 interface NumberRestrictions {
@@ -67,19 +61,26 @@ export class PropertyType {
         if (this.type != 'Pipeable') {
             throw new Error("Cannot get pipeable type from non-pipeable!");
         }
-        return this.extra_data as PipeableType;
+        if (!(this.extra_data instanceof Array)) {
+            throw new Error("Cannot get pipeable type from non-array thingy");
+        }
+
+        return {
+            min: this.extra_data[0],
+            max: this.extra_data[1]
+        } as PipeableTypeRestriction;
     }
 
 }
 
 
-export class NodeRegistrationProperty {
+export class NodeRegistrationInput {
     description: string;
     display_name: string;
     name: string;
-    property_type: Array<PropertyType>;
+    property_type: PropertyType;
 
-    constructor(name: string, display_name: string, description: string, property_type: Array<PropertyType>) {
+    constructor(name: string, display_name: string, description: string, property_type: PropertyType) {
         this.name = name;
         this.display_name = display_name;
         this.description = description;
@@ -90,11 +91,30 @@ export class NodeRegistrationProperty {
         if (Utils.propsUndefined(obj.name, obj.display_name, obj.description, obj.property_type)) {
             throw new Error("Could not deserialise");
         }
-        let property_types = [];
-        for (let prop_type of obj.property_type) {
-            property_types.push(PropertyType.deserialise(prop_type));
+        let property_type = PropertyType.deserialise(obj.property_type);
+        return new NodeRegistrationInput(obj.name, obj.display_name, obj.description, property_type);
+    }
+}
+
+
+export class NodeRegistrationOutput {
+    description: string;
+    display_name: string;
+    name: string;
+    property_type: PipeableType;
+
+    constructor(name: string, display_name: string, description: string, property_type: PipeableType) {
+        this.name = name;
+        this.display_name = display_name;
+        this.description = description;
+        this.property_type = property_type;
+    }
+
+    static deserialise(obj: any) {
+        if (Utils.propsUndefined(obj.name, obj.display_name, obj.description, obj.property_type)) {
+            throw new Error("Could not deserialise");
         }
-        return new NodeRegistrationProperty(obj.name, obj.display_name, obj.description, property_types);
+        return new NodeRegistrationInput(obj.name, obj.display_name, obj.description, obj.property_type);
     }
 }
 
@@ -103,23 +123,23 @@ export class NodeRegistration {
     description: string;
     display_name: string;
     id: string;
-    properties: Map<string, NodeRegistrationProperty>;
+    default_properties: Map<string, NodeRegistrationInput>;
 
-    constructor(id: string, display_name: string, description: string, properties) {
+    constructor(id: string, display_name: string, description: string, default_properties: Map<string, NodeRegistrationInput>) {
         this.id = id;
         this.display_name = display_name;
         this.description = description;
-        this.properties = properties;
+        this.default_properties = default_properties;
     }
 
     static deserialise(obj: any) {
-        if (Utils.propsUndefined(obj.description, obj.display_name, obj.id, obj.properties)) {
+        if (Utils.propsUndefined(obj.description, obj.display_name, obj.id, obj.default_properties)) {
             throw new Error("Could not deserialise");
         }
 
         let props = new Map();
         for (let prop in obj.properties) {
-            props.set(prop, NodeRegistrationProperty.deserialise(obj.properties[prop]));
+            props.set(prop, NodeRegistrationInput.deserialise(obj.default_properties[prop]));
         }
 
         return new NodeRegistration(obj.id, obj.display_name, obj.description, props);

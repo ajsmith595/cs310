@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType, CompositedClip},
-  node::{Node, NodeType, NodeTypeProperty, PipeableType, Type},
+  node::{Node, NodeType, NodeTypeInput, PipeableType, Type},
   store::Store,
 };
 
@@ -15,34 +15,49 @@ pub mod INPUTS {
 }
 pub mod OUTPUTS {}
 
-pub fn output_node() -> NodeType {
-  let mut properties = HashMap::new();
+fn default_properties() -> HashMap<String, NodeTypeInput> {
+  let mut default_properties = HashMap::new();
 
-  properties.insert(
+  default_properties.insert(
     String::from(INPUTS::MEDIA),
-    NodeTypeProperty {
+    NodeTypeInput {
       name: String::from(INPUTS::MEDIA),
       display_name: String::from("Media"),
       description: String::from("Media to output to clip"),
-      property_type: vec![Type::Pipeable(None)],
+      property_type: Type::Pipeable(
+        PipeableType {
+          video: 0,
+          audio: 0,
+          subtitles: 0,
+        },
+        PipeableType {
+          video: i32::MAX,
+          audio: i32::MAX,
+          subtitles: i32::MAX,
+        },
+      ),
     },
   );
 
-  properties.insert(
+  default_properties.insert(
     String::from(INPUTS::CLIP),
-    NodeTypeProperty {
+    NodeTypeInput {
       name: String::from(INPUTS::CLIP),
       display_name: String::from("Clip"),
       description: String::from("Clip to output"),
-      property_type: vec![Type::Clip],
+      property_type: Type::Clip,
     },
   );
+  default_properties
+}
 
+pub fn output_node() -> NodeType {
   NodeType {
     id: String::from(IDENTIFIER),
     display_name: String::from("Output"),
     description: String::from("Output media to a clip"),
-    properties,
+    default_properties: default_properties(),
+    get_properties: |_, _, _, _| Ok(default_properties()),
     get_output_types: |_, _, _, _| Ok(HashMap::new()),
     get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
       let media = properties.get(INPUTS::MEDIA).unwrap();

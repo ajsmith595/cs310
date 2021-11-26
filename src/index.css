@@ -36,3 +36,7 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   @apply dark:bg-gray-400;
 }
+
+.custom-edge-component { 
+  fill: none;
+}

@@ -1,7 +1,8 @@
 import React from 'react';
 import { getMarkerEnd } from 'react-flow-renderer';
 import { Position } from '../../classes/Node';
-import { PipeableType, PropertyType } from '../../classes/NodeRegistration';
+import { PipeableType, PipeableTypeRestriction, PropertyType } from '../../classes/NodeRegistration';
+import Utils from '../../classes/Utils';
 
 function bezierPoint(t: number, p1: Position, p2: Position, p3: Position, p4: Position) {
 
@@ -43,8 +44,8 @@ function getBezierPath(p1: Position, p2: Position, p3: Position, p4: Position) {
 
 
 interface EdgeData {
-    sourceType: Array<PropertyType>,
-    targetType: Array<PropertyType>,
+    sourceType: PipeableType,
+    targetType: PipeableTypeRestriction,
 }
 export default function CustomEdgeComponent({
     id,
@@ -76,46 +77,30 @@ export default function CustomEdgeComponent({
 
 
     let conversion_needed = true;
-    let source_type = null;
-    let target_type = null;
-    if (edge_data.sourceType.length != 1) {
-        conversion_needed = false;
-    } else {
-        source_type = edge_data.sourceType[0].getPipeableType();
-        for (let t of edge_data.targetType) {
-            let target_type = t.getPipeableType();
-            if (target_type == source_type) {
-                conversion_needed = false;
-                break;
-            }
-        }
-        if (conversion_needed) {
-            let priority: Array<PipeableType> = [PipeableType.Container, PipeableType.Video, PipeableType.Audio, PipeableType.Subtitle];
-            let i = -1;
-            let source_index = priority.indexOf(source_type);
-            for (let t of edge_data.targetType) {
-                let target_type = t.getPipeableType();
-                let index = priority.indexOf(target_type);
-                if (index > i && source_index >= index) {
-                    i = index;
-                }
-            }
-            if (i != -1) {
-                target_type = priority[i];
-            }
-        }
-    }
+    let source_type = edge_data.sourceType;
+    let target_type = edge_data.targetType;
 
-    if (!conversion_needed || dist < 50) {
+
+
+
+    if (!Utils.pipeableTypeMeetsMinReq(source_type, target_type)) { // type is invalid!
         const edgePath1 = getBezierPath(p1, p2, p3, p4);
         style = style || {};
 
-
-
         return (
-            <path id={id} style={style} className="stroke-current react-flow__edge-path" d={edgePath1} markerEnd={markerEnd} />
+            <path id={id} style={style} className="stroke-current text-red-900 custom-edge-component" d={edgePath1} markerEnd={markerEnd} />
         );
     }
+
+    if (!Utils.pipeableTypeAboveMaxReq(source_type, target_type)) {
+        const edgePath1 = getBezierPath(p1, p2, p3, p4);
+        style = style || {};
+        return (
+            <path id={id} style={style} className={`text-${Utils.getColour(source_type)} stroke-current custom-edge-component`} d={edgePath1} markerEnd={markerEnd} />
+        );
+    }
+
+    let new_source_type = Utils.pipeableTypeDowngrade(source_type, target_type);
 
 
 
@@ -123,7 +108,7 @@ export default function CustomEdgeComponent({
 
 
     // map from 0 -> 300
-    let delta = Math.min(Math.max(((300 - dist) / 300), 0), 1) * 0.3;
+    let delta = Math.min(Math.max(((300 - dist) / 300), 0.1), 1) * 0.3;
 
 
 
@@ -137,9 +122,9 @@ export default function CustomEdgeComponent({
 
     return (
         <>
-            <path id={id} style={style} className="react-flow__edge-path" d={edgePath1} markerEnd={markerEnd} />
-            <path id={id} style={style} className="react-flow__edge-path" d={edgePath2} markerEnd={markerEnd} />
-            <path id={id} style={style} className="react-flow__edge-path" d={edgePath3} markerEnd={markerEnd} />
+            <path id={id} style={style} className={`stroke-current text-${Utils.getColour(source_type)} custom-edge-component`} d={edgePath1} markerEnd={markerEnd} />
+            <path id={id} style={style} className={`stroke-current custom-edge-component`} d={edgePath2} markerEnd={markerEnd} />
+            <path id={id} style={style} className={`stroke-current text-${Utils.getColour(new_source_type)} custom-edge-component`} d={edgePath3} markerEnd={markerEnd} />
             {/* <text>
                 <textPath href={`#${id}`} style={{ fontSize: '12px' }} startOffset="50%" textAnchor="middle">
                     {data.text}

@@ -24,7 +24,7 @@ use crate::classes::{
 };
 
 use super::{
-  node::Node,
+  node::{Node, PipeableType},
   nodes::{media_import_node, output_node},
   store::Store,
   ID,
@@ -80,10 +80,22 @@ impl Pipeline {
         return Err(String::from("Node type not found!"));
       }
       let node_type = node_type.unwrap();
-      for (k, v) in &node_type.properties {
-        let primary_output = &v.property_type[0];
+
+      let inputs =
+        (node_type.get_properties)(node.id.clone(), &node.properties, &store, node_register);
+
+      if inputs.is_err() {
+        return Err(format!(
+          "Node input types could not be calculated: {}",
+          inputs.unwrap_err()
+        ));
+      }
+      let inputs = inputs.unwrap();
+
+      for (k, v) in &inputs {
+        let primary_output = &v.property_type;
         match primary_output {
-          Type::Pipeable(_) => {
+          Type::Pipeable(_, _) => {
             let le = LinkEndpoint {
               node_id: node.id.clone(),
               property: k.clone(),
@@ -199,7 +211,7 @@ impl Pipeline {
     let full_graph = Self::generate_full_dependency_graph(graph.clone(), store, &node_id_to_index);
     if full_graph.is_err() {
       return Err(
-        String::from("Full graph could not be geneated ") + full_graph.unwrap_err().as_str(),
+        String::from("Full graph could not be generated ") + full_graph.unwrap_err().as_str(),
       );
     }
     let full_graph = full_graph.unwrap();
@@ -271,9 +283,7 @@ impl Pipeline {
       graph.neighbors_directed(node_index, petgraph::EdgeDirection::Incoming);
 
     // let dependents = Vec::new();
-    println!("Getting output for node index: {:?}", node_index);
     for input in target_input_handles {
-      println!("Neighbor: {:?}", input);
       let output = graph
         .neighbors_directed(input, petgraph::EdgeDirection::Incoming)
         .next();
@@ -316,7 +326,7 @@ impl Pipeline {
     output_clip_id: ID,
     store: &Store,
     node_register: &NodeRegister,
-  ) -> Result<Type, String> {
+  ) -> Result<PipeableType, String> {
     // 1. look at the nodes, find all the output nodes.
     // 2. find the specific output node (if exists) for the relevant clip ID
     // 3. recurse until done: look at the previous node, and determine its output.
@@ -363,7 +373,7 @@ impl Pipeline {
     }
     let outputs = outputs.unwrap();
     let output_type = outputs.get(&property).unwrap();
-    return Ok(output_type.property_type[0]);
+    return Ok(output_type.property_type);
   }
   fn get_connecting_endpoint(&self, input_link: LinkEndpoint) -> Option<LinkEndpoint> {
     for Link { from, to } in &self.links {
