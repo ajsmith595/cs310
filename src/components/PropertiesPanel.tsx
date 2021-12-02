@@ -3,6 +3,7 @@ import { ClipIdentifier, CompositedClip, SourceClip } from '../classes/Clip';
 import Communicator from '../classes/Communicator';
 import EventBus from '../classes/EventBus';
 import EditorNode from '../classes/Node';
+import Utils from '../classes/Utils';
 import ClipDropComponent from './shared/ClipDropComponent';
 
 
@@ -138,7 +139,7 @@ class PropertiesPanel extends React.Component<Props, State> {
                     let fps = video_stream.fps.toPrecision(4);
 
                     video_stream_display.push(
-                        <div className="mt-2 ">
+                        <div className="mt-2 ml-2 mb-5">
                             <div className="border p-3 border-gray-600">
                                 <p className="flex">
                                     <span>Dimensions</span>
@@ -180,7 +181,7 @@ class PropertiesPanel extends React.Component<Props, State> {
 
 
                     audio_stream_display.push(
-                        <div className="mt-2 ">
+                        <div className="mt-2 ml-2 mb-5">
                             <div className="border p-3 border-gray-600">
                                 <p className="flex">
                                     <span>Sample Rate <span className="text-gray-500">({letters[j]}Hz)</span></span>
@@ -234,8 +235,10 @@ class PropertiesPanel extends React.Component<Props, State> {
                     </div>
                     <div>
                         <h1>Video Streams</h1>
+                        <div className={`h-1 w-full bg-${Utils.Colours.Video}`}></div>
                         {video_stream_display}
                         <h1>Audio Streams</h1>
+                        <div className={`h-1 w-full bg-${Utils.Colours.Audio}`}></div>
                         {audio_stream_display}
                     </div>
                 </div>;

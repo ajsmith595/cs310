@@ -6,25 +6,25 @@ use std::{
 };
 
 use gstreamer::{glib, prelude::*};
+use gstreamer_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
+use petgraph::visit::EdgeRef;
 use petgraph::{
   data::Build,
   graph::{DiGraph, NodeIndex},
-  Graph,
+  EdgeDirection, Graph,
 };
-
-use gstreamer_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
 
 use bimap::BiMap;
 use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType},
-  node::Type,
+  node::{InputOrOutput, PipedType, Type},
   nodes::{self, NodeRegister},
 };
 
 use super::{
-  node::{Node, PipeableType},
+  node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
   nodes::{media_import_node, output_node},
   store::Store,
   ID,
@@ -56,6 +56,10 @@ pub struct Pipeline {
   pub target_node_id: Option<ID>,
 }
 
+pub struct NodeData {
+  pub node: Node,
+}
+
 impl Pipeline {
   pub fn new() -> Self {
     Self {
@@ -64,324 +68,235 @@ impl Pipeline {
     }
   }
 
-  fn generate_graph(
+  pub fn gen_graph_new(
     &self,
     store: &Store,
     node_register: &NodeRegister,
-  ) -> Result<(Graph<String, String>, BiMap<String, NodeIndex>), String> {
+  ) -> Result<
+    (
+      HashMap<
+        String,
+        (
+          HashMap<String, PipedType>,
+          HashMap<String, NodeTypeInput>,
+          HashMap<String, NodeTypeOutput>,
+        ),
+      >,
+      HashMap<String, PipedType>,
+      Option<String>,
+    ),
+    String,
+  > {
     let mut graph = DiGraph::new();
 
     let mut node_id_to_index = BiMap::new();
-    for (_, node) in &store.nodes {
-      let node_index = graph.add_node(node.id.clone());
-      node_id_to_index.insert(node.id.clone(), node_index);
-      let node_type = &node_register.get(&node.node_type);
-      if node_type.is_none() {
-        return Err(String::from("Node type not found!"));
-      }
-      let node_type = node_type.unwrap();
+    let mut composited_clip_to_index = BiMap::new();
 
-      let inputs =
-        (node_type.get_properties)(node.id.clone(), &node.properties, &store, node_register);
-
-      if inputs.is_err() {
-        return Err(format!(
-          "Node input types could not be calculated: {}",
-          inputs.unwrap_err()
-        ));
-      }
-      let inputs = inputs.unwrap();
-
-      for (k, v) in &inputs {
-        let primary_output = &v.property_type;
-        match primary_output {
-          Type::Pipeable(_, _) => {
-            let le = LinkEndpoint {
-              node_id: node.id.clone(),
-              property: k.clone(),
-            };
-            let handle_index = graph.add_node(le.get_id());
-            graph.add_edge(
-              handle_index,
-              node_index,
-              le.get_id() + "-" + node.id.as_str(),
-            );
-            node_id_to_index.insert(le.get_id(), handle_index);
-          }
-          _ => {}
-        }
-      }
-      let outputs =
-        (node_type.get_output_types)(node.id.clone(), &node.properties, &store, node_register);
-      if outputs.is_err() {
-        return Err(String::from("Getting output type caused error!"));
-      }
-      let outputs = outputs.unwrap();
-      for (k, _) in &outputs {
-        let le = LinkEndpoint {
-          node_id: node.id.clone(),
-          property: k.clone(),
-        };
-        let handle_index = graph.add_node(le.get_id());
-        graph.add_edge(
-          node_index,
-          handle_index,
-          node.id.clone() + "-" + le.get_id().as_str(),
-        );
-        node_id_to_index.insert(le.get_id(), handle_index);
-      }
-      // add nodes for all the nodes' handles aswell.
-    }
-    for link in &self.links {
-      let from = node_id_to_index.get_by_left(&link.from.get_id());
-      let to = node_id_to_index.get_by_left(&link.to.get_id());
-      if from.is_none() || to.is_none() {
-        return Err(String::from(
-          "Link is invalid - connects non-existent handles!",
-        ));
-      }
-      let from = from.unwrap();
-      let to = to.unwrap();
-      graph.add_edge(*from, *to, link.get_id());
-    }
-    Ok((graph, node_id_to_index))
-  }
-
-  fn generate_full_dependency_graph(
-    mut graph: Graph<String, String>,
-    store: &Store,
-    node_id_to_index: &BiMap<String, NodeIndex>,
-  ) -> Result<Graph<String, String>, String> {
-    let mut from: HashMap<String, Vec<ID>> = HashMap::new();
+    // populate nodes, and keep track of both the node ID assignments to indexes in the graph, as well as indexes of composited clip output nodes, so we can later link them to media import nodes
     for (id, node) in &store.nodes {
-      if node.node_type == media_import_node::IDENTIFIER {
-        let clip_identifier = media_import_node::get_clip_identifier(&node.properties);
-        if clip_identifier.is_err() {
-          return Err(String::from("Could not get clip from media import node!"));
-        }
-        let clip_identifier = clip_identifier.unwrap();
-        if clip_identifier.clip_type == ClipType::Composited {
-          if !from.contains_key(&clip_identifier.id) {
-            from.insert(clip_identifier.id.clone(), Vec::new());
-          }
-          from.get_mut(&clip_identifier.id).unwrap().push(id.clone());
-          // then, go through all output nodes, and connect the output node with every media_importer node in 'from'
-        }
-      }
-    }
+      let node_idx = graph.add_node(HashMap::new());
+      node_id_to_index.insert(id.to_owned(), node_idx);
 
-    for (id, node) in &store.nodes {
       if node.node_type == output_node::IDENTIFIER {
-        let clip = output_node::get_clip(&node.properties, store);
+        let clip = node.properties.get(output_node::INPUTS::CLIP);
+        if clip.is_none() {
+          return Err(format!("Output node with no clip detected!"));
+        }
+        let clip = clip.unwrap().to_owned();
+        let clip = serde_json::from_value::<ClipIdentifier>(clip);
+
         if clip.is_err() {
-          continue;
+          return Err(format!("Clip identifier for output node not valid!"));
         }
         let clip = clip.unwrap();
-        let dependent_nodes = from.get(&clip.id);
-        if let Some(dependent_nodes) = dependent_nodes {
-          for node_id in dependent_nodes {
-            graph.add_edge(
-              node_id_to_index.get_by_left(&id.clone()).unwrap().clone(),
-              node_id_to_index
-                .get_by_left(&node_id.clone())
-                .unwrap()
-                .clone(),
-              format!("clip-dependency-{}-{}", id.clone(), node_id.clone()),
-            );
+
+        if clip.clip_type != ClipType::Composited {
+          return Err(format!(
+            "Clip identifier for output node not valid (must be composited clip)!"
+          ));
+        }
+        composited_clip_to_index.insert(clip.id, node_idx);
+      }
+    }
+
+    // Connect media import nodes of composited clips to the relevant output nodes
+    for (id, node) in &store.nodes {
+      if node.node_type == media_import_node::IDENTIFIER {
+        let clip = node.properties.get(media_import_node::INPUTS::CLIP);
+        if clip.is_none() {
+          return Err(format!("Input node with no clip detected!"));
+        }
+
+        let clip = clip.unwrap().to_owned();
+        let clip = serde_json::from_value::<ClipIdentifier>(clip);
+
+        if clip.is_err() {
+          return Err(format!("Clip identifier for input node not valid!"));
+        }
+        let clip = clip.unwrap();
+
+        if clip.clip_type == ClipType::Composited {
+          let composited_clip_idx = composited_clip_to_index.get_by_left(&clip.id);
+          if composited_clip_idx.is_none() {
+            return Err(format!("Reference to composited clip with no output!"));
           }
+          let composited_clip_idx = composited_clip_idx.unwrap();
+
+          let node_idx = node_id_to_index.get_by_left(id).unwrap(); // we have already gone through all nodes, so guaranteed to be there
+          graph.add_edge(*composited_clip_idx, *node_idx, None);
         }
       }
     }
-    Ok(graph)
-  }
 
-  pub fn generate_pipeline_string(
-    &self,
-    store: &Store,
-    node_register: &NodeRegister,
-  ) -> Result<String, String> {
-    if self.target_node_id.is_none() {
-      return Err(String::from("No target node chosen"));
-    }
-    let res = self.generate_graph(store, node_register);
-    if res.is_err() {
-      return Err(String::from("Graph could not be generated: ") + res.unwrap_err().as_str());
-    }
-    let (graph, node_id_to_index) = res.unwrap();
-    let full_graph = Self::generate_full_dependency_graph(graph.clone(), store, &node_id_to_index);
-    if full_graph.is_err() {
-      return Err(
-        String::from("Full graph could not be generated ") + full_graph.unwrap_err().as_str(),
-      );
-    }
-    let full_graph = full_graph.unwrap();
-    if petgraph::algo::is_cyclic_directed(&full_graph) {
-      return Err(String::from("Cycle in pipeline"));
-    }
-
-    let mut new_nodes = store.nodes.clone();
+    // go through all the links, and add the relevant edges between the nodes.
     for Link { from, to } in &self.links {
-      let mut to_node = new_nodes.get(&to.node_id.clone()).unwrap().to_owned();
-      let from_node = new_nodes.get(&from.node_id.clone()).unwrap().to_owned();
-      to_node.properties.insert(
-        to.property.clone(),
-        Value::String(Node::get_gstreamer_handle_id(
-          from_node.id.clone(),
-          from.property.clone(),
-        )),
+      let (from_node_idx, to_node_idx) = (
+        node_id_to_index.get_by_left(&from.node_id),
+        node_id_to_index.get_by_left(&to.node_id),
       );
-      new_nodes.insert(to_node.id.clone(), to_node.clone());
-      new_nodes.insert(from_node.id.clone(), from_node);
-    }
 
-    let target_node_id = self.target_node_id.as_ref().unwrap();
-    let target_idx = node_id_to_index.get_by_left(target_node_id);
-    if target_idx.is_none() {
-      return Err(String::from("Target can't be found in pipeline"));
-    }
-    let target_idx = target_idx.unwrap();
-    let mut store = store.clone();
-    store.nodes = new_nodes;
+      if from_node_idx.is_none() || to_node_idx.is_none() {
+        return Err(format!("Link contains reference to non-existent node"));
+      }
+      let (from_node_idx, to_node_idx) = (from_node_idx.unwrap(), to_node_idx.unwrap());
 
-    let out_str = Self::get_node_output_string(
-      &graph,
-      &store,
-      node_register,
-      &node_id_to_index,
-      *target_idx,
-    );
-    if out_str.is_err() {
-      return Err(format!(
-        "Could not get output due to : {}",
-        out_str.unwrap_err()
-      ));
-    }
-    let out_str = out_str.unwrap();
-
-    let mut clip_str = String::new();
-    for (_, clip) in store.clips.composited {
-      clip_str = format!(
-        "{} {}. ! nvh264enc ! h264parse ! mp4mux ! filesink location=\"output/composited/{}.mp4\"",
-        clip_str,
-        clip.get_gstreamer_id(),
-        clip.get_gstreamer_id(),
+      graph.add_edge(
+        *from_node_idx,
+        *to_node_idx,
+        Some((from.property.clone(), to.property.clone())),
       );
     }
-    let out_str = format!("{} {}", out_str, clip_str);
-    return Ok(out_str);
-  }
 
-  fn get_node_output_string(
-    graph: &Graph<String, String>,
-    store: &Store,
-    node_register: &NodeRegister,
-    node_id_to_index: &BiMap<String, NodeIndex>,
-    node_index: NodeIndex,
-  ) -> Result<String, String> {
-    let mut str = String::from("");
-    let target_input_handles =
-      graph.neighbors_directed(node_index, petgraph::EdgeDirection::Incoming);
+    // topologically sort graph
+    let sorted = petgraph::algo::toposort(&graph, None);
+    // if there's a cycle, it's an invalid pipeline anyway
+    if sorted.is_err() {
+      return Err(format!("Found cycle in the graph!"));
+    }
 
-    // let dependents = Vec::new();
-    for input in target_input_handles {
-      let output = graph
-        .neighbors_directed(input, petgraph::EdgeDirection::Incoming)
-        .next();
-      if output.is_none() {
-        return Err(format!("Graph not generated properly!"));
-      }
-      let output = output.unwrap();
-      let node = graph
-        .neighbors_directed(output, petgraph::EdgeDirection::Incoming)
-        .next();
-      if node.is_none() {
-        return Err(format!("Graph not generated properly!"));
-      }
-      let node = node.unwrap();
-      let node_string =
-        Self::get_node_output_string(graph, store, node_register, node_id_to_index, node);
-      if node_string.is_err() {
+    let mut node_type_data = HashMap::new();
+    let mut composited_clip_data = HashMap::new();
+
+    let sorted = sorted.unwrap();
+
+    let mut gstreamer_pipeline = String::from("");
+    let mut do_return = true;
+
+    // we can then iterate through the nodes in this order, assign the piped inputs to the dependent nodes before the dependent nodes' relevant method is called
+    for node_idx in sorted {
+      let piped_inputs = graph.node_weight(node_idx).unwrap();
+      // get the inputs that have been piped into this node; by this point, all nodes with an edge going into this node will have already been processed, and will have put the relevant clip type into this hashmap
+
+      let node = store
+        .nodes
+        .get(node_id_to_index.get_by_right(&node_idx).unwrap())
+        .unwrap();
+      let node_registration = node_register.get(&node.node_type).unwrap();
+      let io = (node_registration.get_io)(
+        node.id.clone(),
+        &node.properties,
+        &piped_inputs,
+        &composited_clip_data,
+        store,
+        node_register,
+      );
+      // get the inputs and outputs based off the current set of piped inputs, properties, etc.
+
+      if io.is_err() {
         return Err(format!(
-          "An error occured in a dependent node: {}",
-          node_string.unwrap_err()
+          "Could not find IO data for node {}: {}",
+          node.id,
+          io.unwrap_err()
         ));
       }
-      let node_string = node_string.unwrap();
-      str = format!("{} {}", str, node_string);
-    }
-    let node_id = node_id_to_index.get_by_right(&node_index).unwrap();
-    let node = store.nodes.get(node_id).unwrap();
-    let node_type = node_register.get(&node.node_type).unwrap();
-    let out = (node_type.get_output)(node.id.clone(), &node.properties, store, node_register);
-    if out.is_err() {
-      return Err(out.unwrap_err());
-    }
-    let out = out.unwrap();
-    str = format!("{} {}", str, out);
-    return Ok(str);
-  }
+      let (inputs, outputs) = io.unwrap();
 
-  pub fn get_output_type(
-    &self,
-    output_clip_id: ID,
-    store: &Store,
-    node_register: &NodeRegister,
-  ) -> Result<PipeableType, String> {
-    // 1. look at the nodes, find all the output nodes.
-    // 2. find the specific output node (if exists) for the relevant clip ID
-    // 3. recurse until done: look at the previous node, and determine its output.
-    let mut node_id = None;
-    for (_, node) in &store.nodes {
-      if node.node_type == nodes::output_node::IDENTIFIER {
-        let clip = node.properties.get(nodes::output_node::INPUTS::CLIP);
-        if let Some(clip) = clip {
-          let clip = serde_json::from_value::<ClipIdentifier>(clip.to_owned());
-          if let Ok(clip) = clip {
-            if output_clip_id == clip.id {
-              node_id = Some(node.id.as_str());
-              break;
-            }
-          }
+      let data = (piped_inputs.clone(), inputs.clone(), outputs.clone());
+      // println!("Data for node {}: {:#?}", node.id.clone(), data.clone());
+      node_type_data.insert(node.id.clone(), data);
+
+      let gst_string = (node_registration.get_output)(
+        node.id.clone(),
+        &node.properties,
+        &piped_inputs,
+        &composited_clip_data,
+        store,
+        node_register,
+      );
+      if gst_string.is_err() {
+        do_return = false;
+      } else {
+        let gst_string = gst_string.unwrap();
+        gstreamer_pipeline = format!("{} {}", gstreamer_pipeline, gst_string);
+      }
+
+      if node.node_type == output_node::IDENTIFIER {
+        let composited_clip_type = piped_inputs.get(output_node::INPUTS::MEDIA);
+
+        if composited_clip_type.is_none() {
+          continue;
+        }
+        let composited_clip_type = composited_clip_type.unwrap().to_owned();
+
+        let composited_clip_id = serde_json::from_value::<ClipIdentifier>(
+          node
+            .properties
+            .get(output_node::INPUTS::CLIP)
+            .unwrap()
+            .to_owned(),
+        )
+        .unwrap()
+        .id;
+
+        composited_clip_data.insert(composited_clip_id, composited_clip_type);
+      } else {
+        let graph_clone = graph.clone();
+        let edges = graph_clone
+          .edges_directed(node_idx, EdgeDirection::Outgoing)
+          .clone();
+        for edge in edges {
+          let (from_property, to_property) = edge.weight().as_ref().unwrap();
+          let target = edge.target();
+
+          let out_type = outputs.get(from_property).unwrap();
+          let to_node = node_id_to_index.get_by_right(&target).unwrap();
+
+          let next_node_inputs = graph.node_weight_mut(target).unwrap();
+
+          let from_piped_type = PipedType {
+            stream_type: out_type.property_type,
+            node_id: node.id.clone(),
+            property_name: from_property.clone(),
+            io: InputOrOutput::Output,
+          };
+          let to_piped_type = PipedType {
+            stream_type: out_type.property_type,
+            node_id: to_node.clone(),
+            property_name: to_property.clone(),
+            io: InputOrOutput::Input,
+          };
+          next_node_inputs.insert(to_property.clone(), to_piped_type.clone());
+
+          let output = PipedType::gst_transfer_pipe(from_piped_type, to_piped_type).unwrap();
+
+          gstreamer_pipeline = format!("{} {}", gstreamer_pipeline, output);
         }
       }
     }
 
-    if node_id.is_none() {
-      return Err(String::from("Clip output node not found"));
+    // we should then have populated both the node type hashmap and the composited clip type hashmap.
+    // we can also perform actual obtaining of the output here
+
+    // TODO: check piped inputs meet minimum requirements for the inputs generated
+    // TODO: check if a piped input does not correspond to an input, then we need to delete the link from the store, since it's invalid now
+
+    let mut gstreamer_pipeline = Some(gstreamer_pipeline);
+    if !do_return {
+      gstreamer_pipeline = None;
     }
-    let node_id = node_id.unwrap();
-    let endpoint = self.get_connecting_endpoint(LinkEndpoint {
-      node_id: String::from(node_id),
-      property: String::from(nodes::output_node::INPUTS::MEDIA),
-    });
-    if endpoint.is_none() {
-      return Err(String::from("No endpoint connecting to output node"));
-    }
-    let LinkEndpoint { node_id, property } = endpoint.unwrap();
-    let node = store.nodes.get(&node_id);
-    if node.is_none() {
-      return Err(String::from("Link is invalid!"));
-    }
-    let node = node.unwrap();
-    let node_type = node_register.get(&node.node_type).unwrap();
-    let outputs =
-      (node_type.get_output_types)(node.id.clone(), &node.properties, &store, node_register);
-    if outputs.is_err() {
-      return Err(String::from(
-        "Could not get output type of node before output node",
-      ));
-    }
-    let outputs = outputs.unwrap();
-    let output_type = outputs.get(&property).unwrap();
-    return Ok(output_type.property_type);
-  }
-  fn get_connecting_endpoint(&self, input_link: LinkEndpoint) -> Option<LinkEndpoint> {
-    for Link { from, to } in &self.links {
-      if *to == input_link {
-        return Some(from.clone());
-      }
-    }
-    return None;
+    let output = (node_type_data, composited_clip_data, gstreamer_pipeline);
+
+    return Ok(output);
   }
 
   pub fn execute_pipeline(pipeline: String, timeout: u32) -> Result<(), ()> {

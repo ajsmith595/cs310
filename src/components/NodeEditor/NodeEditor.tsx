@@ -132,6 +132,24 @@ class NodeEditor extends React.Component<Props, State> {
             this.deleteLinks(e.target, e.targetHandle, false);
             store.pipeline.links.push(link);
             Store.setStore(store);
+
+            let ids_left_inputs = [];
+            let ids_left_outputs = [];
+            for (let [id, node] of store.nodes.entries()) {
+                ids_left_inputs.push(id);
+                ids_left_outputs.push(id);
+                node.getInputs(true).then(e => {
+                    ids_left_inputs = ids_left_inputs.filter(e => e != id);
+                    if (ids_left_inputs.length == 0 && ids_left_outputs.length == 0)
+                        Store.setStore();
+                });
+                node.getOutputs(true).then(e => {
+                    ids_left_outputs = ids_left_outputs.filter(e => e != id);
+                    if (ids_left_inputs.length == 0 && ids_left_outputs.length == 0)
+                        Store.setStore();
+
+                });
+            }
         }
     }
 
@@ -196,6 +214,7 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     render() {
+        console.log("rendering node editor...");
         let store = Store.getCurrentStore();
         let elements = [];
 
@@ -236,6 +255,8 @@ class NodeEditor extends React.Component<Props, State> {
             if (input) {
                 let to_node_type = input.property_type;
                 let output = from_node.outputs.get(link.from.property);
+                console.log(link);
+                console.log(output);
                 if (output) {
                     elements.push({
                         id: link.id,

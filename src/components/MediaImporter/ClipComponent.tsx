@@ -149,6 +149,18 @@ class ClipComponent extends React.Component<Props, State> {
             img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;
         }
 
+        let type_indicator = null;
+        if (this.props.clip instanceof SourceClip) {
+            let colour = Utils.Colours.Unknown;
+            if (this.props.clip.file_location.endsWith("mp3")) {
+                colour = Utils.Colours.Audio;
+            }
+            else {
+                colour = Utils.Colours.Video;
+            }
+            type_indicator = <div className={`w-1/4 bg-${colour} rounded-full h-1`}></div>;
+        }
+
         let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip;
         return <div className={`gap-2 inline-flex w-1/2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
             draggable="true"
@@ -161,6 +173,7 @@ class ClipComponent extends React.Component<Props, State> {
                 <div>
                     {text}
                     {extraDisplay}
+                    {type_indicator}
                 </div>
             </div>
         </div>

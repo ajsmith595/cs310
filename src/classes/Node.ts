@@ -53,7 +53,6 @@ export default class EditorNode {
         for (let node_type in obj) {
             EditorNode.NodeRegister.set(node_type, NodeRegistration.deserialise(obj[node_type]));
         }
-        console.log(EditorNode.NodeRegister);
     }
 
     constructor(
@@ -98,8 +97,8 @@ export default class EditorNode {
     }
 
     public inputs: Map<string, NodeRegistrationInput> = null;
-    async getInputs() {
-        if (this.inputs != null) {
+    async getInputs(force = false) {
+        if (this.inputs != null && !force) {
             return this.inputs;
         }
         Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
@@ -113,8 +112,8 @@ export default class EditorNode {
     }
 
     public outputs: Map<string, NodeRegistrationOutput> = null;
-    async getOutputs() {
-        if (this.outputs != null) {
+    async getOutputs(force = false) {
+        if (this.outputs != null && !force) {
             return this.outputs;
         }
         Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {

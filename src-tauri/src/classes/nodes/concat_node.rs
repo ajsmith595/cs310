@@ -4,9 +4,15 @@ use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType},
-  node::{Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, Type},
+  global::uniq_id,
+  node::{
+    InputOrOutput, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType,
+    PipedType, Type,
+  },
   store::Store,
 };
+
+use super::NodeRegister;
 
 pub const IDENTIFIER: &str = "concat";
 pub mod INPUTS {
@@ -28,12 +34,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
         description: String::from("The first media to play"),
         property_type: Type::Pipeable(
           PipeableType {
-            video: 1,
+            video: 0,
             audio: 0,
             subtitles: 0,
           },
           PipeableType {
-            video: 1,
+            video: i32::MAX,
             audio: i32::MAX,
             subtitles: i32::MAX,
           },
@@ -49,12 +55,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
         description: String::from("The second media to play"),
         property_type: Type::Pipeable(
           PipeableType {
-            video: 1,
+            video: 0,
             audio: 0,
             subtitles: 0,
           },
           PipeableType {
-            video: 1,
+            video: i32::MAX,
             audio: i32::MAX,
             subtitles: i32::MAX,
           },
@@ -66,50 +72,186 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
   default_properties
 }
 
+pub fn get_io(
+  node_id: String,
+  properties: &HashMap<String, Value>,
+  piped_inputs: &HashMap<String, PipedType>,
+  composited_clip_types: &HashMap<String, PipedType>,
+  store: &Store,
+  node_register: &NodeRegister,
+) -> Result<
+  (
+    HashMap<String, NodeTypeInput>,
+    HashMap<String, NodeTypeOutput>,
+  ),
+  String,
+> {
+  let inputs = default_properties();
+  let mut stream_type = PipeableType {
+    video: i32::MAX,
+    audio: i32::MAX,
+    subtitles: i32::MAX,
+  };
+
+  let piped_input1 = piped_inputs.get(INPUTS::MEDIA1);
+  if let Some(piped_input1) = piped_input1 {
+    stream_type = piped_input1.stream_type;
+  }
+
+  let mut outputs = HashMap::new();
+  outputs.insert(
+    OUTPUTS::OUTPUT.to_string(),
+    NodeTypeOutput {
+      name: OUTPUTS::OUTPUT.to_string(),
+      description: "The concatenation of the two media".to_string(),
+      display_name: "Output".to_string(),
+      property_type: stream_type,
+    },
+  );
+
+  return Ok((inputs, outputs));
+}
+fn get_output(
+  node_id: String,
+  properties: &HashMap<String, Value>,
+  piped_inputs: &HashMap<String, PipedType>,
+  composited_clip_types: &HashMap<String, PipedType>,
+  store: &Store,
+  node_register: &NodeRegister,
+) -> Result<String, String> {
+  let io = get_io(
+    node_id.clone(),
+    properties,
+    piped_inputs,
+    composited_clip_types,
+    store,
+    node_register,
+  );
+  if io.is_err() {
+    return Err(io.unwrap_err());
+  }
+
+  let (inputs, outputs) = io.unwrap();
+
+  let media1 = piped_inputs.get(INPUTS::MEDIA1);
+  let media2 = piped_inputs.get(INPUTS::MEDIA2);
+  if media1.is_none() || media2.is_none() {
+    return Err(format!("No media input!"));
+  }
+  let media1 = media1.unwrap();
+  let media2 = media2.unwrap();
+
+  let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
+  let output = PipedType {
+    stream_type: output.property_type,
+    node_id,
+    property_name: String::from(OUTPUTS::OUTPUT),
+    io: InputOrOutput::Output,
+  };
+
+  let mut gst_string = String::from("");
+
+  for i in 0..output.stream_type.video {
+    let id = uniq_id();
+
+    let output_gst = output.get_gst_handle(&PipeableStreamType::Video, i);
+    let media1_gst = media1.get_gst_handle(&PipeableStreamType::Video, i);
+    let media2_gst = media2.get_gst_handle(&PipeableStreamType::Video, i);
+
+    if output_gst.is_none() || media1_gst.is_none() || media2_gst.is_none() {
+      return Err(format!("Invalid types to link by"));
+    }
+    gst_string = format!(
+      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
+      gst_string,
+      id,
+      output_gst.unwrap(),
+      media1_gst.unwrap(),
+      id,
+      media2_gst.unwrap(),
+      id,
+    );
+  }
+
+  for i in 0..output.stream_type.audio {
+    let id = uniq_id();
+    gst_string = format!(
+      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
+      gst_string,
+      id,
+      output
+        .get_gst_handle(&PipeableStreamType::Audio, i)
+        .unwrap(),
+      media1
+        .get_gst_handle(&PipeableStreamType::Audio, i)
+        .unwrap(),
+      id,
+      media2
+        .get_gst_handle(&PipeableStreamType::Audio, i)
+        .unwrap(),
+      id,
+    );
+  }
+
+  for i in 0..output.stream_type.subtitles {
+    let id = uniq_id();
+    gst_string = format!(
+      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
+      gst_string,
+      id,
+      output
+        .get_gst_handle(&PipeableStreamType::Subtitles, i)
+        .unwrap(),
+      media1
+        .get_gst_handle(&PipeableStreamType::Subtitles, i)
+        .unwrap(),
+      id,
+      media2
+        .get_gst_handle(&PipeableStreamType::Subtitles, i)
+        .unwrap(),
+      id,
+    );
+  }
+
+  return Ok(gst_string);
+}
+
 pub fn concat_node() -> NodeType {
   NodeType {
     id: String::from(IDENTIFIER),
     display_name: String::from("Concatenation"),
     description: String::from("Concatenate two media sources"),
     default_properties: default_properties(),
-    get_properties: |_, _, _, _| Ok(default_properties()),
-    get_output_types: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
-      // let media1 = properties.get(INPUTS::MEDIA1).unwrap();
-      // let media2 = properties.get(INPUTS::MEDIA2).unwrap();
-      // if let (Value::String(media1), Value::String(media2)) = (media1, media2) {
-      let mut hm = HashMap::new();
-      hm.insert(
-        OUTPUTS::OUTPUT.to_string(),
-        NodeTypeOutput {
-          name: OUTPUTS::OUTPUT.to_string(),
-          description: "The concatenation of the two media".to_string(),
-          display_name: "Output".to_string(),
-          property_type: PipeableType {
-            video: 1,
-            audio: 0,
-            subtitles: 0, // TODO: get media types
-          },
-        },
+
+    get_io: |node_id: String,
+             properties: &HashMap<String, Value>,
+             piped_inputs: &HashMap<String, PipedType>,
+             composited_clip_types: &HashMap<String, PipedType>,
+             store: &Store,
+             node_register: &NodeRegister| {
+      return get_io(
+        node_id,
+        properties,
+        piped_inputs,
+        composited_clip_types,
+        store,
+        node_register,
       );
-      return Ok(hm);
-      // }
-      // return Err(format!("Media is invalid type"));
     },
-    get_output: |node_id: String, properties: &HashMap<String, Value>, store: &Store, _| {
-      let media1 = properties.get(INPUTS::MEDIA1).unwrap();
-      let media2 = properties.get(INPUTS::MEDIA2).unwrap();
-      if let (Value::String(media1), Value::String(media2)) = (media1, media2) {
-        let out_id = Node::get_gstreamer_handle_id(node_id.clone(), OUTPUTS::OUTPUT.to_string());
-        return Ok(format!(
-          "concat name={} {}. ! {}. {}. ! {}.",
-          out_id.clone(),
-          media1,
-          out_id.clone(),
-          media2,
-          out_id.clone(),
-        ));
-      }
-      return Err(format!("Media is invalid type"));
+    get_output: |node_id: String,
+                 properties: &HashMap<String, Value>,
+                 piped_inputs: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<String, PipedType>,
+                 store: &Store,
+                 node_register: &NodeRegister| {
+      return get_output(
+        node_id,
+        properties,
+        piped_inputs,
+        composited_clip_types,
+        store,
+        node_register,
+      );
     },
   }
 }

@@ -6,7 +6,11 @@ use serde_json::Value;
 
 use crate::classes::node::PipeableType;
 
-use super::{node::Type, pipeline::Pipeline, ID};
+use super::{
+  node::{PipeableStreamType, Type},
+  pipeline::Pipeline,
+  ID,
+};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ClipType {
@@ -164,6 +168,15 @@ impl SourceClip {
       subtitle_streams: subtitle_streams_vec,
     });
   }
+
+  pub fn get_gstreamer_id(&self, stream_type: &PipeableStreamType, index: i32) -> String {
+    format!(
+      "source-clip-{}-{}-{}",
+      self.id,
+      stream_type.to_string(),
+      index,
+    )
+  }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CompositedClip {
@@ -171,7 +184,12 @@ pub struct CompositedClip {
   pub name: String,
 }
 impl CompositedClip {
-  pub fn get_gstreamer_id(&self) -> String {
-    format!("clip-{}", self.id)
+  pub fn get_gstreamer_id(&self, stream_type: &PipeableStreamType, index: i32) -> String {
+    format!(
+      "composited-clip-{}-{}-{}",
+      self.id,
+      stream_type.to_string(),
+      index,
+    )
   }
 }

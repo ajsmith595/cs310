@@ -4,9 +4,14 @@ use serde_json::Value;
 
 use crate::classes::{
   clip::{ClipIdentifier, ClipType, CompositedClip},
-  node::{Node, NodeType, NodeTypeInput, PipeableType, Type},
+  node::{
+    Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType, PipedType,
+    Type,
+  },
   store::Store,
 };
+
+use super::NodeRegister;
 
 pub const IDENTIFIER: &str = "output";
 pub mod INPUTS {
@@ -51,30 +56,115 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
   default_properties
 }
 
+fn get_io(
+  node_id: String,
+  properties: &HashMap<String, Value>,
+  piped_inputs: &HashMap<String, PipedType>,
+  composited_clip_types: &HashMap<String, PipedType>,
+  store: &Store,
+  node_register: &NodeRegister,
+) -> Result<
+  (
+    HashMap<String, NodeTypeInput>,
+    HashMap<String, NodeTypeOutput>,
+  ),
+  String,
+> {
+  let inputs = default_properties();
+  let outputs = HashMap::new();
+  return Ok((inputs, outputs));
+}
+fn get_output(
+  node_id: String,
+  properties: &HashMap<String, Value>,
+  piped_inputs: &HashMap<String, PipedType>,
+  composited_clip_types: &HashMap<String, PipedType>,
+  store: &Store,
+  node_register: &NodeRegister,
+) -> Result<String, String> {
+  let media = piped_inputs.get(INPUTS::MEDIA);
+  if media.is_none() {
+    return Err(format!("Media is none!"));
+  }
+  let media = media.unwrap();
+  let clip = get_clip(properties, store);
+  if clip.is_err() {
+    return Err(clip.unwrap_err());
+  }
+  let clip = clip.unwrap();
+
+  let mut str = String::from("");
+  for stream_type in &[
+    PipeableStreamType::Video,
+    PipeableStreamType::Audio,
+    PipeableStreamType::Subtitles,
+  ] {
+    let num = media.get_number_of_streams(stream_type);
+    for i in 0..num {
+      let gst1 = media.get_gst_handle(stream_type, i);
+      let gst2 = clip.get_gstreamer_id(stream_type, i);
+      if gst1.is_none() {
+        return Err(format!("Cannot get handle for media"));
+      }
+      let gst1 = gst1.unwrap();
+      str = format!("{} {}. ! {}.", str, gst1, gst2);
+    }
+  }
+  return Ok(str);
+}
+
 pub fn output_node() -> NodeType {
   NodeType {
     id: String::from(IDENTIFIER),
     display_name: String::from("Output"),
     description: String::from("Output media to a clip"),
     default_properties: default_properties(),
-    get_properties: |_, _, _, _| Ok(default_properties()),
-    get_output_types: |_, _, _, _| Ok(HashMap::new()),
-    get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
-      let media = properties.get(INPUTS::MEDIA).unwrap();
-      if let Value::String(media) = media {
-        let clip = get_clip(properties, store);
-        if clip.is_err() {
-          return Err(clip.unwrap_err());
-        }
-        let clip = clip.unwrap();
-        return Ok(format!(
-          "{}. ! videoconvert name={}",
-          media,
-          clip.get_gstreamer_id()
-        ));
-      }
-      return Err(format!("Media is invalid type"));
+    get_io: |node_id: String,
+             properties: &HashMap<String, Value>,
+             piped_inputs: &HashMap<String, PipedType>,
+             composited_clip_types: &HashMap<String, PipedType>,
+             store: &Store,
+             node_register: &NodeRegister| {
+      return get_io(
+        node_id,
+        properties,
+        piped_inputs,
+        composited_clip_types,
+        store,
+        node_register,
+      );
     },
+    get_output: |node_id: String,
+                 properties: &HashMap<String, Value>,
+                 piped_inputs: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<String, PipedType>,
+                 store: &Store,
+                 node_register: &NodeRegister| {
+      return get_output(
+        node_id,
+        properties,
+        piped_inputs,
+        composited_clip_types,
+        store,
+        node_register,
+      );
+    },
+    // get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
+    //   let media = properties.get(INPUTS::MEDIA).unwrap();
+    //   if let Value::String(media) = media {
+    //     let clip = get_clip(properties, store);
+    //     if clip.is_err() {
+    //       return Err(clip.unwrap_err());
+    //     }
+    //     let clip = clip.unwrap();
+    //     return Ok(format!(
+    //       "{}. ! videoconvert name={}",
+    //       media,
+    //       clip.get_gstreamer_id()
+    //     ));
+    //   }
+    //   return Err(format!("Media is invalid type"));
+    // },
   }
 }
 

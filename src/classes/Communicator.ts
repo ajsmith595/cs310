@@ -33,19 +33,16 @@ export default class Communicator {
         }
     }
     static off(event: string, callback: Callback) {
-        console.log(`Registered off(${event})`);
         if (this.listenMap.has(event)) {
             this.listenMap.set(event, this.listenMap.get(event).filter(e => e != callback)); // remove the callback from the emission
         }
     }
 
     static send(event: string, data?: any) {
-        console.log(`Registered send(${event})`);
         emit(event, data);
     }
 
     static invoke(event: string, args?: InvokeArgs, callback?: Callback) {
-        console.log("Invoking " + event + "...");
         let promise = invoke(event, args);
         if (callback) {
             promise.then(callback);

@@ -94,7 +94,6 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             }
         }
         for (let [output_type, output] of this.props.data.node.outputs.entries()) {
-            console.log(output);
             properties.push(
                 <div className={`relative p-2 rounded-md transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-gray-300' : ''}`}
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}
@@ -129,10 +128,12 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         return (
             <div className={`bg-gray-200 rounded-md border-2 ${border}`} onClick={(e) => EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node)}>
                 <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-2 ${this.state.expanded ? "border-gray-500" : 'border-transparent'} `}>
-                    <h1>{node_registration.display_name}
-                        <button className="float-right mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>
-                            <FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} transform  ${!this.state.expanded ? 'rotate-90' : ''}`} />
+
+                    <h1>
+                        <button className="mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>
+                            <FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} transform  ${!this.state.expanded ? '-rotate-90' : ''}`} />
                         </button>
+                        {node_registration.display_name}
 
                         {delete_btn}
                     </h1>

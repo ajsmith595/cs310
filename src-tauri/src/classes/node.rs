@@ -63,6 +63,120 @@ pub struct PipeableType {
   pub subtitles: i32,
 }
 
+impl PipeableType {
+  pub fn of_type(&self, stream_type: &PipeableStreamType) -> i32 {
+    match stream_type {
+      &PipeableStreamType::Video => self.video,
+      &PipeableStreamType::Audio => self.audio,
+      &PipeableStreamType::Subtitles => self.subtitles,
+    }
+  }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum InputOrOutput {
+  Input,
+  Output,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PipedType {
+  pub stream_type: PipeableType,
+  pub node_id: String,
+  pub property_name: String,
+  pub io: InputOrOutput,
+}
+
+impl PipedType {
+  pub fn get_number_of_streams(&self, stream_type: &PipeableStreamType) -> i32 {
+    match stream_type {
+      PipeableStreamType::Video => self.stream_type.video,
+      PipeableStreamType::Audio => self.stream_type.audio,
+      PipeableStreamType::Subtitles => self.stream_type.subtitles,
+    }
+  }
+}
+
+pub enum PipeableStreamType {
+  Video,
+  Audio,
+  Subtitles,
+}
+impl PipeableStreamType {
+  pub fn to_string(&self) -> String {
+    match self {
+      PipeableStreamType::Video => String::from("video"),
+      PipeableStreamType::Audio => String::from("audio"),
+      PipeableStreamType::Subtitles => String::from("subtitles"),
+    }
+  }
+}
+
+impl PipedType {
+  pub fn get_gst_handle(&self, stream_type: &PipeableStreamType, index: i32) -> Option<String> {
+    let io = match self.io {
+      InputOrOutput::Input => "input",
+      InputOrOutput::Output => "output",
+    };
+    let stream_type_str = stream_type.to_string();
+    if self.get_number_of_streams(&stream_type) <= index {
+      return None;
+    }
+    return Some(format!(
+      "{}-{}-{}-{}-{}",
+      self.node_id, io, self.property_name, stream_type_str, index
+    ));
+  }
+
+  pub fn gst_transfer_pipe(from: PipedType, to: PipedType) -> Option<String> {
+    if from.stream_type.video < to.stream_type.video
+      || from.stream_type.audio < to.stream_type.audio
+      || from.stream_type.subtitles < to.stream_type.subtitles
+    {
+      return None;
+    }
+    let video = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Video);
+    let audio = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Audio);
+    let subtitles = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Subtitles);
+    if video.is_none() || audio.is_none() || subtitles.is_none() {
+      return None;
+    }
+    let str = format!(
+      "{} {} {}",
+      video.unwrap(),
+      audio.unwrap(),
+      subtitles.unwrap()
+    );
+    return Some(str);
+  }
+
+  pub fn gst_transfer_pipe_type(
+    from: &PipedType,
+    to: &PipedType,
+    stream_type: &PipeableStreamType,
+  ) -> Option<String> {
+    if from.stream_type.video < to.stream_type.video
+      || from.stream_type.audio < to.stream_type.audio
+      || from.stream_type.subtitles < to.stream_type.subtitles
+    {
+      return None;
+    }
+    let num = to.get_number_of_streams(stream_type);
+
+    let mut str = String::from("");
+    for i in 0..num {
+      let gst1 = from.get_gst_handle(stream_type, i);
+      let gst2 = to.get_gst_handle(stream_type, i);
+      if gst1.is_none() || gst2.is_none() {
+        return None;
+      }
+      let (gst1, gst2) = (gst1.unwrap(), gst2.unwrap());
+      str = format!("{} {}. ! {}.", str, gst1, gst2);
+    }
+    return Some(str);
+  }
+}
+
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
 pub enum Type {
   Pipeable(PipeableType, PipeableType),
@@ -90,6 +204,8 @@ pub struct NodeTypeOutput {
 type NodeTypeFunc<T> = fn(
   node_id: String,
   properties: &HashMap<String, Value>,
+  piped_inputs: &HashMap<String, PipedType>,
+  composited_clip_types: &HashMap<String, PipedType>,
   store: &Store,
   node_register: &NodeRegister,
 ) -> Result<T, String>;
@@ -102,9 +218,11 @@ pub struct NodeType {
   pub default_properties: HashMap<String, NodeTypeInput>,
 
   #[serde(skip_serializing)]
-  pub get_properties: NodeTypeFunc<HashMap<String, NodeTypeInput>>,
-  #[serde(skip_serializing)]
-  pub get_output_types: NodeTypeFunc<HashMap<String, NodeTypeOutput>>,
+  pub get_io: NodeTypeFunc<(
+    HashMap<String, NodeTypeInput>,
+    HashMap<String, NodeTypeOutput>,
+  )>,
+
   #[serde(skip_serializing)]
   pub get_output: NodeTypeFunc<String>,
 }

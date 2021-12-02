@@ -99,8 +99,6 @@ class App extends React.Component<Props, State> {
 			this.setState({
 				Store: value
 			});
-			console.log("NEW STORE:");
-			console.log(value.serialise());
 			Communicator.invoke('store_update', {
 				store: value.serialise()
 			});

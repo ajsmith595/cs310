@@ -259,28 +259,23 @@ pub fn get_node_outputs(
   node: Node,
 ) -> Result<HashMap<String, NodeTypeOutput>, String> {
   let state = state.0.lock().unwrap();
-  let node_registration = state.node_register.get(&node.node_type);
-  if node_registration.is_none() {
-    return Err(String::from("Could not find relevant registration"));
+  let res = state
+    .store
+    .pipeline
+    .gen_graph_new(&state.store, &state.node_register);
+  if res.is_err() {
+    return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }
-  let node_registration = node_registration.unwrap();
+  let (node_type_data, _, _) = res.unwrap();
 
-  let outputs = (node_registration.get_output_types)(
-    node.id,
-    &node.properties,
-    &state.store,
-    &state.node_register,
-  );
+  let data = node_type_data.get(&node.id);
 
-  if outputs.is_err() {
-    return Err(format!(
-      "Outputs could not be calculated: {}",
-      outputs.unwrap_err()
-    ));
+  if data.is_none() {
+    return Err(format!("Data for node not found"));
   }
-  let outputs = outputs.unwrap();
+  let (_, _, outputs) = data.unwrap();
 
-  Ok(outputs)
+  return Ok(outputs.clone());
 }
 
 #[tauri::command]
@@ -289,28 +284,23 @@ pub fn get_node_inputs(
   node: Node,
 ) -> Result<HashMap<String, NodeTypeInput>, String> {
   let state = state.0.lock().unwrap();
-  let node_registration = state.node_register.get(&node.node_type);
-  if node_registration.is_none() {
-    return Err(String::from("Could not find relevant registration"));
+  let res = state
+    .store
+    .pipeline
+    .gen_graph_new(&state.store, &state.node_register);
+  if res.is_err() {
+    return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }
-  let node_registration = node_registration.unwrap();
+  let (node_type_data, _, _) = res.unwrap();
 
-  let inputs = (node_registration.get_properties)(
-    node.id,
-    &node.properties,
-    &state.store,
-    &state.node_register,
-  );
+  let data = node_type_data.get(&node.id);
 
-  if inputs.is_err() {
-    return Err(format!(
-      "Inputs could not be calculated: {}",
-      inputs.unwrap_err()
-    ));
+  if data.is_none() {
+    return Err(format!("Data for node not found"));
   }
-  let inputs = inputs.unwrap();
+  let (_, inputs, _) = data.unwrap();
 
-  Ok(inputs)
+  return Ok(inputs.clone());
 }
 
 #[tauri::command]

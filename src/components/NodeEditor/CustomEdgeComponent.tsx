@@ -61,6 +61,7 @@ export default function CustomEdgeComponent({
     markerEndId,
 }) {
 
+
     let edge_data: EdgeData = data;
 
     let controlX = (sourceX + targetX) / 2;
