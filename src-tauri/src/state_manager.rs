@@ -19,8 +19,4 @@ impl SharedState {
   pub fn set_file_written(&mut self, x: bool) {
     self.file_written = x;
   }
-
-  pub fn get_prepopulated_node_register() {
-    
-  }
 }

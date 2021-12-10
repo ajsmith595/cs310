@@ -107,7 +107,13 @@ fn get_output(
         return Err(format!("Cannot get handle for media"));
       }
       let gst1 = gst1.unwrap();
-      str = format!("{} {}. ! {}.", str, gst1, gst2);
+      str = format!(
+        "{} {}. ! {} name={} ! fakesink",
+        str,
+        gst1,
+        stream_type.stream_linker(),
+        gst2
+      );
     }
   }
   return Ok(str);

@@ -16,6 +16,7 @@ use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
 use crate::file_manager_thread::{file_manager_thread, APPLICATION_JSON_PATH};
+use crate::pipeline_executor_thread::pipeline_executor_thread;
 use crate::{
   classes::{
     clip::{ClipIdentifier, CompositedClip, SourceClip},
@@ -45,6 +46,7 @@ extern crate serde_json;
 
 mod classes;
 mod file_manager_thread;
+mod pipeline_executor_thread;
 mod state_manager;
 mod tauri_commands;
 
@@ -120,15 +122,23 @@ fn main() {
     .setup(move |app| {
       let window = app.get_window("main").unwrap();
 
-      let shared_state = shared_state_clone.clone();
-      let temp = shared_state.clone();
+      let temp = shared_state_clone.clone();
       let x = &mut temp.lock().unwrap();
       x.window = Some(window);
       drop(x);
 
-      thread::spawn(move || {
-        file_manager_thread(shared_state);
-      });
+      {
+        let shared_state = shared_state_clone.clone();
+        thread::spawn(move || {
+          file_manager_thread(shared_state);
+        });
+      }
+      {
+        let shared_state = shared_state_clone.clone();
+        thread::spawn(move || {
+          pipeline_executor_thread(shared_state);
+        });
+      };
 
       Ok(())
     })

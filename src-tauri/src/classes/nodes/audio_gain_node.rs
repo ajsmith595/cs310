@@ -79,18 +79,23 @@ pub fn get_io(
 > {
   let inputs = default_properties();
   let mut outputs = HashMap::new();
+  let mut pipeable_type = PipeableType {
+    video: 0,
+    audio: 1,
+    subtitles: 0,
+  };
   let piped_input = piped_inputs.get(INPUTS::MEDIA);
-  if piped_input.is_none() {
-    return Err(format!("No input!"));
+  if let Some(piped_input) = piped_input {
+    pipeable_type = piped_input.stream_type;
   }
-  let piped_input = piped_input.unwrap();
+
   outputs.insert(
     OUTPUTS::OUTPUT.to_string(),
     NodeTypeOutput {
       name: OUTPUTS::OUTPUT.to_string(),
       description: "The gained media".to_string(),
       display_name: "Output".to_string(),
-      property_type: piped_input.stream_type,
+      property_type: pipeable_type,
     },
   );
 
@@ -123,7 +128,11 @@ pub fn get_output(
     return Err(format!("No media input!"));
   }
   let media = media.unwrap();
-  let gain = properties.get(INPUTS::GAIN).unwrap();
+  let gain = properties.get(INPUTS::GAIN);
+  if gain.is_none() {
+    return Err(format!("No gain input!"));
+  }
+  let gain = gain.unwrap();
   if let Value::Number(gain) = gain {
     let gst_string = String::from("");
 

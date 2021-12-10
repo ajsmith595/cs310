@@ -164,7 +164,13 @@ fn get_output(
             return Err(format!("Cannot get handle for media"));
           }
           let gst2 = gst2.unwrap();
-          str = format!("{} {}. ! {}.", str, gst1, gst2);
+          str = format!(
+            "{} {}. ! {} name={}",
+            str,
+            gst1,
+            stream_type.stream_linker(),
+            gst2
+          );
         }
       }
     }
@@ -188,7 +194,11 @@ fn get_output(
             return Err(format!("Cannot get handle for media"));
           }
           let gst2 = gst2.unwrap();
-          str = format!("{} {}. ! {}.", str, gst1, gst2);
+          let mut stream_linker = stream_type.stream_linker();
+          // if *stream_type == PipeableStreamType::Video {
+          //   stream_linker = format!("h264parse ! nvh264dec ! {}", stream_linker);
+          // }
+          str = format!("{} {}. ! {} name={}", str, gst1, stream_linker, gst2);
         }
       }
     }

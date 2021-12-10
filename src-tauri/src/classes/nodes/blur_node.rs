@@ -131,7 +131,11 @@ fn get_output(
     return Err(format!("No media input!"));
   }
   let media = media.unwrap();
-  let sigma = properties.get(INPUTS::SIGMA).unwrap();
+  let sigma = properties.get(INPUTS::SIGMA);
+  if sigma.is_none() {
+    return Err(format!("Sigma value not specified"));
+  }
+  let sigma = sigma.unwrap();
   if let Value::Number(sigma) = sigma {
     let gst_string = String::from("");
 
@@ -158,7 +162,7 @@ fn get_output(
 
     for i in 0..output.stream_type.video {
       gst_string = format!(
-        "{} {}. ! gaussianblur sigma={} ! {}.",
+        "{} {}. ! gaussianblur sigma={} ! videoconvert name={}",
         gst_string,
         media.get_gst_handle(&PipeableStreamType::Video, i).unwrap(),
         sigma,

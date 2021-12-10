@@ -86,7 +86,7 @@ pub fn get_io(
   ),
   String,
 > {
-  let inputs = default_properties();
+  let mut inputs = default_properties();
   let mut stream_type = PipeableType {
     video: i32::MAX,
     audio: i32::MAX,
@@ -95,8 +95,15 @@ pub fn get_io(
 
   let piped_input1 = piped_inputs.get(INPUTS::MEDIA1);
   if let Some(piped_input1) = piped_input1 {
-    stream_type = piped_input1.stream_type;
+    stream_type = PipeableType::min(&piped_input1.stream_type, &stream_type);
   }
+  let piped_input2 = piped_inputs.get(INPUTS::MEDIA2);
+  if let Some(piped_input2) = piped_input2 {
+    stream_type = PipeableType::min(&piped_input2.stream_type, &stream_type);
+  }
+
+  // inputs.get_mut(INPUTS::MEDIA2).unwrap().property_type =
+  //   Type::Pipeable(stream_type.clone(), stream_type.clone());
 
   let mut outputs = HashMap::new();
   outputs.insert(
@@ -162,7 +169,7 @@ fn get_output(
       return Err(format!("Invalid types to link by"));
     }
     gst_string = format!(
-      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
+      "{} concat name={} ! videoconvert name={} {}. ! videoconvert name={} {}. ! videoconvert name={}",
       gst_string,
       id,
       output_gst.unwrap(),

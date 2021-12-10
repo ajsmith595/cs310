@@ -224,6 +224,7 @@ impl Pipeline {
         node_register,
       );
       if gst_string.is_err() {
+        println!("get_output failed: {}", gst_string.unwrap_err());
         do_return = false;
       } else {
         let gst_string = gst_string.unwrap();

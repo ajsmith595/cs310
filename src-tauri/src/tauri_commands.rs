@@ -2,8 +2,8 @@ use std::{collections::HashMap, fs::File, io::Write};
 
 use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
 use gstreamer_pbutils::{
-  Discoverer, DiscovererAudioInfo, DiscovererStreamInfo, DiscovererSubtitleInfo,
-  DiscovererVideoInfo,
+  traits::DiscovererStreamInfoExt, Discoverer, DiscovererAudioInfo, DiscovererStreamInfo,
+  DiscovererSubtitleInfo, DiscovererVideoInfo,
 };
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
@@ -114,6 +114,20 @@ pub async fn get_file_info(
   for video_stream in video_streams {
     let video_info = video_stream.clone().downcast::<DiscovererVideoInfo>();
     if let Ok(video_info) = video_info {
+      let mut caps = video_stream.caps().unwrap();
+      for x in caps.iter() {
+        println!("Caps stuff (iter): {:#?}", x);
+
+        println!("Name: {}", x.name());
+        for field in x.fields() {
+          println!("Field: {}", field);
+        }
+      }
+
+      println!("CAPS: {:#?}", caps);
+      caps.simplify();
+      println!("CAPS (simplified): {:#?}", caps);
+
       let mut video_stream_hm = serde_json::Map::new();
       let width = video_info.width();
       let height = video_info.height();

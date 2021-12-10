@@ -71,6 +71,14 @@ impl PipeableType {
       &PipeableStreamType::Subtitles => self.subtitles,
     }
   }
+
+  pub fn min(stream1: &PipeableType, stream2: &PipeableType) -> PipeableType {
+    return PipeableType {
+      video: std::cmp::min(stream1.video, stream2.video),
+      audio: std::cmp::min(stream1.audio, stream2.audio),
+      subtitles: std::cmp::min(stream1.subtitles, stream2.subtitles),
+    };
+  }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -96,7 +104,7 @@ impl PipedType {
     }
   }
 }
-
+#[derive(PartialEq)]
 pub enum PipeableStreamType {
   Video,
   Audio,
@@ -109,6 +117,14 @@ impl PipeableStreamType {
       PipeableStreamType::Audio => String::from("audio"),
       PipeableStreamType::Subtitles => String::from("subtitles"),
     }
+  }
+
+  pub fn stream_linker(&self) -> String {
+    String::from(match &self {
+      &PipeableStreamType::Video => "videoconvert",
+      &PipeableStreamType::Audio => "audioconvert",
+      &PipeableStreamType::Subtitles => "subparse",
+    })
   }
 }
 
@@ -163,6 +179,7 @@ impl PipedType {
     }
     let num = to.get_number_of_streams(stream_type);
 
+    let stream_linker = stream_type.stream_linker();
     let mut str = String::from("");
     for i in 0..num {
       let gst1 = from.get_gst_handle(stream_type, i);
@@ -171,7 +188,8 @@ impl PipedType {
         return None;
       }
       let (gst1, gst2) = (gst1.unwrap(), gst2.unwrap());
-      str = format!("{} {}. ! {}.", str, gst1, gst2);
+
+      str = format!("{} {}. ! {} name={}", str, gst1, stream_linker, gst2);
     }
     return Some(str);
   }
