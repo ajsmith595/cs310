@@ -2,7 +2,7 @@ use std::{
   borrow::{Borrow, BorrowMut},
   collections::HashMap,
   hash::Hash,
-  sync::mpsc,
+  sync::{mpsc, Arc, Mutex},
 };
 
 use gstreamer::{glib, prelude::*};
@@ -15,6 +15,7 @@ use petgraph::{
 };
 
 use bimap::BiMap;
+use gstreamer::ElementFactory;
 use serde_json::Value;
 
 use crate::classes::{
@@ -304,9 +305,67 @@ impl Pipeline {
     let main_loop = glib::MainLoop::new(None, false);
 
     println!("Pipeline: {}", pipeline);
+
+    // Parse the pipeline we want to probe from a static in-line string.
+    // Here we give our audiotestsrc a name, so we can retrieve that element
+    // from the resulting pipeline.
+    let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+    let pipeline = pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap();
+
+    let mut input_name = String::new();
+
+    std::io::stdin().read_line(&mut input_name).unwrap();
+    input_name = String::from(input_name.as_str().trim());
+
+    // Get the audiotestsrc element from the pipeline that GStreamer
+    // created for us while parsing the launch syntax above.
+    let src = pipeline.by_name(input_name.as_str()).unwrap();
+    // Get the audiotestsrc's src-pad.
+    let src_pad = src.static_pad("sink").unwrap();
+    // Add a probe handler on the audiotestsrc's src-pad.
+    // This handler gets called for every buffer that passes the pad we probe.
+    let mut frame = Arc::new(Mutex::new(0));
+    src_pad.add_probe(gstreamer::PadProbeType::BUFFER, move |pad, probe_info| {
+      let mut x = frame.lock().unwrap();
+      *x += 1;
+      println!("Frame number: {}", *x);
+      gstreamer::PadProbeReturn::Ok
+    });
+
+    pipeline
+      .set_state(gstreamer::State::Playing)
+      .expect("Unable to set the pipeline to the `Playing` state");
+
+    let bus = pipeline.bus().unwrap();
+    for msg in bus.iter_timed(gstreamer::ClockTime::NONE) {
+      use gstreamer::MessageView;
+
+      match msg.view() {
+        MessageView::Eos(..) => break,
+        MessageView::Error(err) => {
+          println!(
+            "Error from {:?}: {} ({:?})",
+            err.src().map(|s| s.path_string()),
+            err.error(),
+            err.debug()
+          );
+          break;
+        }
+        _ => (),
+      }
+    }
+
+    pipeline
+      .set_state(gstreamer::State::Null)
+      .expect("Unable to set the pipeline to the `Null` state");
+
+    Ok(())
+
     // This creates a pipeline by parsing the gst-launch pipeline syntax.
 
-    let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+    /*let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+    let pipeline = pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap();
+
     let bus = pipeline.bus().unwrap();
 
     let res = pipeline.set_state(gstreamer::State::Playing);
@@ -331,6 +390,32 @@ impl Pipeline {
     let (tx, rx) = mpsc::channel();
 
     let main_loop_clone = main_loop.clone();
+
+    let mut input_name = String::new();
+
+    std::io::stdin().read_line(&mut input_name).unwrap();
+    input_name = String::from(input_name.as_str().trim());
+
+    let target_element = pipeline.by_name(input_name.as_str());
+    if let Some(target_element) = target_element {
+      let target_src = target_element.static_pad("sink").unwrap();
+
+      target_src
+        .add_probe(gstreamer::PadProbeType::BUFFER, |_, probe_info| {
+          // Interpret the data sent over the pad as one buffer
+          if let Some(gstreamer::PadProbeData::Buffer(ref buffer)) = probe_info.data {
+            println!("Offset: {}", buffer.offset());
+          } else {
+            println!("Nope!");
+          }
+
+          gstreamer::PadProbeReturn::Ok
+        })
+        .unwrap();
+    } else {
+      println!("Nope!!!");
+    }
+
     bus
       .add_watch(move |_, msg| {
         use gstreamer::MessageView;
@@ -339,6 +424,7 @@ impl Pipeline {
         match msg.view() {
           MessageView::Eos(..) => {
             main_loop.quit();
+
             tx.send(Ok(()));
           }
           MessageView::Error(err) => {
@@ -351,7 +437,7 @@ impl Pipeline {
             main_loop.quit();
             tx.send(Err(()));
           }
-          _ => (),
+          _ => {}
         };
 
         glib::Continue(true)
@@ -369,6 +455,7 @@ impl Pipeline {
     let res = rx.recv().unwrap();
 
     res
+    */
   }
 
   pub fn get_video_thumbnail(path: String, id: String) {

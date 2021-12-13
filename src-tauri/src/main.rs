@@ -51,6 +51,11 @@ mod state_manager;
 mod tauri_commands;
 
 fn main() {
+  gstreamer::init().expect("GStreamer could not be initialised");
+
+  let pipeline = String::from("filesrc location=\"D:/Data/Libraries/Videos/Samples/sample1.mp4\" ! qtdemux ! avdec_h264 ! videorate name=test ! fakesink");
+  Pipeline::execute_pipeline(pipeline, 60).unwrap();
+
   let store;
 
   let mut path = None;
@@ -91,8 +96,6 @@ fn main() {
   if res.is_err() {
     println!("Result (error): {};", res.unwrap_err());
   }
-
-  gstreamer::init().expect("GStreamer could not be initialised");
 
   let (tx, rx) = mpsc::channel();
   let shared_state = SharedState {

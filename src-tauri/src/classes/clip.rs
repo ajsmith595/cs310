@@ -80,9 +80,7 @@ impl SourceClip {
   }
 
   pub fn get_file_info(filename: String) -> Result<ClipInfo, String> {
-    println!("Filename: {}", filename);
     let file_location = format!("file:///{}", filename.replace("\\", "/"));
-    println!("Location: {}", file_location);
 
     let discoverer = Discoverer::new(gstreamer::ClockTime::from_seconds(10)).unwrap();
 
