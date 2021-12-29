@@ -4,7 +4,7 @@ use gstreamer_pbutils::{
 };
 use serde_json::Value;
 
-use crate::classes::node::PipeableType;
+use crate::{classes::node::PipeableType, file_manager_thread::APPLICATION_MEDIA_OUTPUT};
 
 use super::{
   node::{PipeableStreamType, Type},
@@ -191,5 +191,17 @@ impl CompositedClip {
       stream_type.to_string(),
       index,
     )
+  }
+  pub fn get_output_location(&self) -> String {
+    self.get_output_location_ext(true)
+  }
+  pub fn get_output_location_ext(&self, with_extension: bool) -> String {
+    format!(
+      "{}\\composited-clip-{}{}",
+      APPLICATION_MEDIA_OUTPUT(),
+      self.id,
+      if with_extension { ".mp4" } else { "" }
+    )
+    .replace("\\", "/")
   }
 }

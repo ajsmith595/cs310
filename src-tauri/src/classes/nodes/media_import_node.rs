@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::classes::{
+  abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
   clip::{ClipIdentifier, ClipType},
   node::{
     self, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType,
@@ -116,7 +117,9 @@ fn get_output(
   composited_clip_types: &HashMap<String, PipedType>,
   store: &Store,
   node_register: &NodeRegister,
-) -> Result<String, String> {
+) -> Result<AbstractPipeline, String> {
+  let mut pipeline = AbstractPipeline::new();
+
   let io = get_io(
     node_id.clone(),
     properties,
@@ -144,33 +147,28 @@ fn get_output(
     stream_type: output.property_type,
     property_name: OUTPUTS::OUTPUT.to_string(),
   };
-
-  let mut str = String::from("");
   match clip_identifier.clip_type {
     ClipType::Source => {
       let clip = store.clips.source.get(&clip_identifier.id).unwrap();
       let clip_type = clip.get_clip_type();
 
-      for stream_type in &[
-        PipeableStreamType::Video,
-        PipeableStreamType::Audio,
-        PipeableStreamType::Subtitles,
-      ] {
-        let num = clip_type.of_type(stream_type);
+      for (stream_type, num) in clip_type.get_map() {
         for i in 0..num {
-          let gst1 = clip.get_gstreamer_id(stream_type, i);
-          let gst2 = output.get_gst_handle(stream_type, i);
+          let gst1 = clip.get_gstreamer_id(&stream_type, i);
+          let gst2 = output.get_gst_handle(&stream_type, i);
           if gst2.is_none() {
             return Err(format!("Cannot get handle for media"));
           }
           let gst2 = gst2.unwrap();
-          str = format!(
-            "{} {}. ! {} name={}",
-            str,
-            gst1,
-            stream_type.stream_linker(),
-            gst2
-          );
+
+          let stream_linker = stream_type.stream_linker();
+          let stream_linker_node = AbstractNode::new(stream_linker.as_str(), Some(gst2.clone()));
+          let link = AbstractLink {
+            from: AbstractLinkEndpoint::new(gst1),
+            to: AbstractLinkEndpoint::new(stream_linker_node.id.clone()),
+          };
+          pipeline.add_node(stream_linker_node);
+          pipeline.link_abstract(link);
         }
       }
     }
@@ -181,30 +179,29 @@ fn get_output(
         .stream_type;
 
       let clip = store.clips.composited.get(&clip_identifier.id).unwrap();
-      for stream_type in &[
-        PipeableStreamType::Video,
-        PipeableStreamType::Audio,
-        PipeableStreamType::Subtitles,
-      ] {
-        let num = clip_type.of_type(stream_type);
+      for (stream_type, num) in clip_type.get_map() {
         for i in 0..num {
-          let gst1 = clip.get_gstreamer_id(stream_type, i);
-          let gst2 = output.get_gst_handle(stream_type, i);
+          let gst1 = clip.get_gstreamer_id(&stream_type, i);
+          let gst2 = output.get_gst_handle(&stream_type, i);
           if gst2.is_none() {
             return Err(format!("Cannot get handle for media"));
           }
           let gst2 = gst2.unwrap();
-          let mut stream_linker = stream_type.stream_linker();
-          // if *stream_type == PipeableStreamType::Video {
-          //   stream_linker = format!("h264parse ! nvh264dec ! {}", stream_linker);
-          // }
-          str = format!("{} {}. ! {} name={}", str, gst1, stream_linker, gst2);
+
+          let stream_linker = stream_type.stream_linker();
+          let stream_linker_node = AbstractNode::new(stream_linker.as_str(), Some(gst2.clone()));
+          let link = AbstractLink {
+            from: AbstractLinkEndpoint::new(gst1),
+            to: AbstractLinkEndpoint::new(stream_linker_node.id.clone()),
+          };
+          pipeline.add_node(stream_linker_node);
+          pipeline.link_abstract(link);
         }
       }
     }
   };
 
-  return Ok(str);
+  return Ok(pipeline);
 }
 
 pub fn media_import_node() -> NodeType {

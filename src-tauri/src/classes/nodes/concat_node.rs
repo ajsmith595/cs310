@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::classes::{
+  abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
   clip::{ClipIdentifier, ClipType},
   global::uniq_id,
   node::{
@@ -125,7 +126,9 @@ fn get_output(
   composited_clip_types: &HashMap<String, PipedType>,
   store: &Store,
   node_register: &NodeRegister,
-) -> Result<String, String> {
+) -> Result<AbstractPipeline, String> {
+  let mut pipeline = AbstractPipeline::new();
+
   let io = get_io(
     node_id.clone(),
     properties,
@@ -156,71 +159,67 @@ fn get_output(
     io: InputOrOutput::Output,
   };
 
-  let mut gst_string = String::from("");
+  for (stream_type, num) in output.stream_type.get_map() {
+    for i in 0..num {
+      let id = uniq_id();
 
-  for i in 0..output.stream_type.video {
-    let id = uniq_id();
+      let output_gst = output.get_gst_handle(&stream_type, i);
+      let media1_gst = media1.get_gst_handle(&stream_type, i);
+      let media2_gst = media2.get_gst_handle(&stream_type, i);
 
-    let output_gst = output.get_gst_handle(&PipeableStreamType::Video, i);
-    let media1_gst = media1.get_gst_handle(&PipeableStreamType::Video, i);
-    let media2_gst = media2.get_gst_handle(&PipeableStreamType::Video, i);
+      if output_gst.is_none() || media1_gst.is_none() || media2_gst.is_none() {
+        return Err(format!("Invalid types to link by"));
+      }
 
-    if output_gst.is_none() || media1_gst.is_none() || media2_gst.is_none() {
-      return Err(format!("Invalid types to link by"));
+      let output_gst = output_gst.unwrap();
+      let media1_gst = media1_gst.unwrap();
+      let media2_gst = media2_gst.unwrap();
+      {
+        let concat_node = AbstractNode::new("concat", Some(id.clone()));
+        let stream_linker_node =
+          AbstractNode::new(&stream_type.stream_linker(), Some(output_gst.clone()));
+
+        pipeline.add_node(concat_node);
+        pipeline.add_node(stream_linker_node);
+
+        pipeline.link_abstract(AbstractLink {
+          from: AbstractLinkEndpoint::new(id.clone()),
+          to: AbstractLinkEndpoint::new(output_gst.clone()),
+        });
+
+        let queue_node1 = AbstractNode::new("queue", None);
+        let queue_node2 = AbstractNode::new("queue", None);
+
+        pipeline.link_abstract(AbstractLink {
+          from: AbstractLinkEndpoint::new(media1_gst.clone()),
+          to: AbstractLinkEndpoint::new(queue_node1.id.clone()),
+        });
+
+        pipeline.link_abstract(AbstractLink {
+          from: AbstractLinkEndpoint::new(queue_node1.id.clone()),
+          to: AbstractLinkEndpoint::new(id.clone()),
+        });
+
+        pipeline.link_abstract(AbstractLink {
+          from: AbstractLinkEndpoint::new(media2_gst.clone()),
+          to: AbstractLinkEndpoint::new(queue_node2.id.clone()),
+        });
+
+        pipeline.link_abstract(AbstractLink {
+          from: AbstractLinkEndpoint::new(queue_node2.id.clone()),
+          to: AbstractLinkEndpoint::new(id.clone()),
+        });
+
+        pipeline.add_node(queue_node1);
+        pipeline.add_node(queue_node2);
+      }
     }
-    gst_string = format!(
-      "{} concat name={} ! videoconvert name={} {}. ! videoconvert name={} {}. ! videoconvert name={}",
-      gst_string,
-      id,
-      output_gst.unwrap(),
-      media1_gst.unwrap(),
-      id,
-      media2_gst.unwrap(),
-      id,
-    );
   }
-
-  for i in 0..output.stream_type.audio {
-    let id = uniq_id();
-    gst_string = format!(
-      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
-      gst_string,
-      id,
-      output
-        .get_gst_handle(&PipeableStreamType::Audio, i)
-        .unwrap(),
-      media1
-        .get_gst_handle(&PipeableStreamType::Audio, i)
-        .unwrap(),
-      id,
-      media2
-        .get_gst_handle(&PipeableStreamType::Audio, i)
-        .unwrap(),
-      id,
-    );
-  }
-
-  for i in 0..output.stream_type.subtitles {
-    let id = uniq_id();
-    gst_string = format!(
-      "{} concat name={} ! {}. {}. ! {}. {}. ! {}.",
-      gst_string,
-      id,
-      output
-        .get_gst_handle(&PipeableStreamType::Subtitles, i)
-        .unwrap(),
-      media1
-        .get_gst_handle(&PipeableStreamType::Subtitles, i)
-        .unwrap(),
-      id,
-      media2
-        .get_gst_handle(&PipeableStreamType::Subtitles, i)
-        .unwrap(),
-      id,
-    );
-  }
-
-  return Ok(gst_string);
+  // println!(
+  //   "\nPipeline for concat: {}\n",
+  //   pipeline.to_gstreamer_pipeline()
+  // );
+  return Ok(pipeline);
 }
 
 pub fn concat_node() -> NodeType {

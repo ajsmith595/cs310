@@ -322,6 +322,7 @@ pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Resul
   let mut state = state.0.lock().unwrap();
   state.store.nodes.insert(node.id.clone(), node.clone());
   state.file_written = false;
+  state.pipeline_executed = false;
   Ok(())
 }
 
@@ -330,6 +331,7 @@ pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Re
   let mut state = state.0.lock().unwrap();
   state.store = store.clone();
   state.file_written = false;
+  state.pipeline_executed = false;
 
   // let pipeline_result = state
   //   .stored_state

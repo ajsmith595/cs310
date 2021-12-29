@@ -2,82 +2,213 @@ use core::time;
 use std::{
   collections::HashMap,
   fs,
+  path::Path,
+  process::Command,
   sync::{mpsc, Arc, Mutex},
   thread,
 };
 
 use crate::{
-  classes::{global::uniq_id, pipeline::Pipeline},
+  classes::{
+    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
+    global::uniq_id,
+    node::PipeableStreamType,
+    pipeline::Pipeline,
+  },
+  file_manager_thread::APPLICATION_MEDIA_OUTPUT,
   state_manager::SharedState,
 };
 
+#[derive(Serialize)]
+struct VideoPreviewSend {
+  pub output_directory_path: String,
+  pub segment_duration: i32,
+}
+
 pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
+  let mut path = None;
+  match dirs::data_dir() {
+    Some(p) => {
+      path = Some(p.join(APPLICATION_MEDIA_OUTPUT()));
+    }
+    None => println!("Cannot get data directory!"),
+  }
+  let path = path.unwrap();
+
   loop {
     let x = shared_state.lock().unwrap();
     let rx = &x.thread_stopper;
+
     match rx.try_recv() {
       Ok(_) | Err(mpsc::TryRecvError::Disconnected) => {
         println!("Thread terminating");
-        break;
+        //break;
+        return;
       }
       Err(mpsc::TryRecvError::Empty) => {
-        let pipeline = x.store.pipeline.gen_graph_new(&x.store, &x.node_register);
-        let clips = x.store.clips.clone();
-        drop(x);
-        if let Ok((node_type_data, composited_clip_data, output)) = pipeline {
-          if let Some(output) = output {
-            let mut output = output.trim().to_string();
-            if output.len() > 0 {
-              for (id, clip) in clips.source {
-                println!("Clip info: {:#?}", clip.info);
-                let name = uniq_id();
-                let mut new_str = format!(
-                  "filesrc location=\"{}\" ! qtdemux name={}",
-                  clip.file_location.replace("\\", "/"),
-                  name.clone()
-                );
-                if let Some(info) = clip.info {
-                  for i in 0..info.video_streams.len() {
-                    new_str = format!(
-                      "{} {}.video_{} ! h264parse ! nvh264dec ! videoconvert name=source-clip-{}-video-{}",
-                      new_str,
-                      name.clone(),
-                      i,
-                      id.clone(),
-                      i
-                    );
+        if !x.pipeline_executed {
+          let mut pipeline = x.store.pipeline.gen_graph_new(&x.store, &x.node_register);
+          let clips = x.store.clips.clone();
+          drop(x);
+          if let Ok((node_type_data, composited_clip_data, output)) = pipeline {
+            if let Some(mut output) = output {
+              if output.nodes.len() > 0 {
+                for (id, clip) in clips.source {
+                  let mut props = HashMap::new();
+                  props.insert(
+                    "location".to_string(),
+                    format!("\"{}\"", clip.file_location.replace("\\", "/")),
+                  );
+                  let filesrc_node = AbstractNode::new_with_props("filesrc", None, props);
+
+                  let qtdemux_node = AbstractNode::new("qtdemux", None);
+
+                  output.link(&filesrc_node, &qtdemux_node);
+
+                  if let Some(info) = clip.info {
+                    for i in 0..info.video_streams.len() {
+                      let decoder_node = AbstractNode::new_decoder(&PipeableStreamType::Video);
+                      let videoconvert_node = AbstractNode::new(
+                        "videoconvert",
+                        Some(format!("source-clip-{}-video-{}", id.clone(), i)),
+                      );
+
+                      output.link_abstract(AbstractLink {
+                        from: AbstractLinkEndpoint::new_with_property(
+                          qtdemux_node.id.clone(),
+                          format!("video_{}", i),
+                        ),
+                        to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
+                      });
+                      output.link(&decoder_node, &videoconvert_node);
+
+                      output.add_node(decoder_node);
+                      output.add_node(videoconvert_node);
+                    }
+                    for i in 0..info.audio_streams.len() {
+                      let decoder_node = AbstractNode::new_decoder(&PipeableStreamType::Audio);
+                      let audioconvert_node = AbstractNode::new(
+                        "audioconvert",
+                        Some(format!("source-clip-{}-audio-{}", id.clone(), i)),
+                      );
+
+                      output.link_abstract(AbstractLink {
+                        from: AbstractLinkEndpoint::new_with_property(
+                          qtdemux_node.id.clone(),
+                          format!("audio_{}", i),
+                        ),
+                        to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
+                      });
+                      output.link(&decoder_node, &audioconvert_node);
+
+                      output.add_node(decoder_node);
+                      output.add_node(audioconvert_node);
+                    }
+                    for i in 0..info.subtitle_streams.len() {
+                      let decoder_node = AbstractNode::new_decoder(&PipeableStreamType::Subtitles);
+                      let subparse_node = AbstractNode::new(
+                        "subparse",
+                        Some(format!("source-clip-{}-subtitles-{}", id.clone(), i)),
+                      );
+
+                      output.link_abstract(AbstractLink {
+                        from: AbstractLinkEndpoint::new_with_property(
+                          qtdemux_node.id.clone(),
+                          format!("subtitles_{}", i),
+                        ),
+                        to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
+                      });
+                      output.link(&decoder_node, &subparse_node);
+
+                      output.add_node(decoder_node);
+                      output.add_node(subparse_node);
+                    }
                   }
-                  for i in 0..info.audio_streams.len() {
-                    new_str = format!(
-                      "{} {}.audio_{} ! audioconvert name=source-clip-{}-audio-{}",
-                      new_str,
-                      name.clone(),
-                      i,
-                      id.clone(),
-                      i
+
+                  output.add_node(filesrc_node);
+                  output.add_node(qtdemux_node);
+                }
+
+                let output = output.to_gstreamer_pipeline();
+                println!("Executing pipeline: {} ", output);
+                Pipeline::execute_pipeline(output, 60).unwrap();
+                println!("Pipeline executed!");
+
+                const SEGMENT_DURATION: i32 = 10;
+                for (id, clip) in clips.composited {
+                  if Path::new(&clip.get_output_location()).exists() {
+                    let mut command = Command::new("mp4fragment");
+                    command.args(&[
+                      clip.get_output_location(),
+                      format!("{}.tmp", clip.get_output_location()),
+                      // format!("--force-i-frame-sync"),
+                      // format!("all")
+                      String::from("--fragment-duration"),
+                      (SEGMENT_DURATION * 1000).to_string(),
+                    ]);
+                    println!("{:?}", command);
+
+                    let output = command.output().expect("failed to execute process");
+                    println!(
+                      "Output from command: {}",
+                      std::str::from_utf8(&output.stdout).unwrap()
                     );
-                  }
-                  for i in 0..info.subtitle_streams.len() {
-                    new_str = format!(
-                      "{} {}.subtitles_{} ! subparse name=source-clip-{}-subtitles-{}",
-                      new_str,
-                      name.clone(),
-                      i,
-                      id.clone(),
-                      i
+
+                    fs::rename(
+                      format!("{}.tmp", clip.get_output_location()),
+                      clip.get_output_location(),
+                    )
+                    .unwrap();
+
+                    if Path::new(&clip.get_output_location_ext(false)).exists() {
+                      fs::remove_dir_all(clip.get_output_location_ext(false)).unwrap();
+                    }
+                    fs::create_dir_all(format!("{}", clip.get_output_location_ext(false))).unwrap();
+
+                    let mut command = Command::new("mp4split");
+                    command.args(&[
+                      String::from("--init-segment"),
+                      format!("{}/init.mp4", clip.get_output_location_ext(false)),
+                      String::from("--media-segment"),
+                      format!(
+                        "{}/segment-%llu.%06llu.m4s",
+                        clip.get_output_location_ext(false)
+                      ),
+                      clip.get_output_location(),
+                      // String::from("--video"),
+                    ]);
+
+                    println!("{:?}", command);
+                    let output = command.output().expect("failed to execute process");
+                    println!(
+                      "Output from command: {}",
+                      std::str::from_utf8(&output.stdout).unwrap()
                     );
                   }
                 }
-                output = format!("{} {}", new_str, output);
+
+                let mut x = shared_state.lock().unwrap();
+                x.window
+                  .as_ref()
+                  .unwrap()
+                  .emit(
+                    "generated-preview",
+                    VideoPreviewSend {
+                      output_directory_path: APPLICATION_MEDIA_OUTPUT(),
+                      segment_duration: SEGMENT_DURATION,
+                    },
+                  )
+                  .unwrap();
+                x.pipeline_executed = true;
+                drop(x);
               }
-              println!("Executing pipeline: {} ", output);
-              Pipeline::execute_pipeline(output, 60);
-              println!("Pipeline executed!");
             }
           }
+        } else {
+          drop(x);
         }
       }
     }
-    thread::sleep(time::Duration::from_millis(20000));
+    thread::sleep(time::Duration::from_millis(1000));
   }
 }

@@ -8,14 +8,26 @@ use std::{
 
 use crate::state_manager::SharedState;
 
-pub const APPLICATION_JSON_PATH: &str = "AdamSmith\\VideoEditor\\pipeline.json";
+pub fn APPLICATION_DATA_ROOT() -> String {
+  let path = dirs::data_dir().unwrap();
+  format!(
+    "{}\\AdamSmith\\VideoEditor",
+    path.into_os_string().into_string().unwrap()
+  )
+}
+pub fn APPLICATION_MEDIA_OUTPUT() -> String {
+  format!("{}\\output", APPLICATION_DATA_ROOT())
+}
+pub fn APPLICATION_JSON_PATH() -> String {
+  format!("{}\\pipeline.json", APPLICATION_DATA_ROOT())
+}
 
 pub fn file_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
   let mut path = None;
   {
     match dirs::data_dir() {
       Some(p) => {
-        path = Some(p.join(APPLICATION_JSON_PATH.to_string()));
+        path = Some(p.join(APPLICATION_JSON_PATH()));
         let mut directory = path.clone().unwrap();
         directory.pop();
         if !directory.exists() {
@@ -47,7 +59,7 @@ pub fn file_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
             None => println!("No path to write to"),
           }
 
-          locked_state.set_file_written(true);
+          locked_state.file_written = true;
           drop(locked_state);
           // https://github.com/sdroege/gstreamer-rs/blob/master/examples/src/bin/events.rs
         }

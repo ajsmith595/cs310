@@ -6,12 +6,13 @@
 use std::{
   cell::Cell,
   collections::HashMap,
-  fs::File,
+  fs::{create_dir_all, File},
   io::Write,
   sync::{mpsc, Arc, Mutex},
   thread,
 };
 
+use file_manager_thread::APPLICATION_MEDIA_OUTPUT;
 use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
@@ -53,10 +54,16 @@ mod tauri_commands;
 fn main() {
   let store;
 
+  if let Some(directory) = dirs::data_dir() {
+    if !directory.join(APPLICATION_MEDIA_OUTPUT()).exists() {
+      create_dir_all(directory.join(APPLICATION_MEDIA_OUTPUT()));
+    }
+  }
+
   let mut path = None;
   match dirs::data_dir() {
     Some(p) => {
-      path = Some(p.join(APPLICATION_JSON_PATH.to_string()));
+      path = Some(p.join(APPLICATION_JSON_PATH()));
     }
     None => println!("Cannot get data directory!"),
   }
@@ -101,6 +108,7 @@ fn main() {
     window: None,
     node_register: register.clone(),
     thread_stopper: rx,
+    pipeline_executed: false,
   };
 
   let shared_state = Arc::new(Mutex::new(shared_state));

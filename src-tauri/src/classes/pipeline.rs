@@ -24,6 +24,7 @@ use crate::classes::{
 };
 
 use super::{
+  abstract_pipeline::AbstractPipeline,
   node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
   nodes::{media_import_node, output_node},
   store::Store,
@@ -83,7 +84,7 @@ impl Pipeline {
         ),
       >,
       HashMap<String, PipedType>,
-      Option<String>,
+      Option<AbstractPipeline>,
     ),
     String,
   > {
@@ -179,7 +180,7 @@ impl Pipeline {
 
     let sorted = sorted.unwrap();
 
-    let mut gstreamer_pipeline = String::from("");
+    let mut abstract_pipeline = AbstractPipeline::new();
     let mut do_return = true;
 
     // we can then iterate through the nodes in this order, assign the piped inputs to the dependent nodes before the dependent nodes' relevant method is called
@@ -215,7 +216,7 @@ impl Pipeline {
       // println!("Data for node {}: {:#?}", node.id.clone(), data.clone());
       node_type_data.insert(node.id.clone(), data);
 
-      let gst_string = (node_registration.get_output)(
+      let pipeline = (node_registration.get_output)(
         node.id.clone(),
         &node.properties,
         &piped_inputs,
@@ -223,12 +224,12 @@ impl Pipeline {
         store,
         node_register,
       );
-      if gst_string.is_err() {
-        println!("get_output failed: {}", gst_string.unwrap_err());
+      if pipeline.is_err() {
+        println!("get_output failed: {}", pipeline.unwrap_err());
         do_return = false;
       } else {
-        let gst_string = gst_string.unwrap();
-        gstreamer_pipeline = format!("{} {}", gstreamer_pipeline, gst_string);
+        let pipeline = pipeline.unwrap();
+        abstract_pipeline.merge(pipeline);
       }
 
       if node.node_type == output_node::IDENTIFIER {
@@ -280,7 +281,7 @@ impl Pipeline {
 
           let output = PipedType::gst_transfer_pipe(from_piped_type, to_piped_type).unwrap();
 
-          gstreamer_pipeline = format!("{} {}", gstreamer_pipeline, output);
+          abstract_pipeline.merge(output);
         }
       }
     }
@@ -291,11 +292,11 @@ impl Pipeline {
     // TODO: check piped inputs meet minimum requirements for the inputs generated
     // TODO: check if a piped input does not correspond to an input, then we need to delete the link from the store, since it's invalid now
 
-    let mut gstreamer_pipeline = Some(gstreamer_pipeline);
+    let mut abstract_pipeline = Some(abstract_pipeline);
     if !do_return {
-      gstreamer_pipeline = None;
+      abstract_pipeline = None;
     }
-    let output = (node_type_data, composited_clip_data, gstreamer_pipeline);
+    let output = (node_type_data, composited_clip_data, abstract_pipeline);
 
     return Ok(output);
   }

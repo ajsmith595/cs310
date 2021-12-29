@@ -112,7 +112,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
 
 
-        let border = "border-gray-900";
+        let border = "border-gray-900 border-opacity-80";
         if (EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) === this.props.data.node) {
             border = "border-pink-600";
         }

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::classes::{
+  abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
   clip::{ClipIdentifier, ClipType},
   node::{
     InputOrOutput, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType,
@@ -111,7 +112,8 @@ fn get_output(
   composited_clip_types: &HashMap<String, PipedType>,
   store: &Store,
   node_register: &NodeRegister,
-) -> Result<String, String> {
+) -> Result<AbstractPipeline, String> {
+  let mut pipeline = AbstractPipeline::new();
   let io = get_io(
     node_id.clone(),
     properties,
@@ -137,8 +139,6 @@ fn get_output(
   }
   let sigma = sigma.unwrap();
   if let Value::Number(sigma) = sigma {
-    let gst_string = String::from("");
-
     let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
     let output = PipedType {
       stream_type: output.property_type,
@@ -158,21 +158,35 @@ fn get_output(
     let (audio_passthrough, subtitle_passthrough) =
       (audio_passthrough.unwrap(), subtitle_passthrough.unwrap());
 
-    let mut gst_string = format!("{} {} ", audio_passthrough, subtitle_passthrough);
+    pipeline.merge(audio_passthrough);
+    pipeline.merge(subtitle_passthrough);
 
     for i in 0..output.stream_type.video {
-      gst_string = format!(
-        "{} {}. ! gaussianblur sigma={} ! videoconvert name={}",
-        gst_string,
-        media.get_gst_handle(&PipeableStreamType::Video, i).unwrap(),
-        sigma,
-        output
-          .get_gst_handle(&PipeableStreamType::Video, i)
-          .unwrap()
+      let mut props = HashMap::new();
+      props.insert("sigma".to_string(), sigma.as_f64().unwrap().to_string());
+      let gaussianblur_node = AbstractNode::new_with_props("gaussianblur", None, props);
+      let videoconvert_node = AbstractNode::new(
+        "videoconvert",
+        Some(
+          output
+            .get_gst_handle(&PipeableStreamType::Video, i)
+            .unwrap(),
+        ),
       );
+
+      pipeline.link_abstract(AbstractLink {
+        from: AbstractLinkEndpoint::new(
+          media.get_gst_handle(&PipeableStreamType::Video, i).unwrap(),
+        ),
+        to: AbstractLinkEndpoint::new(gaussianblur_node.id.clone()),
+      });
+      pipeline.link(&gaussianblur_node, &videoconvert_node);
+
+      pipeline.add_node(gaussianblur_node);
+      pipeline.add_node(videoconvert_node);
     }
 
-    return Ok(gst_string);
+    return Ok(pipeline);
   }
   return Err(format!(
     "Media is invalid type (gaussian blur): \n{:#?}\n\n",

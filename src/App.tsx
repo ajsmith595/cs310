@@ -136,7 +136,7 @@ class App extends React.Component<Props, State> {
 							<MediaImporter cache={this.cache} />
 						</Section>
 						<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
-							{/* <VideoPreview /> */}
+							<VideoPreview />
 						</Section>
 						<Section width="w-3/4" height="h-3/5" text="node editor" icon={faProjectDiagram} className="border-t-0" rightContent={<p>Group: {EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP)}</p>}>
 							<div className="relative h-full w-full">

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::Value;
 
 use crate::classes::{
+  abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
   clip::{ClipIdentifier, ClipType},
   node::{
     InputOrOutput, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType,
@@ -109,7 +110,7 @@ pub fn get_output(
   composited_clip_types: &HashMap<String, PipedType>,
   store: &Store,
   node_register: &NodeRegister,
-) -> Result<String, String> {
+) -> Result<AbstractPipeline, String> {
   let io = get_io(
     node_id.clone(),
     properties,
@@ -134,7 +135,9 @@ pub fn get_output(
   }
   let gain = gain.unwrap();
   if let Value::Number(gain) = gain {
-    let gst_string = String::from("");
+    let mut pipeline = AbstractPipeline::new();
+
+    //let gst_string = String::from("");
 
     let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
     let output = PipedType {
@@ -155,21 +158,32 @@ pub fn get_output(
     let (video_passthrough, subtitle_passthrough) =
       (video_passthrough.unwrap(), subtitle_passthrough.unwrap());
 
-    let mut gst_string = format!("{} {} ", video_passthrough, subtitle_passthrough);
+    pipeline.merge(video_passthrough);
+    pipeline.merge(subtitle_passthrough);
 
     for i in 0..output.stream_type.audio {
-      gst_string = format!(
-        "{} {}. ! volume volume={} ! {}.",
-        gst_string,
-        media.get_gst_handle(&PipeableStreamType::Audio, i).unwrap(),
-        gain,
-        output
-          .get_gst_handle(&PipeableStreamType::Audio, i)
-          .unwrap()
-      );
+      let mut props = HashMap::new();
+      props.insert("volume".to_string(), gain.as_f64().unwrap().to_string());
+      let volume_node = AbstractNode::new_with_props("volume", None, props);
+
+      pipeline.link_abstract(AbstractLink {
+        from: AbstractLinkEndpoint::new(
+          media.get_gst_handle(&PipeableStreamType::Audio, i).unwrap(),
+        ),
+        to: AbstractLinkEndpoint::new(volume_node.id.clone()),
+      });
+      pipeline.link_abstract(AbstractLink {
+        from: AbstractLinkEndpoint::new(volume_node.id.clone()),
+        to: AbstractLinkEndpoint::new(
+          output
+            .get_gst_handle(&PipeableStreamType::Audio, i)
+            .unwrap(),
+        ),
+      });
+      pipeline.add_node(volume_node);
     }
 
-    return Ok(gst_string);
+    return Ok(pipeline);
   }
   return Err(format!("Media is invalid type (audio gain blur)"));
 }
