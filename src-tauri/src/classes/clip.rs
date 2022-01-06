@@ -204,4 +204,8 @@ impl CompositedClip {
     )
     .replace("\\", "/")
   }
+
+  pub fn get_output_location_template(&self) -> String {
+    format!("{}/segment%06d.mp4", self.get_output_location_ext(false))
+  }
 }

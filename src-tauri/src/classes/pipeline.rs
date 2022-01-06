@@ -301,13 +301,19 @@ impl Pipeline {
     return Ok(output);
   }
 
-  pub fn execute_pipeline(pipeline: String, timeout: u32) -> Result<(), ()> {
+  pub fn execute_pipeline(
+    pipeline: String,
+    timeout: u32,
+    composited_clip_callback: Option<Box<dyn Fn(String, u32) + Send>>,
+  ) -> Result<(), ()> {
     let main_loop = glib::MainLoop::new(None, false);
 
     println!("Pipeline: {}", pipeline);
     // This creates a pipeline by parsing the gst-launch pipeline syntax.
 
     let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
+    let pipeline = pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap();
+
     let bus = pipeline.bus().unwrap();
 
     let res = pipeline.set_state(gstreamer::State::Playing);
@@ -317,19 +323,23 @@ impl Pipeline {
     }
 
     let pipeline_weak = pipeline.downgrade();
+
+    let main_loop_clone = main_loop.clone();
+    let (tx, rx) = mpsc::channel();
+
+    let tx_clone = tx.clone();
     glib::timeout_add_seconds(timeout, move || {
       let pipeline = match pipeline_weak.upgrade() {
         Some(pipeline) => pipeline,
         None => return glib::Continue(false),
       };
-
+      let main_loop = &main_loop_clone;
       println!("sending eos");
-      pipeline.send_event(gstreamer::event::Eos::new());
+      main_loop.quit();
 
+      tx_clone.send(Ok(()));
       glib::Continue(false)
     });
-
-    let (tx, rx) = mpsc::channel();
 
     let main_loop_clone = main_loop.clone();
     bus
@@ -339,7 +349,6 @@ impl Pipeline {
         let main_loop = &main_loop_clone;
         match msg.view() {
           MessageView::Eos(..) => {
-            main_loop.quit();
             tx.send(Ok(()));
           }
           MessageView::Error(err) => {
@@ -351,6 +360,30 @@ impl Pipeline {
             );
             main_loop.quit();
             tx.send(Err(()));
+          }
+          MessageView::Element(_) => {
+            if let Some(callback) = &composited_clip_callback {
+              let src = msg.src();
+              let structure = msg.structure();
+
+              if let (Some(src), Some(structure)) = (src, structure) {
+                let event = structure.name().to_string();
+
+                if event == String::from("splitmuxsink-fragment-closed") {
+                  let location = structure.get::<String>("location");
+                  let running_time = structure.get::<u64>("running-time");
+
+                  if let (Ok(location), Ok(running_time)) = (location, running_time) {
+                    let node_id = src.name().to_string();
+                    let mut segment = (running_time / 10000000000 - 1) as u32;
+                    if running_time % 10000000000 != 0 {
+                      segment = segment + 1; // deal with final case; the division will be automatically rounded down; this will mean we'll get the first and last segment being the same number, which is wrong.
+                    }
+                    callback(node_id, segment);
+                  }
+                }
+              }
+            }
           }
           _ => (),
         };
@@ -367,14 +400,18 @@ impl Pipeline {
 
     bus.remove_watch().unwrap();
 
-    let res = rx.recv().unwrap();
-
-    res
+    let res = rx.recv();
+    if res.is_ok() {
+      if res.unwrap().is_ok() {
+        return Ok(());
+      }
+    }
+    return Err(());
   }
 
   pub fn get_video_thumbnail(path: String, id: String) {
     let path = path.replace("\\", "/");
     let pipeline = format!("filesrc location=\"{}\" ! decodebin ! jpegenc snapshot=TRUE ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
-    Self::execute_pipeline(pipeline, 10).unwrap();
+    Self::execute_pipeline(pipeline, 10, None).unwrap();
   }
 }

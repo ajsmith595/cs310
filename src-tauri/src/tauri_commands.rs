@@ -18,6 +18,7 @@ use crate::{
     store::Store,
     ID,
   },
+  file_manager_thread::APPLICATION_MEDIA_OUTPUT,
   state_manager::SharedStateWrapper,
 };
 
@@ -344,4 +345,9 @@ pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Re
   // };
 
   Ok(())
+}
+
+#[tauri::command]
+pub fn get_output_directory() -> String {
+  APPLICATION_MEDIA_OUTPUT()
 }

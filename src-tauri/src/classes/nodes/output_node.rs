@@ -97,21 +97,29 @@ fn get_output(
   let clip = clip.unwrap();
 
   let gst_clip_id = format!("composited-clip-file-{}", clip.id);
-  // mp4mux with filesink
   {
-    let mp4mux = AbstractNode::new("mp4mux", Some(gst_clip_id.clone()));
-
     let mut props = HashMap::new();
-    props.insert("location".to_string(), clip.get_output_location());
+    props.insert("location".to_string(), clip.get_output_location_template());
+    props.insert("muxer-factory".to_string(), "mp4mux".to_string());
+    props.insert(
+      "muxer-properties".to_string(),
+      "\"properties,streamable=true,fragment-duration=1000\"".to_string(),
+    );
+    // makes it fragmented; one fragment each second (=1000 ms)
+    props.insert("async-finalize".to_string(), "true".to_string());
+    props.insert("max-size-time".to_string(), "10000000000".to_string()); // 10 seconds (measured in nanoseconds)
+    props.insert("send-keyframe-requests".to_string(), "true".to_string());
 
-    let filesink = AbstractNode::new_with_props("filesink", None, props);
+    let splitmuxsink_node =
+      AbstractNode::new_with_props("splitmuxsink", Some(gst_clip_id.clone()), props);
 
-    pipeline.link(&mp4mux, &filesink);
-    pipeline.add_node(mp4mux);
-    pipeline.add_node(filesink);
+    pipeline.add_node(splitmuxsink_node);
   }
 
   for (stream_type, num) in media.stream_type.get_map() {
+    if stream_type == PipeableStreamType::Video && num > 1 {
+      panic!("Currently, splitmuxsink only supports one video stream. The application has attempted to pipe in {} streams, which is unsupported", num);
+    }
     for i in 0..num {
       let gst1 = media.get_gst_handle(&stream_type, i);
       let gst2 = clip.get_gstreamer_id(&stream_type, i);
@@ -172,11 +180,15 @@ fn get_output(
           to: AbstractLinkEndpoint::new(encoder_input_id.clone()),
         };
         pipeline.link_abstract(link);
+
         let link = AbstractLink {
           from: AbstractLinkEndpoint::new(encoder_output_id.clone()),
           to: AbstractLinkEndpoint::new_with_property(
             gst_clip_id.clone(),
-            format!("{}_{}", stream_type.to_string(), i),
+            match stream_type {
+              PipeableStreamType::Video => String::from("video"),
+              _ => format!("{}_{}", stream_type.to_string(), i),
+            },
           ),
         };
         pipeline.link_abstract(link);

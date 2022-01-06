@@ -39,14 +39,4 @@ impl Store {
       medias: HashMap::new(),
     }
   }
-
-  // restructure:
-  /*
-  - one pipeline
-  - invisible links between composited clip outputs + where they are used.
-  - generate graph, and check for loops in that - that will cover everything
-  - every node will have a "group". Any connected node must have the same group
-  - when displaying a clip's node graph, only show the nodes with the same group
-  - positions will be on a per-group-basis
-  */
 }

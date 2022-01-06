@@ -125,7 +125,8 @@ fn main() {
       tauri_commands::update_node,
       tauri_commands::store_update,
       tauri_commands::get_file_info,
-      tauri_commands::get_node_inputs
+      tauri_commands::get_node_inputs,
+      tauri_commands::get_output_directory,
     ])
     .setup(move |app| {
       let window = app.get_window("main").unwrap();

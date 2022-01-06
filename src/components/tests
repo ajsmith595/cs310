@@ -1,0 +1,11 @@
+gst-launch-1.0.exe filesrc location=test_input.mp4 ! qtdemux ! h264parse ! mp4mux streamable=true fragment-duration=1000 ! filesink location=out3/out.mp4
+
+- generates fragmented file
+
+gst-launch-1.0.exe filesrc location=test_input.mp4 ! qtdemux ! h264parse ! splitmuxsink location=out3/video%02d.mp4 muxer-factory=mp4mux muxer-properties="properties,streamable=true,fragment-duration=1000" async-finalize=true
+
+- does not generate fragmented file
+
+ gst-launch-1.0.exe filesrc location=test_input.mp4 ! qtdemux ! h264parse ! splitmuxsink location=out3/video%02d.mp4 muxer-factory=mp4mux muxer-properties="properties,streamable=true,fragment-duration=1000" async-finalize=true max-size-time=10000000000 send-keyframe-requests=true
+
+ - generates fragmented files

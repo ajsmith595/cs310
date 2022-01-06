@@ -129,64 +129,32 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                   output.add_node(qtdemux_node);
                 }
 
-                let output = output.to_gstreamer_pipeline();
-                println!("Executing pipeline: {} ", output);
-                Pipeline::execute_pipeline(output, 60).unwrap();
-                println!("Pipeline executed!");
-
-                const SEGMENT_DURATION: i32 = 10;
-                for (id, clip) in clips.composited {
-                  if Path::new(&clip.get_output_location()).exists() {
-                    let mut command = Command::new("mp4fragment");
-                    command.args(&[
-                      clip.get_output_location(),
-                      format!("{}.tmp", clip.get_output_location()),
-                      // format!("--force-i-frame-sync"),
-                      // format!("all")
-                      String::from("--fragment-duration"),
-                      (SEGMENT_DURATION * 1000).to_string(),
-                    ]);
-                    println!("{:?}", command);
-
-                    let output = command.output().expect("failed to execute process");
-                    println!(
-                      "Output from command: {}",
-                      std::str::from_utf8(&output.stdout).unwrap()
-                    );
-
-                    fs::rename(
-                      format!("{}.tmp", clip.get_output_location()),
-                      clip.get_output_location(),
-                    )
-                    .unwrap();
-
-                    if Path::new(&clip.get_output_location_ext(false)).exists() {
-                      fs::remove_dir_all(clip.get_output_location_ext(false)).unwrap();
-                    }
-                    fs::create_dir_all(format!("{}", clip.get_output_location_ext(false))).unwrap();
-
-                    let mut command = Command::new("mp4split");
-                    command.args(&[
-                      String::from("--init-segment"),
-                      format!("{}/init.mp4", clip.get_output_location_ext(false)),
-                      String::from("--media-segment"),
-                      format!(
-                        "{}/segment-%llu.%06llu.m4s",
-                        clip.get_output_location_ext(false)
-                      ),
-                      clip.get_output_location(),
-                      // String::from("--video"),
-                    ]);
-
-                    println!("{:?}", command);
-                    let output = command.output().expect("failed to execute process");
-                    println!(
-                      "Output from command: {}",
-                      std::str::from_utf8(&output.stdout).unwrap()
-                    );
+                for (id, clip) in &clips.composited {
+                  let directory = clip.get_output_location_ext(false);
+                  if !Path::new(&directory).exists() {
+                    fs::create_dir_all(directory).unwrap();
                   }
                 }
 
+                let output = output.to_gstreamer_pipeline();
+                println!("Executing pipeline: {} ", output);
+                let shared_state_clone = shared_state.clone();
+                Pipeline::execute_pipeline(
+                  output,
+                  180,
+                  Some(Box::new(move |node_id, segment| {
+                    let shared_state_clone = shared_state_clone.clone();
+                    let shared_state_clone = shared_state_clone.lock().unwrap();
+                    let window = shared_state_clone.window.as_ref().unwrap();
+                    window
+                      .emit("video-chunk-ready", (node_id, segment))
+                      .unwrap();
+                  })),
+                )
+                .unwrap();
+                println!("Pipeline executed!");
+
+                const SEGMENT_DURATION: i32 = 10;
                 let mut x = shared_state.lock().unwrap();
                 x.window
                   .as_ref()
