@@ -8,18 +8,16 @@ use gstreamer_pbutils::{
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
 
-use crate::{
-  classes::{
-    clip::{CompositedClip, SourceClip},
-    global::uniq_id,
-    node::{Node, NodeTypeInput, NodeTypeOutput},
-    nodes::NodeRegister,
-    pipeline::Pipeline,
-    store::Store,
-    ID,
-  },
-  file_manager_thread::APPLICATION_MEDIA_OUTPUT,
+use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
+use cs310_shared::classes::{
+  clip::{CompositedClip, SourceClip},
+  global::uniq_id,
+  node::{Node, NodeTypeInput, NodeTypeOutput},
+  nodes::NodeRegister,
+  pipeline::Pipeline,
   state_manager::SharedStateWrapper,
+  store::Store,
+  ID,
 };
 
 #[tauri::command]

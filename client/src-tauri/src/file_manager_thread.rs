@@ -6,7 +6,7 @@ use std::{
   thread,
 };
 
-use crate::state_manager::SharedState;
+use cs310_shared::classes::state_manager::SharedState;
 
 pub fn APPLICATION_DATA_ROOT() -> String {
   let path = dirs::data_dir().unwrap();

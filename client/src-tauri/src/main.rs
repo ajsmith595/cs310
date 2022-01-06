@@ -18,17 +18,16 @@ use uuid::Uuid;
 
 use crate::file_manager_thread::{file_manager_thread, APPLICATION_JSON_PATH};
 use crate::pipeline_executor_thread::pipeline_executor_thread;
-use crate::{
-  classes::{
-    clip::{ClipIdentifier, CompositedClip, SourceClip},
-    global::uniq_id,
-    node::{Node, Position},
-    nodes::{concat_node, get_node_register, media_import_node, output_node},
-    pipeline::{Link, LinkEndpoint, Pipeline},
-    store::{ClipStore, Store},
-  },
-  state_manager::{SharedState, SharedStateWrapper},
+use cs310_shared::classes::{
+  clip::{ClipIdentifier, CompositedClip, SourceClip},
+  global::uniq_id,
+  node::{Node, Position},
+  nodes::{concat_node, get_node_register, media_import_node, output_node},
+  pipeline::{Link, LinkEndpoint, Pipeline},
+  store::{ClipStore, Store},
 };
+
+use cs310_shared::classes::state_manager::{SharedState, SharedStateWrapper};
 
 use tauri::{
   utils::config::AppUrl, CustomMenuItem, Manager, Menu, MenuItem, Submenu, WindowBuilder,
@@ -45,10 +44,8 @@ extern crate gstreamer_pbutils;
 extern crate serde;
 extern crate serde_json;
 
-mod classes;
 mod file_manager_thread;
 mod pipeline_executor_thread;
-mod state_manager;
 mod tauri_commands;
 
 fn main() {
@@ -89,6 +86,7 @@ fn main() {
         clips: clip_store,
         pipeline,
         medias: HashMap::new(),
+        base_output_location: APPLICATION_MEDIA_OUTPUT(),
       };
     }
   }

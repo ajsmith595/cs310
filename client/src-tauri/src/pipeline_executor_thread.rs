@@ -8,14 +8,12 @@ use std::{
   thread,
 };
 
-use crate::{
-  classes::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
-    global::uniq_id,
-    node::PipeableStreamType,
-    pipeline::Pipeline,
-  },
-  file_manager_thread::APPLICATION_MEDIA_OUTPUT,
+use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
+use cs310_shared::classes::{
+  abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
+  global::uniq_id,
+  node::PipeableStreamType,
+  pipeline::Pipeline,
   state_manager::SharedState,
 };
 
@@ -130,7 +128,7 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                 }
 
                 for (id, clip) in &clips.composited {
-                  let directory = clip.get_output_location_ext(false);
+                  let directory = clip.get_output_location_ext(APPLICATION_MEDIA_OUTPUT(), false);
                   if !Path::new(&directory).exists() {
                     fs::create_dir_all(directory).unwrap();
                   }
