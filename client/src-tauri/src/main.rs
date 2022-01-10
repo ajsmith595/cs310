@@ -3,11 +3,13 @@
   windows_subsystem = "windows"
 )]
 
+use core::{panic, time};
 use std::{
   cell::Cell,
   collections::HashMap,
   fs::{create_dir_all, File},
   io::Write,
+  net::TcpStream,
   sync::{mpsc, Arc, Mutex},
   thread,
 };
@@ -18,16 +20,17 @@ use uuid::Uuid;
 
 use crate::file_manager_thread::{file_manager_thread, APPLICATION_JSON_PATH};
 use crate::pipeline_executor_thread::pipeline_executor_thread;
-use cs310_shared::classes::{
+use cs310_shared::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
   global::uniq_id,
+  networking::{self, Message, SERVER_HOST, SERVER_PORT},
   node::{Node, Position},
   nodes::{concat_node, get_node_register, media_import_node, output_node},
   pipeline::{Link, LinkEndpoint, Pipeline},
   store::{ClipStore, Store},
 };
 
-use cs310_shared::classes::state_manager::{SharedState, SharedStateWrapper};
+use crate::state_manager::{SharedState, SharedStateWrapper};
 
 use tauri::{
   utils::config::AppUrl, CustomMenuItem, Manager, Menu, MenuItem, Submenu, WindowBuilder,
@@ -46,11 +49,43 @@ extern crate serde_json;
 
 mod file_manager_thread;
 mod pipeline_executor_thread;
+mod state_manager;
 mod tauri_commands;
 
 fn main() {
-  let store;
+  let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT));
 
+  if stream.is_err() {
+    panic!(&stream.unwrap_err().to_string()[..]);
+  }
+  let mut stream = stream.unwrap();
+
+  networking::send_message(&mut stream, Message::GetStore).unwrap();
+  let (message, data) = networking::receive_message(&mut stream).unwrap();
+  let mut new_data = [0 as u8; 8];
+  new_data.clone_from_slice(&data[0..8]);
+  let data_length = u64::from_ne_bytes(new_data);
+
+  let data = networking::receive_data(&mut stream, data_length).unwrap();
+  let str = String::from_utf8(data).unwrap();
+  println!("Received: {}", str);
+
+  thread::sleep(time::Duration::from_millis(1000));
+
+  networking::send_message(&mut stream, Message::GetStore).unwrap();
+  let (message, data) = networking::receive_message(&mut stream).unwrap();
+  let mut new_data = [0 as u8; 8];
+  new_data.clone_from_slice(&data[0..8]);
+  let data_length = u64::from_ne_bytes(new_data);
+
+  let data = networking::receive_data(&mut stream, data_length).unwrap();
+  let str = String::from_utf8(data).unwrap();
+  println!("Received: {}", str);
+
+  stream.shutdown(std::net::Shutdown::Both).unwrap();
+}
+
+fn main2() {
   if let Some(directory) = dirs::data_dir() {
     if !directory.join(APPLICATION_MEDIA_OUTPUT()).exists() {
       create_dir_all(directory.join(APPLICATION_MEDIA_OUTPUT()));
@@ -70,26 +105,14 @@ fn main() {
     let path = path.unwrap().clone();
     file = String::from(path.to_str().unwrap());
   }
-  let f = std::fs::read(file);
 
-  match f {
-    Ok(data) => {
-      store = serde_json::from_slice(&data).unwrap();
-    }
-    _ => {
-      let mut clip_store = ClipStore::new();
-      let mut nodes = HashMap::new();
-      let mut pipeline = Pipeline::new();
-      pipeline.target_node_id = None;
-      store = Store {
-        nodes,
-        clips: clip_store,
-        pipeline,
-        medias: HashMap::new(),
-        base_output_location: APPLICATION_MEDIA_OUTPUT(),
-      };
-    }
-  }
+  let store = Store::from_file(file);
+
+  let store = match store {
+    Ok(store) => store,
+    Err(_) => Store::new(APPLICATION_MEDIA_OUTPUT()),
+  };
+
   let register = get_node_register();
 
   let res = store.pipeline.gen_graph_new(&store, &register);

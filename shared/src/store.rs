@@ -41,4 +41,20 @@ impl Store {
             base_output_location,
         }
     }
+
+    pub fn from_file(filename: String) -> Result<Self, String> {
+        let f = std::fs::read(filename);
+
+        if f.is_err() {
+            return Err(f.unwrap_err().to_string());
+        }
+        let data = f.unwrap();
+
+        let store = serde_json::from_slice(&data);
+
+        if store.is_err() {
+            return Err(store.unwrap_err().to_string());
+        }
+        Ok(store.unwrap())
+    }
 }

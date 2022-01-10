@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
-use crate::classes::{
+use crate::{
     abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
     clip::{ClipIdentifier, ClipType, CompositedClip},
     node::{

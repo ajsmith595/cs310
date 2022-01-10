@@ -9,7 +9,6 @@ use gstreamer::{glib, prelude::*};
 use gstreamer_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
 use petgraph::visit::EdgeRef;
 use petgraph::{
-    data::Build,
     graph::{DiGraph, NodeIndex},
     EdgeDirection, Graph,
 };
@@ -17,7 +16,7 @@ use petgraph::{
 use bimap::BiMap;
 use serde_json::Value;
 
-use crate::classes::{
+use crate::{
     clip::{ClipIdentifier, ClipType},
     node::{InputOrOutput, PipedType, Type},
     nodes::{self, NodeRegister},
@@ -25,7 +24,7 @@ use crate::classes::{
 
 use super::{
     abstract_pipeline::AbstractPipeline,
-    node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
+    node::{Node, NodeTypeInput, NodeTypeOutput},
     nodes::{media_import_node, output_node},
     store::Store,
     ID,

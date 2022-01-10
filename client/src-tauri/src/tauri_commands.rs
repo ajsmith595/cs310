@@ -9,17 +9,16 @@ use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
 
 use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
-use cs310_shared::classes::{
+use crate::state_manager::SharedStateWrapper;
+use cs310_shared::{
   clip::{CompositedClip, SourceClip},
   global::uniq_id,
   node::{Node, NodeTypeInput, NodeTypeOutput},
   nodes::NodeRegister,
   pipeline::Pipeline,
-  state_manager::SharedStateWrapper,
   store::Store,
   ID,
 };
-
 #[tauri::command]
 pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,

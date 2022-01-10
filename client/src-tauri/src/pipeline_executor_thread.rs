@@ -9,12 +9,12 @@ use std::{
 };
 
 use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
-use cs310_shared::classes::{
+use crate::state_manager::SharedState;
+use cs310_shared::{
   abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
   global::uniq_id,
   node::PipeableStreamType,
   pipeline::Pipeline,
-  state_manager::SharedState,
 };
 
 #[derive(Serialize)]

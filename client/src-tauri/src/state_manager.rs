@@ -2,7 +2,7 @@ use std::sync::{mpsc::Receiver, Arc, Mutex};
 
 use tauri::{Window, Wry};
 
-use crate::classes::{nodes::NodeRegister, store::Store};
+use cs310_shared::{nodes::NodeRegister, store::Store};
 use serde_json::Value;
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);

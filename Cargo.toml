@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "client/src-tauri",
+    "shared",
+    "server"
+]

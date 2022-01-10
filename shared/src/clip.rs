@@ -4,7 +4,7 @@ use gstreamer_pbutils::{
 };
 use serde_json::Value;
 
-use crate::classes::node::PipeableType;
+use crate::node::PipeableType;
 
 use super::{
     node::{PipeableStreamType, Type},
