@@ -1,6 +1,7 @@
 use core::time;
 use std::{
     convert::Infallible,
+    fs::File,
     io::{ErrorKind, Read, Write},
     net::{Shutdown, TcpListener, TcpStream},
     thread,
@@ -28,12 +29,6 @@ fn main() {
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", SERVER_PORT)).unwrap();
 
-    loop {
-        if listener.set_nonblocking(true).is_ok() {
-            break;
-        }
-    }
-
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
@@ -45,16 +40,14 @@ fn main() {
             }
             Err(e) => {}
         }
-        thread::sleep(time::Duration::from_millis(10));
     }
 
     drop(listener);
 }
 
 fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
-    let mut data = [0 as u8; 50]; // using 50 byte buffer
     while match networking::receive_message(&mut stream) {
-        Ok((message, data)) => {
+        Ok(message) => {
             println!("Valid message received: {:?}", message);
 
             match message {
@@ -76,6 +69,14 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     networking::send_data(&mut stream, bytes).unwrap();
                     // then send the data
                 }
+                networking::Message::UploadFile => {
+                    println!("Receiving file...");
+                    let mut output_file = File::create("output-test-file.txt").unwrap();
+                    networking::receive_file(&mut stream, &mut output_file);
+                    let msg = networking::receive_message(&mut stream).unwrap();
+
+                    println!("Received file! End message: {:?}", msg);
+                }
                 _ => println!("Unknown message"),
             }
 
@@ -86,13 +87,15 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 stream.shutdown(Shutdown::Both).unwrap();
                 false
             } else {
-                println!("Error type: {:?}", error.kind());
-                println!("Error description: {}", error.to_string());
-                // println!(
-                //     "Error encountered whilst reading from client: {}; shutting down stream",
-                //     error
-                // );
-                // stream.shutdown(Shutdown::Both).unwrap();
+                if error.kind() != ErrorKind::WouldBlock {
+                    println!("Error type: {:?}", error.kind());
+                    println!("Error description: {}", error.to_string());
+                    // println!(
+                    //     "Error encountered whilst reading from client: {}; shutting down stream",
+                    //     error
+                    // );
+                    // stream.shutdown(Shutdown::Both).unwrap();
+                }
                 true
             }
         }

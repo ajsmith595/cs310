@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Write};
+use std::{collections::HashMap, fs::File, io::Write, net::TcpStream};
 
 use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
 use gstreamer_pbutils::{
@@ -13,6 +13,7 @@ use crate::state_manager::SharedStateWrapper;
 use cs310_shared::{
   clip::{CompositedClip, SourceClip},
   global::uniq_id,
+  networking::{self, SERVER_HOST, SERVER_PORT},
   node::{Node, NodeTypeInput, NodeTypeOutput},
   nodes::NodeRegister,
   pipeline::Pipeline,
@@ -59,7 +60,7 @@ pub async fn import_media(
         let clip = SourceClip {
           id,
           name: path.file_name(),
-          file_location: file_path,
+          file_location: file_path.clone(),
           thumbnail_location: thumbnail,
           info: Some(info),
         };
@@ -68,6 +69,14 @@ pub async fn import_media(
 
         (&mut state.0.clone().lock().unwrap().store.clips.source)
           .insert(clip.id.clone(), clip.clone());
+
+        println!("Sending file: {}", file_path.clone());
+        let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT)).unwrap();
+
+        networking::send_message(&mut stream, networking::Message::UploadFile).unwrap();
+        let mut file = File::open(file_path.clone()).unwrap();
+        networking::send_file(&mut stream, &mut file);
+        networking::send_message(&mut stream, networking::Message::EndFile).unwrap();
       }
       Ok(hm)
     }

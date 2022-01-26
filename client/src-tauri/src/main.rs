@@ -52,40 +52,40 @@ mod pipeline_executor_thread;
 mod state_manager;
 mod tauri_commands;
 
+// fn main2() {
+//   let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT));
+
+//   if stream.is_err() {
+//     panic!(&stream.unwrap_err().to_string()[..]);
+//   }
+//   let mut stream = stream.unwrap();
+
+//   networking::send_message(&mut stream, Message::GetStore).unwrap();
+//   let (message, data) = networking::receive_message(&mut stream).unwrap();
+//   let mut new_data = [0 as u8; 8];
+//   new_data.clone_from_slice(&data[0..8]);
+//   let data_length = u64::from_ne_bytes(new_data);
+
+//   let data = networking::receive_data(&mut stream, data_length).unwrap();
+//   let str = String::from_utf8(data).unwrap();
+//   println!("Received: {}", str);
+
+//   thread::sleep(time::Duration::from_millis(1000));
+
+//   networking::send_message(&mut stream, Message::GetStore).unwrap();
+//   let (message, data) = networking::receive_message(&mut stream).unwrap();
+//   let mut new_data = [0 as u8; 8];
+//   new_data.clone_from_slice(&data[0..8]);
+//   let data_length = u64::from_ne_bytes(new_data);
+
+//   let data = networking::receive_data(&mut stream, data_length).unwrap();
+//   let str = String::from_utf8(data).unwrap();
+//   println!("Received: {}", str);
+
+//   stream.shutdown(std::net::Shutdown::Both).unwrap();
+// }
+
 fn main() {
-  let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT));
-
-  if stream.is_err() {
-    panic!(&stream.unwrap_err().to_string()[..]);
-  }
-  let mut stream = stream.unwrap();
-
-  networking::send_message(&mut stream, Message::GetStore).unwrap();
-  let (message, data) = networking::receive_message(&mut stream).unwrap();
-  let mut new_data = [0 as u8; 8];
-  new_data.clone_from_slice(&data[0..8]);
-  let data_length = u64::from_ne_bytes(new_data);
-
-  let data = networking::receive_data(&mut stream, data_length).unwrap();
-  let str = String::from_utf8(data).unwrap();
-  println!("Received: {}", str);
-
-  thread::sleep(time::Duration::from_millis(1000));
-
-  networking::send_message(&mut stream, Message::GetStore).unwrap();
-  let (message, data) = networking::receive_message(&mut stream).unwrap();
-  let mut new_data = [0 as u8; 8];
-  new_data.clone_from_slice(&data[0..8]);
-  let data_length = u64::from_ne_bytes(new_data);
-
-  let data = networking::receive_data(&mut stream, data_length).unwrap();
-  let str = String::from_utf8(data).unwrap();
-  println!("Received: {}", str);
-
-  stream.shutdown(std::net::Shutdown::Both).unwrap();
-}
-
-fn main2() {
   if let Some(directory) = dirs::data_dir() {
     if !directory.join(APPLICATION_MEDIA_OUTPUT()).exists() {
       create_dir_all(directory.join(APPLICATION_MEDIA_OUTPUT()));

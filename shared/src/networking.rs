@@ -1,11 +1,12 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use std::convert::TryFrom;
+use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
 use std::{io::Read, net::TcpStream};
 
 pub const SERVER_HOST: &str = "127.0.0.1";
-pub const SERVER_PORT: u16 = 3000;
+pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {
     #[derive(Debug)]
@@ -15,8 +16,25 @@ enum_from_primitive! {
         GetVideoPreview,
         GetFileThumbnail,
         UploadFile,
-        Response
+        Response,
+        EndFile
     }
+}
+
+pub fn send_file(stream: &mut TcpStream, file: &mut File) {
+    let file_length = file.metadata().unwrap().len();
+    let bytes = file_length.to_ne_bytes();
+    send_data(stream, &bytes).unwrap(); // send the file length
+    std::io::copy(file, stream).unwrap();
+}
+pub fn receive_file(stream: &mut TcpStream, output_file: &mut File) {
+    let file_length = receive_data(stream, 8).unwrap();
+    let mut file_length_bytes: [u8; 8] = Default::default();
+    file_length_bytes.copy_from_slice(&file_length[0..8]);
+    let file_length = u64::from_ne_bytes(file_length_bytes);
+
+    let mut data = stream.take(file_length);
+    std::io::copy(&mut data, output_file).unwrap();
 }
 
 pub fn send_message(stream: &mut TcpStream, message: Message) -> Result<(), Error> {
@@ -34,12 +52,12 @@ pub fn send_message_with_data(
     send_data(stream, base.as_slice())
 }
 
-pub fn receive_message(stream: &mut TcpStream) -> Result<(Message, Vec<u8>), Error> {
-    let result = receive_data(stream, 256);
+pub fn receive_message(stream: &mut TcpStream) -> Result<Message, Error> {
+    let result = receive_data(stream, 1);
     if result.is_err() {
         return Err(result.unwrap_err());
     }
-    let mut buffer = result.unwrap();
+    let buffer = result.unwrap();
 
     if buffer.len() == 0 {
         return Err(Error::new(
@@ -58,9 +76,7 @@ pub fn receive_message(stream: &mut TcpStream) -> Result<(Message, Vec<u8>), Err
         }
     };
 
-    buffer.remove(0);
-
-    Ok((message, buffer))
+    Ok(message)
 }
 
 pub fn send_data(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
