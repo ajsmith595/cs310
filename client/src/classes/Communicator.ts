@@ -37,6 +37,11 @@ export default class Communicator {
             this.listenMap.set(event, this.listenMap.get(event).filter(e => e != callback)); // remove the callback from the emission
         }
     }
+    static clear(event: string) {
+        if (this.listenMap.has(event)) {
+            this.listenMap.delete(event);
+        }
+    }
 
     static send(event: string, data?: any) {
         emit(event, data);

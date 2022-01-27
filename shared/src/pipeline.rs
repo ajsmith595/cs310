@@ -226,7 +226,6 @@ impl Pipeline {
                 node_register,
             );
             if pipeline.is_err() {
-                println!("get_output failed: {}", pipeline.unwrap_err());
                 do_return = false;
             } else {
                 let pipeline = pipeline.unwrap();
@@ -348,7 +347,6 @@ impl Pipeline {
         if composited_clip_callback.is_some() {
             send_segments = true;
         }
-        let composited_clip_callback = composited_clip_callback.unwrap();
         let tx_clone = tx.clone();
         bus.add_watch(move |_, msg| {
             use gstreamer::MessageView;
@@ -357,6 +355,7 @@ impl Pipeline {
             match msg.view() {
                 MessageView::Eos(..) => {
                     tx_clone.send(Ok(None)).unwrap();
+                    main_loop.quit();
                 }
                 MessageView::Error(err) => {
                     println!(
@@ -426,6 +425,7 @@ impl Pipeline {
         });
         if send_segments {
             let mut x = rx.recv();
+            let composited_clip_callback = composited_clip_callback.unwrap();
             while let Ok(Ok(res)) = x.clone() {
                 if res.is_none() {
                     println!("Exiting gst execution with ok");

@@ -8,10 +8,10 @@ use std::{
   thread,
 };
 
-use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
 use crate::state_manager::SharedState;
 use cs310_shared::{
   abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
+  constants::{media_output_location, CHUNK_LENGTH},
   global::uniq_id,
   node::PipeableStreamType,
   pipeline::Pipeline,
@@ -27,7 +27,7 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
   let mut path = None;
   match dirs::data_dir() {
     Some(p) => {
-      path = Some(p.join(APPLICATION_MEDIA_OUTPUT()));
+      path = Some(p.join(media_output_location()));
     }
     None => println!("Cannot get data directory!"),
   }
@@ -128,7 +128,7 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                 }
 
                 for (id, clip) in &clips.composited {
-                  let directory = clip.get_output_location_ext(false);
+                  let directory = clip.get_output_location();
                   if !Path::new(&directory).exists() {
                     fs::create_dir_all(directory).unwrap();
                   }
@@ -152,7 +152,6 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                 .unwrap();
                 println!("Pipeline executed!");
 
-                const SEGMENT_DURATION: i32 = 10;
                 let mut x = shared_state.lock().unwrap();
                 x.window
                   .as_ref()
@@ -160,8 +159,8 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                   .emit(
                     "generated-preview",
                     VideoPreviewSend {
-                      output_directory_path: APPLICATION_MEDIA_OUTPUT(),
-                      segment_duration: SEGMENT_DURATION,
+                      output_directory_path: media_output_location(),
+                      segment_duration: CHUNK_LENGTH as i32,
                     },
                   )
                   .unwrap();

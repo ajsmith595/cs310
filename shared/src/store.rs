@@ -31,7 +31,7 @@ pub struct Store {
     pub medias: HashMap<ID, PipeableType>,
 }
 impl Store {
-    pub fn new(base_output_location: String) -> Self {
+    pub fn new() -> Self {
         Self {
             nodes: HashMap::new(),
             clips: ClipStore::new(),

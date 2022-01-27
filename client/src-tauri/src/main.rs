@@ -14,15 +14,14 @@ use std::{
   thread,
 };
 
-use file_manager_thread::{APPLICATION_DATA_ROOT, APPLICATION_MEDIA_OUTPUT};
 use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
-use crate::file_manager_thread::{file_manager_thread, APPLICATION_JSON_PATH};
+use crate::file_manager_thread::file_manager_thread;
 use crate::pipeline_executor_thread::pipeline_executor_thread;
 use cs310_shared::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
-  constants::init,
+  constants::{init, media_output_location, store_json_location},
   global::uniq_id,
   networking::{self, Message, SERVER_HOST, SERVER_PORT},
   node::{Node, Position},
@@ -87,33 +86,38 @@ mod tauri_commands;
 // }
 
 fn main() {
+  let path = dirs::data_dir().unwrap();
+  let path = format!(
+    "{}\\AdamSmith\\VideoEditor",
+    path.into_os_string().into_string().unwrap()
+  );
+  init(path);
+
   if let Some(directory) = dirs::data_dir() {
-    if !directory.join(APPLICATION_MEDIA_OUTPUT()).exists() {
-      create_dir_all(directory.join(APPLICATION_MEDIA_OUTPUT()));
+    if !directory.join(media_output_location()).exists() {
+      create_dir_all(directory.join(media_output_location()));
     }
   }
 
   let mut path = None;
   match dirs::data_dir() {
     Some(p) => {
-      path = Some(p.join(APPLICATION_JSON_PATH()));
+      path = Some(p.join(store_json_location()));
     }
     None => println!("Cannot get data directory!"),
   }
 
-  init(APPLICATION_DATA_ROOT());
+  let mut stream = networking::connect_to_server();
+  networking::send_message(&mut stream, Message::GetStore).unwrap();
+  let mut json_file = File::create(store_json_location()).unwrap();
 
-  let mut file = String::from("state.json");
-  if path.is_some() {
-    let path = path.unwrap().clone();
-    file = String::from(path.to_str().unwrap());
-  }
+  networking::receive_file(&mut stream, &mut json_file);
 
-  let store = Store::from_file(file);
+  let store = Store::from_file(store_json_location());
 
   let store = match store {
     Ok(store) => store,
-    Err(_) => Store::new(APPLICATION_MEDIA_OUTPUT()),
+    Err(_) => Store::new(),
   };
 
   let register = get_node_register();

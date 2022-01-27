@@ -4,8 +4,8 @@ import { fs } from '@tauri-apps/api';
 import React, { ChangeEvent } from 'react';
 import { textChangeRangeIsUnchanged } from 'typescript';
 import Communicator from '../classes/Communicator';
-import Lock from '../classes/Lock';
 import Store from '../classes/Store';
+import { Mutex } from 'async-mutex';
 
 
 interface Props {
@@ -42,7 +42,7 @@ class VideoPreview extends React.Component<Props, State> {
     clip_chunks_ready: Map<string, number>;
 
 
-    change_lock: Lock;
+    change_lock: Mutex;
 
 
     constructor(props: Props) {
@@ -50,7 +50,7 @@ class VideoPreview extends React.Component<Props, State> {
         this.media_source = new MediaSource();
         this.video_element_ref = React.createRef();
         this.clip_chunks_ready = new Map();
-        this.change_lock = new Lock();
+        this.change_lock = new Mutex();
 
         this.state = {
             currentTime: 0,
@@ -58,6 +58,8 @@ class VideoPreview extends React.Component<Props, State> {
             videoURL: URL.createObjectURL(this.media_source),
             playing: false,
         }
+
+        this.onSourceBufferUpdateEnd = this.onSourceBufferUpdateEnd.bind(this);
     }
 
     get currentTimestamp() {
@@ -78,12 +80,12 @@ class VideoPreview extends React.Component<Props, State> {
         Communicator.on('video-chunk-ready', async (data) => {
             let node_id: string = data[0];
             let segment_id: string = data[1];
-            let clip_id = node_id.substring("composited-clip-file-".length);
+            let clip_id = node_id;
 
             console.log(`Segment ${segment_id} of clip ${clip_id} is now ready - awaiting lock`);
-            await this.change_lock.lock();
+            const release = await this.change_lock.acquire();
             this.clip_chunks_ready[clip_id] = segment_id;
-            this.change_lock.release();
+            release();
 
             console.log(`Segment ${segment_id} of clip ${clip_id} is now ready`);
 
@@ -91,9 +93,15 @@ class VideoPreview extends React.Component<Props, State> {
         });
     }
 
+    componentWillUnmount() {
+        Communicator.clear('video-chunk-ready');
+    }
+
+
     update_end_callbacks: Array<() => void> = [];
     async loadChunk(directory: string, segment_id: number) {
         let file = directory + "\\segment" + segment_id.toString().padStart(6, '0') + ".mp4";;
+        console.log(`Loading chunk: ${file}`);
         let contents = await Communicator.readFile(file);
         let buffer = new Uint8Array(contents);
 
@@ -122,7 +130,7 @@ class VideoPreview extends React.Component<Props, State> {
         }
 
         console.log("Aquiring lock for videoUpdate");
-        await this.change_lock.lock();
+        const release = await this.change_lock.acquire();
         console.log("Lock aquired for videoUpdate");
 
 
@@ -145,7 +153,7 @@ class VideoPreview extends React.Component<Props, State> {
             if (!this.chunk_loading_statuses[segment] || this.chunk_loading_statuses[segment] != LoadedStatus.Loaded) {
                 if (!this.clip_chunks_ready[this.state.clip] || this.clip_chunks_ready[this.state.clip] < segment) {
                     console.log("Lock releasing for videoUpdate");
-                    this.change_lock.release();
+                    release();
                     console.log("Lock released for videoUpdate");
                     return;
                 }
@@ -153,14 +161,14 @@ class VideoPreview extends React.Component<Props, State> {
 
                 await this.loadChunk(output_directory, segment);
                 console.log("Lock releasing for videoUpdate");
-                this.change_lock.release();
+                release();
                 console.log("Lock released for videoUpdate");
                 return;
             }
         }
 
         console.log("Lock releasing for videoUpdate");
-        this.change_lock.release();
+        release();
         console.log("Lock released for videoUpdate");
     }
 
@@ -189,15 +197,26 @@ class VideoPreview extends React.Component<Props, State> {
     }
 
 
+    onSourceBufferUpdateEnd() {
+        console.log("Update end callback!");
+        for (let callback of this.update_end_callbacks) {
+            callback();
+        }
+
+    }
+
     source_buffer: SourceBuffer;
     async onClipChanged(clip: string) {
 
         console.log("Aquiring lock for onClipChanged");
-        await this.change_lock.lock();
-        console.log("Lock aquired for onClipChanged");
-
+        const release = await this.change_lock.acquire();
+        console.log("Lock acquired for onClipChanged");
         this.chunk_loading_statuses = [];
 
+        if (this.source_buffer) {
+            this.source_buffer.removeEventListener('updateend', this.onSourceBufferUpdateEnd);
+        }
+        await new Promise((resolve, reject) => setTimeout(resolve, 1000));
 
         this.media_source = new MediaSource();
 
@@ -214,21 +233,21 @@ class VideoPreview extends React.Component<Props, State> {
 
 
         const MIME_TYPE = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
+
+
+
+
+
         this.source_buffer = this.media_source.addSourceBuffer(MIME_TYPE);
         console.log("New source buffer:");
         console.log(this.source_buffer);
 
-        this.source_buffer.addEventListener('updateend', (e) => {
-            console.log("Update end callback!");
-            for (let callback of this.update_end_callbacks) {
-                callback();
-            }
-        })
+        this.source_buffer.addEventListener('updateend', this.onSourceBufferUpdateEnd);
 
         // reset everything!
 
         console.log("Lock releasing for onClipChanged");
-        this.change_lock.release();
+        release();
         console.log("Lock released for onClipChanged");
 
         await this.videoUpdate();
@@ -278,85 +297,6 @@ class VideoPreview extends React.Component<Props, State> {
         </div>;
     }
 
-
-
-
-    async regenStuff() {
-        let e = "C:\\Users\\ajsmi\\AppData\\Roaming\\AdamSmith\\VideoEditor\\output";
-        let directory = e + "\\composited-clip-" + this.state.clip;
-        let contents = await fs.readDir(directory);
-
-        if (this.state.clip != null && this.state.videoURL == null) {
-            let isNew = true;
-            let mediaSource = new MediaSource();
-            this.setState({
-                videoURL: URL.createObjectURL(mediaSource)
-            });
-
-            mediaSource.addEventListener('sourceopen', async () => {
-                if (!isNew) {
-                    return;
-                }
-                isNew = false;
-
-                const MIME_TYPE = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
-                // const MIME_TYPE = 'video/mp4; codecs="avc1.4D402A"';
-                let receiver = mediaSource.addSourceBuffer(MIME_TYPE);
-                //let receiver = mediaSource.addSourceBuffer('video/mp4; codecs="avc1.4D402A"');
-
-                let i = 5;
-                receiver.addEventListener('updateend', (e) => {
-                    if (!receiver.updating && mediaSource.readyState === 'open') {
-                        // if (i < 0) {
-                        //     console.log("Finished stream!");
-                        //     mediaSource.endOfStream();
-                        // }
-                    }
-                });
-                receiver.addEventListener('error', e => {
-                    console.log("ERROR!");
-                    console.log(e);
-                });
-
-                console.log("Appending files...");
-
-                let doFile = async (f) => {
-                    console.log("Doing file: " + f);
-                    let contents = await Communicator.readFile(f);
-                    let buffer = new Uint8Array(contents);
-                    receiver.appendBuffer(buffer);
-                    await new Promise((resolve, _) => setTimeout(resolve, 400));
-                }
-
-                await doFile(directory + "\\init.mp4");
-
-                const trackTotal = 3;
-                let total = (contents.length - 1) / trackTotal;
-                for (let i = 1; i <= total; i++) {
-                    for (let trackNum = 1; trackNum <= trackTotal; trackNum++) {
-                        let file = directory + "\\segment-" + trackNum + "." + i.toString().padStart(6, '0') + ".m4s";
-                        await doFile(file);
-                    }
-                }
-                console.log("Finished!");
-                // for (let file of contents) {
-                //     if (i < 0) {
-                //         break;
-                //     }
-                //     i -= 1;
-                //     console.log(file.name);
-                //     console.log("Waiting..." + i);
-                //     // let file = {
-                //     //     path: directory + ".mp4"
-                //     // }
-                //     await new Promise((resolve, _) => setTimeout(resolve, 400));
-                //     console.log("Getting contents...");
-
-                // }
-                // console.log("All files appended");
-            })
-        }
-    }
 
 }
 

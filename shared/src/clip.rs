@@ -196,22 +196,13 @@ impl CompositedClip {
         )
     }
     pub fn get_output_location(&self) -> String {
-        self.get_output_location_ext(true)
-    }
-    pub fn get_output_location_ext(&self, with_extension: bool) -> String {
-        format!(
-            "{}\\composited-clip-{}{}",
-            media_output_location(),
-            self.id,
-            if with_extension { ".mp4" } else { "" }
-        )
-        .replace("\\", "/")
+        format!("{}\\composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
     }
 
     pub fn get_output_location_template(&self) -> String {
         format!(
             "{}/segment%0{}d.mp4",
-            self.get_output_location_ext(false),
+            self.get_output_location(),
             CHUNK_FILENAME_NUMBER_LENGTH
         )
     }

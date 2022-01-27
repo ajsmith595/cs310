@@ -26,7 +26,6 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 mod state;
-const OUTPUT_DIR: &str = "output";
 
 fn main() {
     let current_dir = std::env::current_dir().unwrap();
@@ -38,7 +37,7 @@ fn main() {
 
     let store = match store {
         Ok(store) => store,
-        Err(_) => Store::new(String::from(OUTPUT_DIR)),
+        Err(_) => Store::new(),
     };
 
     let state = Arc::new(Mutex::new(State { store }));
@@ -68,22 +67,9 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
             match message {
                 networking::Message::GetStore => {
-                    let store = Store::new(String::from(""));
+                    let mut file = File::open(store_json_location()).unwrap();
 
-                    let store_json = serde_json::to_string(&store).unwrap();
-                    let bytes = store_json.as_bytes();
-
-                    let length = (bytes.len() as u64).to_ne_bytes();
-                    networking::send_message_with_data(
-                        &mut stream,
-                        networking::Message::Response,
-                        &length,
-                    )
-                    .unwrap();
-                    // first send the length of the data itself
-
-                    networking::send_data(&mut stream, bytes).unwrap();
-                    // then send the data
+                    networking::send_file(&mut stream, &mut file);
                 }
                 networking::Message::UploadFile => {
                     println!("Receiving file...");
@@ -110,7 +96,9 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
             true
         }
         Err(error) => {
-            if error.kind() == ErrorKind::UnexpectedEof {
+            if error.kind() == ErrorKind::UnexpectedEof
+                || error.kind() == ErrorKind::ConnectionReset
+            {
                 stream.shutdown(Shutdown::Both).unwrap();
                 false
             } else {
@@ -217,7 +205,7 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                 }
 
                 for (id, clip) in &clips.composited {
-                    let directory = clip.get_output_location_ext(false);
+                    let directory = clip.get_output_location();
                     if !Path::new(&directory).exists() {
                         fs::create_dir_all(directory).unwrap();
                     }
@@ -277,6 +265,8 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                 println!("Pipeline executed!");
 
                 const SEGMENT_DURATION: i32 = 10;
+
+                return;
                 // let mut x = shared_state.lock().unwrap();
                 // x.window
                 //     .as_ref()
@@ -294,4 +284,6 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
             }
         }
     }
+
+    networking::send_message(stream, networking::Message::AllChunksGenerated).unwrap();
 }

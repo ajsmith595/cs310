@@ -10,10 +10,10 @@ use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
 use uuid::Uuid;
 
-use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
 use crate::state_manager::SharedStateWrapper;
 use cs310_shared::{
   clip::{CompositedClip, SourceClip},
+  constants::media_output_location,
   global::uniq_id,
   networking::{self, SERVER_HOST, SERVER_PORT},
   node::{Node, NodeTypeInput, NodeTypeOutput},
@@ -358,5 +358,5 @@ pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Re
 
 #[tauri::command]
 pub fn get_output_directory() -> String {
-  APPLICATION_MEDIA_OUTPUT()
+  media_output_location()
 }
