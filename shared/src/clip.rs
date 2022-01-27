@@ -4,7 +4,10 @@ use gstreamer_pbutils::{
 };
 use serde_json::Value;
 
-use crate::node::PipeableType;
+use crate::{
+    constants::{media_output_location, CHUNK_FILENAME_NUMBER_LENGTH},
+    node::PipeableType,
+};
 
 use super::{
     node::{PipeableStreamType, Type},
@@ -192,27 +195,24 @@ impl CompositedClip {
             index,
         )
     }
-    pub fn get_output_location(&self, base_output_location: String) -> String {
-        self.get_output_location_ext(base_output_location, true)
+    pub fn get_output_location(&self) -> String {
+        self.get_output_location_ext(true)
     }
-    pub fn get_output_location_ext(
-        &self,
-        base_output_location: String,
-        with_extension: bool,
-    ) -> String {
+    pub fn get_output_location_ext(&self, with_extension: bool) -> String {
         format!(
             "{}\\composited-clip-{}{}",
-            base_output_location,
+            media_output_location(),
             self.id,
             if with_extension { ".mp4" } else { "" }
         )
         .replace("\\", "/")
     }
 
-    pub fn get_output_location_template(&self, base_output_location: String) -> String {
+    pub fn get_output_location_template(&self) -> String {
         format!(
-            "{}/segment%06d.mp4",
-            self.get_output_location_ext(base_output_location, false)
+            "{}/segment%0{}d.mp4",
+            self.get_output_location_ext(false),
+            CHUNK_FILENAME_NUMBER_LENGTH
         )
     }
 }

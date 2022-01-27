@@ -5,11 +5,13 @@ use serde_json::Value;
 use crate::{
     abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
     clip::{ClipIdentifier, ClipType, CompositedClip},
+    constants::{data_location, media_output_location, CHUNK_LENGTH},
     node::{
         Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType, PipedType,
         Type,
     },
     store::Store,
+    ID,
 };
 
 use super::NodeRegister;
@@ -58,10 +60,10 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 fn get_io(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<
@@ -76,10 +78,10 @@ fn get_io(
     return Ok((inputs, outputs));
 }
 fn get_output(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<AbstractPipeline, String> {
@@ -99,10 +101,7 @@ fn get_output(
     let gst_clip_id = format!("composited-clip-file-{}", clip.id);
     {
         let mut props = HashMap::new();
-        props.insert(
-            "location".to_string(),
-            clip.get_output_location_template(store.base_output_location.clone()),
-        );
+        props.insert("location".to_string(), clip.get_output_location_template());
         props.insert("muxer-factory".to_string(), "mp4mux".to_string());
         props.insert(
             "muxer-properties".to_string(),
@@ -110,7 +109,8 @@ fn get_output(
         );
         // makes it fragmented; one fragment each second (=1000 ms)
         props.insert("async-finalize".to_string(), "true".to_string());
-        props.insert("max-size-time".to_string(), "10000000000".to_string()); // 10 seconds (measured in nanoseconds)
+        let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
+        props.insert("max-size-time".to_string(), nanoseconds.to_string());
         props.insert("send-keyframe-requests".to_string(), "true".to_string());
 
         let splitmuxsink_node =
@@ -209,10 +209,10 @@ pub fn output_node() -> NodeType {
         display_name: String::from("Output"),
         description: String::from("Output media to a clip"),
         default_properties: default_properties(),
-        get_io: |node_id: String,
+        get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,
                  piped_inputs: &HashMap<String, PipedType>,
-                 composited_clip_types: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<ID, PipedType>,
                  store: &Store,
                  node_register: &NodeRegister| {
             return get_io(
@@ -224,10 +224,10 @@ pub fn output_node() -> NodeType {
                 node_register,
             );
         },
-        get_output: |node_id: String,
+        get_output: |node_id: ID,
                      properties: &HashMap<String, Value>,
                      piped_inputs: &HashMap<String, PipedType>,
-                     composited_clip_types: &HashMap<String, PipedType>,
+                     composited_clip_types: &HashMap<ID, PipedType>,
                      store: &Store,
                      node_register: &NodeRegister| {
             return get_output(

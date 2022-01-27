@@ -10,6 +10,7 @@ use crate::{
         PipeableType, PipedType, Restrictions, Type,
     },
     store::Store,
+    ID,
 };
 
 use super::NodeRegister;
@@ -68,10 +69,10 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 pub fn get_io(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<
@@ -106,10 +107,10 @@ pub fn get_io(
     return Ok((inputs, outputs));
 }
 fn get_output(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<AbstractPipeline, String> {
@@ -200,10 +201,10 @@ pub fn blur_node() -> NodeType {
         display_name: String::from("Blur"),
         description: String::from("Blur a media source"),
         default_properties: default_properties(),
-        get_io: |node_id: String,
+        get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,
                  piped_inputs: &HashMap<String, PipedType>,
-                 composited_clip_types: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<ID, PipedType>,
                  store: &Store,
                  node_register: &NodeRegister| {
             return get_io(
@@ -215,10 +216,10 @@ pub fn blur_node() -> NodeType {
                 node_register,
             );
         },
-        get_output: |node_id: String,
+        get_output: |node_id: ID,
                      properties: &HashMap<String, Value>,
                      piped_inputs: &HashMap<String, PipedType>,
-                     composited_clip_types: &HashMap<String, PipedType>,
+                     composited_clip_types: &HashMap<ID, PipedType>,
                      store: &Store,
                      node_register: &NodeRegister| {
             return get_output(

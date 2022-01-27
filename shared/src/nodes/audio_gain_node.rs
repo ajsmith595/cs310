@@ -10,6 +10,7 @@ use crate::{
         PipeableType, PipedType, Restrictions, Type,
     },
     store::Store,
+    ID,
 };
 
 use super::NodeRegister;
@@ -65,10 +66,10 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     default_properties
 }
 pub fn get_io(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<
@@ -104,10 +105,10 @@ pub fn get_io(
 }
 
 pub fn get_output(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<AbstractPipeline, String> {
@@ -193,10 +194,10 @@ pub fn audio_gain() -> NodeType {
         display_name: String::from("Audio Gain"),
         description: String::from("Increase the volume of a source"),
         default_properties: default_properties(),
-        get_io: |node_id: String,
+        get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,
                  piped_inputs: &HashMap<String, PipedType>,
-                 composited_clip_types: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<ID, PipedType>,
                  store: &Store,
                  node_register: &NodeRegister| {
             return get_io(
@@ -208,10 +209,10 @@ pub fn audio_gain() -> NodeType {
                 node_register,
             );
         },
-        get_output: |node_id: String,
+        get_output: |node_id: ID,
                      properties: &HashMap<String, Value>,
                      piped_inputs: &HashMap<String, PipedType>,
-                     composited_clip_types: &HashMap<String, PipedType>,
+                     composited_clip_types: &HashMap<ID, PipedType>,
                      store: &Store,
                      node_register: &NodeRegister| {
             return get_output(

@@ -12,6 +12,7 @@ use crate::{
     nodes::NodeRegister,
     pipeline,
     store::Store,
+    ID,
 };
 
 pub const IDENTIFIER: &str = "clip_import";
@@ -38,10 +39,10 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 fn get_io(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<
@@ -111,10 +112,10 @@ fn get_io(
     return Ok((inputs, hm));
 }
 fn get_output(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<AbstractPipeline, String> {
@@ -213,10 +214,10 @@ pub fn media_import_node() -> NodeType {
         description: String::from("Import a source or composited clip"),
         default_properties: default_properties(),
 
-        get_io: |node_id: String,
+        get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,
                  piped_inputs: &HashMap<String, PipedType>,
-                 composited_clip_types: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<ID, PipedType>,
                  store: &Store,
                  node_register: &NodeRegister| {
             return get_io(
@@ -228,10 +229,10 @@ pub fn media_import_node() -> NodeType {
                 node_register,
             );
         },
-        get_output: |node_id: String,
+        get_output: |node_id: ID,
                      properties: &HashMap<String, Value>,
                      piped_inputs: &HashMap<String, PipedType>,
-                     composited_clip_types: &HashMap<String, PipedType>,
+                     composited_clip_types: &HashMap<ID, PipedType>,
                      store: &Store,
                      node_register: &NodeRegister| {
             return get_output(

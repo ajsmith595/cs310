@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     hash::Hash,
     sync::mpsc,
+    thread,
 };
 
 use gstreamer::{glib, prelude::*};
@@ -15,6 +16,7 @@ use petgraph::{
 
 use bimap::BiMap;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::{
     clip::{ClipIdentifier, ClipType},
@@ -37,7 +39,7 @@ pub struct LinkEndpoint {
 }
 impl LinkEndpoint {
     pub fn get_id(&self) -> String {
-        return String::from(self.node_id.clone() + "." + &self.property);
+        return String::from(self.node_id.to_string() + "." + &self.property);
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -75,14 +77,14 @@ impl Pipeline {
     ) -> Result<
         (
             HashMap<
-                String,
+                Uuid,
                 (
                     HashMap<String, PipedType>,
                     HashMap<String, NodeTypeInput>,
                     HashMap<String, NodeTypeOutput>,
                 ),
             >,
-            HashMap<String, PipedType>,
+            HashMap<Uuid, PipedType>,
             Option<AbstractPipeline>,
         ),
         String,
@@ -300,14 +302,14 @@ impl Pipeline {
         return Ok(output);
     }
 
-    pub fn execute_pipeline(
+    pub fn execute_pipeline<'a>(
         pipeline: String,
         timeout: u32,
-        composited_clip_callback: Option<Box<dyn Fn(String, u32) + Send>>,
+        composited_clip_callback: Option<Box<dyn Fn(String, u32, String) + Send + 'a>>,
     ) -> Result<(), ()> {
         let main_loop = glib::MainLoop::new(None, false);
 
-        println!("Pipeline: {}", pipeline);
+        //println!("Pipeline: {}", pipeline);
         // This creates a pipeline by parsing the gst-launch pipeline syntax.
 
         let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
@@ -336,18 +338,25 @@ impl Pipeline {
             println!("sending eos");
             main_loop.quit();
 
-            tx_clone.send(Ok(()));
+            tx_clone.send(Ok(None)).unwrap();
             glib::Continue(false)
         });
 
         let main_loop_clone = main_loop.clone();
+
+        let mut send_segments = false;
+        if composited_clip_callback.is_some() {
+            send_segments = true;
+        }
+        let composited_clip_callback = composited_clip_callback.unwrap();
+        let tx_clone = tx.clone();
         bus.add_watch(move |_, msg| {
             use gstreamer::MessageView;
 
             let main_loop = &main_loop_clone;
             match msg.view() {
                 MessageView::Eos(..) => {
-                    tx.send(Ok(()));
+                    tx_clone.send(Ok(None)).unwrap();
                 }
                 MessageView::Error(err) => {
                     println!(
@@ -357,10 +366,10 @@ impl Pipeline {
                         err.debug()
                     );
                     main_loop.quit();
-                    tx.send(Err(()));
+                    tx_clone.send(Err(())).unwrap();
                 }
                 MessageView::Element(_) => {
-                    if let Some(callback) = &composited_clip_callback {
+                    if send_segments {
                         let src = msg.src();
                         let structure = msg.structure();
 
@@ -373,11 +382,25 @@ impl Pipeline {
 
                                 if let (Ok(location), Ok(running_time)) = (location, running_time) {
                                     let node_id = src.name().to_string();
-                                    let mut segment = (running_time / 10000000000 - 1) as u32;
-                                    if running_time % 10000000000 != 0 {
-                                        segment = segment + 1; // deal with final case; the division will be automatically rounded down; this will mean we'll get the first and last segment being the same number, which is wrong.
-                                    }
-                                    callback(node_id, segment);
+
+                                    let mut parts: Vec<&str> = node_id.split("-").collect();
+                                    parts.drain(0..(parts.len() - 5));
+                                    let node_id = parts.join("-");
+
+                                    let parts: Vec<&str> = location.split("/").collect();
+                                    let filename = parts.last().unwrap();
+                                    let parts: Vec<&str> = filename.split(".").collect();
+                                    let number_string: String = parts
+                                        .first() // the bit of the filename excluding the extension
+                                        .unwrap()
+                                        .chars()
+                                        .filter(|c| c.is_digit(10)) // extract all the numbers
+                                        .collect();
+                                    let segment = number_string.parse::<u32>().unwrap();
+
+                                    tx_clone
+                                        .send(Ok(Some((node_id, segment, location))))
+                                        .unwrap();
                                 }
                             }
                         }
@@ -390,21 +413,43 @@ impl Pipeline {
         })
         .expect("Failed to add bus watch");
 
-        main_loop.run();
+        println!("Running loop");
+        let thread = thread::spawn(move || {
+            main_loop.run();
+            println!("Loop executed");
 
-        pipeline
-            .set_state(gstreamer::State::Null)
-            .expect("Unable to set the pipeline to the `Null` state");
+            pipeline
+                .set_state(gstreamer::State::Null)
+                .expect("Unable to set the pipeline to the `Null` state");
 
-        bus.remove_watch().unwrap();
+            bus.remove_watch().unwrap();
+        });
+        if send_segments {
+            let mut x = rx.recv();
+            while let Ok(Ok(res)) = x.clone() {
+                if res.is_none() {
+                    println!("Exiting gst execution with ok");
+                    thread.join().unwrap();
+                    return Ok(());
+                }
+                let (node_id, segment, location) = res.unwrap();
 
-        let res = rx.recv();
-        if res.is_ok() {
-            if res.unwrap().is_ok() {
-                return Ok(());
+                (composited_clip_callback)(node_id, segment, location);
+                println!("Waiting for another response after: {:?}", x);
+                x = rx.recv();
+            }
+            thread.join().unwrap();
+            println!("Exiting gst execution with final res: {:?}", x);
+        } else {
+            let res = rx.recv();
+            if res.is_ok() {
+                if res.unwrap().is_ok() {
+                    thread.join().unwrap();
+                    return Ok(());
+                }
             }
         }
-        return Err(());
+        Err(())
     }
 
     pub fn get_video_thumbnail(path: String, id: String) {

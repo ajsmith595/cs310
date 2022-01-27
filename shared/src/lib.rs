@@ -1,3 +1,5 @@
+use uuid::Uuid;
+
 #[macro_use]
 extern crate serde_derive;
 #[macro_use]
@@ -20,4 +22,5 @@ pub mod node;
 pub mod nodes;
 pub mod pipeline;
 pub mod store;
-pub type ID = String;
+pub type ID = Uuid;
+pub mod constants;

@@ -14,7 +14,7 @@ use std::{
   thread,
 };
 
-use file_manager_thread::APPLICATION_MEDIA_OUTPUT;
+use file_manager_thread::{APPLICATION_DATA_ROOT, APPLICATION_MEDIA_OUTPUT};
 use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
@@ -22,6 +22,7 @@ use crate::file_manager_thread::{file_manager_thread, APPLICATION_JSON_PATH};
 use crate::pipeline_executor_thread::pipeline_executor_thread;
 use cs310_shared::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
+  constants::init,
   global::uniq_id,
   networking::{self, Message, SERVER_HOST, SERVER_PORT},
   node::{Node, Position},
@@ -100,6 +101,8 @@ fn main() {
     None => println!("Cannot get data directory!"),
   }
 
+  init(APPLICATION_DATA_ROOT());
+
   let mut file = String::from("state.json");
   if path.is_some() {
     let path = path.unwrap().clone();
@@ -163,12 +166,13 @@ fn main() {
           file_manager_thread(shared_state);
         });
       }
-      {
-        let shared_state = shared_state_clone.clone();
-        thread::spawn(move || {
-          pipeline_executor_thread(shared_state);
-        });
-      };
+      // {
+      //   let shared_state = shared_state_clone.clone();
+      //   thread::spawn(move || {
+      //     pipeline_executor_thread(shared_state);
+      //   });
+      // };
+      // we no longer run the pipeline on the client!
 
       Ok(())
     })

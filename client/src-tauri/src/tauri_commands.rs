@@ -1,4 +1,5 @@
-use std::{collections::HashMap, fs::File, io::Write, net::TcpStream};
+use core::time;
+use std::{collections::HashMap, fs::File, io::Write, net::TcpStream, thread};
 
 use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
 use gstreamer_pbutils::{
@@ -7,6 +8,7 @@ use gstreamer_pbutils::{
 };
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
+use uuid::Uuid;
 
 use crate::file_manager_thread::APPLICATION_MEDIA_OUTPUT;
 use crate::state_manager::SharedStateWrapper;
@@ -24,7 +26,7 @@ use cs310_shared::{
 pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
-) -> Result<HashMap<String, SourceClip>, String> {
+) -> Result<HashMap<ID, SourceClip>, String> {
   let dialog = AsyncFileDialog::new()
     .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"))
     .add_filter("Media", &["mp4", "mkv", "mp3"]);
@@ -48,7 +50,7 @@ pub async fn import_media(
         let id = uniq_id();
         let mut thumbnail = None;
         if info.clone().video_streams.len() > 0 {
-          Pipeline::get_video_thumbnail(file_path.clone(), id.clone());
+          Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
 
           thumbnail = Some(format!(
             "{}/thumbnails/source/{}.jpg",
@@ -74,6 +76,7 @@ pub async fn import_media(
         let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT)).unwrap();
 
         networking::send_message(&mut stream, networking::Message::UploadFile).unwrap();
+        thread::sleep(time::Duration::from_secs(5));
         let mut file = File::open(file_path.clone()).unwrap();
         networking::send_file(&mut stream, &mut file);
         networking::send_message(&mut stream, networking::Message::EndFile).unwrap();
@@ -224,7 +227,7 @@ pub async fn get_file_info(
 pub fn create_composited_clip(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
-) -> Result<(String, Store), String> {
+) -> Result<(ID, Store), String> {
   let clip = CompositedClip {
     id: uniq_id(),
     name: "New Clip".to_string(),

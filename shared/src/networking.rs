@@ -17,8 +17,14 @@ enum_from_primitive! {
         GetFileThumbnail,
         UploadFile,
         Response,
-        EndFile
+        EndFile,
+        NewChunk,
+        AllChunksGenerated
     }
+}
+
+pub fn connect_to_server() -> TcpStream {
+    TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT)).unwrap()
 }
 
 pub fn send_file(stream: &mut TcpStream, file: &mut File) {
@@ -29,7 +35,7 @@ pub fn send_file(stream: &mut TcpStream, file: &mut File) {
 }
 pub fn receive_file(stream: &mut TcpStream, output_file: &mut File) {
     let file_length = receive_data(stream, 8).unwrap();
-    let mut file_length_bytes: [u8; 8] = Default::default();
+    let mut file_length_bytes = [0 as u8; 8];
     file_length_bytes.copy_from_slice(&file_length[0..8]);
     let file_length = u64::from_ne_bytes(file_length_bytes);
 

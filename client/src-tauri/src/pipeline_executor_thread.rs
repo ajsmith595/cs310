@@ -128,7 +128,7 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                 }
 
                 for (id, clip) in &clips.composited {
-                  let directory = clip.get_output_location_ext(APPLICATION_MEDIA_OUTPUT(), false);
+                  let directory = clip.get_output_location_ext(false);
                   if !Path::new(&directory).exists() {
                     fs::create_dir_all(directory).unwrap();
                   }
@@ -140,7 +140,7 @@ pub fn pipeline_executor_thread(shared_state: Arc<Mutex<SharedState>>) {
                 Pipeline::execute_pipeline(
                   output,
                   180,
-                  Some(Box::new(move |node_id, segment| {
+                  Some(Box::new(move |node_id, segment, location| {
                     let shared_state_clone = shared_state_clone.clone();
                     let shared_state_clone = shared_state_clone.lock().unwrap();
                     let window = shared_state_clone.window.as_ref().unwrap();

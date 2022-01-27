@@ -11,6 +11,7 @@ use crate::{
         PipeableType, PipedType, Type,
     },
     store::Store,
+    ID,
 };
 
 use super::NodeRegister;
@@ -74,10 +75,10 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 pub fn get_io(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<
@@ -120,10 +121,10 @@ pub fn get_io(
     return Ok((inputs, outputs));
 }
 fn get_output(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<AbstractPipeline, String> {
@@ -161,7 +162,7 @@ fn get_output(
 
     for (stream_type, num) in output.stream_type.get_map() {
         for i in 0..num {
-            let id = uniq_id();
+            let id = uniq_id().to_string();
 
             let output_gst = output.get_gst_handle(&stream_type, i);
             let media1_gst = media1.get_gst_handle(&stream_type, i);
@@ -229,10 +230,10 @@ pub fn concat_node() -> NodeType {
         description: String::from("Concatenate two media sources"),
         default_properties: default_properties(),
 
-        get_io: |node_id: String,
+        get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,
                  piped_inputs: &HashMap<String, PipedType>,
-                 composited_clip_types: &HashMap<String, PipedType>,
+                 composited_clip_types: &HashMap<ID, PipedType>,
                  store: &Store,
                  node_register: &NodeRegister| {
             return get_io(
@@ -244,10 +245,10 @@ pub fn concat_node() -> NodeType {
                 node_register,
             );
         },
-        get_output: |node_id: String,
+        get_output: |node_id: ID,
                      properties: &HashMap<String, Value>,
                      piped_inputs: &HashMap<String, PipedType>,
-                     composited_clip_types: &HashMap<String, PipedType>,
+                     composited_clip_types: &HashMap<ID, PipedType>,
                      store: &Store,
                      node_register: &NodeRegister| {
             return get_output(

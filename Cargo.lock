@@ -595,6 +595,7 @@ dependencies = [
  "gstreamer-video",
  "num-derive",
  "num-traits 0.2.14",
+ "once_cell",
  "petgraph",
  "rfd",
  "serde",
@@ -2932,8 +2933,13 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "cs310_shared",
+ "gstreamer",
+ "gstreamer-audio",
+ "gstreamer-pbutils",
+ "gstreamer-video",
  "serde",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

@@ -104,7 +104,7 @@ pub enum InputOrOutput {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PipedType {
     pub stream_type: PipeableType,
-    pub node_id: String,
+    pub node_id: ID,
     pub property_name: String,
     pub io: InputOrOutput,
 }
@@ -248,10 +248,10 @@ pub struct NodeTypeOutput {
 }
 
 type NodeTypeFunc<T> = fn(
-    node_id: String,
+    node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<String, PipedType>,
+    composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<T, String>;
