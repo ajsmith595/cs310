@@ -17,8 +17,9 @@ use std::{
 use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
-use crate::file_manager_thread::file_manager_thread;
+use crate::file_uploader_thread::file_uploader_thread;
 use crate::pipeline_executor_thread::pipeline_executor_thread;
+use crate::state_uploader_thread::state_uploader_thread;
 use cs310_shared::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
   constants::{init, media_output_location, store_json_location},
@@ -47,9 +48,10 @@ extern crate gstreamer_pbutils;
 extern crate serde;
 extern crate serde_json;
 
-mod file_manager_thread;
+mod file_uploader_thread;
 mod pipeline_executor_thread;
 mod state_manager;
+mod state_uploader_thread;
 mod tauri_commands;
 
 // fn main2() {
@@ -86,12 +88,17 @@ mod tauri_commands;
 // }
 
 fn main() {
+  println!("Testing 1 2 3.");
   let path = dirs::data_dir().unwrap();
   let path = format!(
     "{}\\AdamSmith\\VideoEditor",
     path.into_os_string().into_string().unwrap()
   );
+
+  println!("Initialising...");
+
   init(path);
+  println!("Initialised");
 
   if let Some(directory) = dirs::data_dir() {
     if !directory.join(media_output_location()).exists() {
@@ -107,13 +114,15 @@ fn main() {
     None => println!("Cannot get data directory!"),
   }
 
+  println!("Connecting to server...");
   let mut stream = networking::connect_to_server();
   networking::send_message(&mut stream, Message::GetStore).unwrap();
   let mut json_file = File::create(store_json_location()).unwrap();
-
   networking::receive_file(&mut stream, &mut json_file);
 
   let store = Store::from_file(store_json_location());
+
+  println!("Store received");
 
   let store = match store {
     Ok(store) => store,
@@ -167,7 +176,13 @@ fn main() {
       {
         let shared_state = shared_state_clone.clone();
         thread::spawn(move || {
-          file_manager_thread(shared_state);
+          state_uploader_thread(shared_state);
+        });
+      }
+      {
+        let shared_state = shared_state_clone.clone();
+        thread::spawn(move || {
+          file_uploader_thread(shared_state);
         });
       }
       // {

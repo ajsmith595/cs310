@@ -18,7 +18,8 @@ interface Props {
 
 interface State {
     editing: boolean,
-    thumbnailData: string
+    thumbnailData: string,
+    uploadProgress: number
 }
 
 class ClipComponent extends React.Component<Props, State> {
@@ -28,7 +29,8 @@ class ClipComponent extends React.Component<Props, State> {
 
         this.state = {
             editing: false,
-            thumbnailData: ""
+            thumbnailData: "",
+            uploadProgress: 50
         };
         this.changeClipName = this.changeClipName.bind(this);
         this.enableEditingMode = this.enableEditingMode.bind(this);
@@ -41,6 +43,15 @@ class ClipComponent extends React.Component<Props, State> {
 
     componentDidMount() {
         if (this.props.clip instanceof CompositedClip) return;
+
+        Communicator.on('file-upload-progress', (data) => {
+            let [id, percentage] = data;
+            if (id == this.props.clip.id) {
+                this.setState({
+                    uploadProgress: percentage
+                });
+            }
+        });
 
         if (!this.props.cache.get("clips")) {
             this.props.cache.set("clips", {});
@@ -138,6 +149,13 @@ class ClipComponent extends React.Component<Props, State> {
         let extraDisplay = null;
         if (this.props.clip instanceof SourceClip) {
             extraDisplay = <p className="text-gray-400 text-xs">{this.props.clip.file_location}</p>;
+
+
+            let width = this.state.uploadProgress + "%";
+            extraDisplay = <div className='relative h-2 border border-black rounded'>
+                <div className='bg-white left-0 absolute h-full rounded' style={{ width }}>
+                </div>
+            </div>
         }
         else {
             extraDisplay = <button className="text-xs p-1 bg-blue-600 text-white" onClick={this.openInEditor}>Open</button>;
@@ -175,6 +193,13 @@ class ClipComponent extends React.Component<Props, State> {
                     {extraDisplay}
                     {type_indicator}
                 </div>
+
+
+
+                <div className="wrapper" data-anim="base wrapper">
+                    <div className="circle" data-anim="base left"></div>
+                    <div className="circle" data-anim="base right"></div>
+                </div>
             </div>
         </div>
 
@@ -183,3 +208,4 @@ class ClipComponent extends React.Component<Props, State> {
 }
 
 export default ClipComponent;
+

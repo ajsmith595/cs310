@@ -21,7 +21,7 @@ struct VideoPreviewSend {
   pub output_directory_path: String,
   pub segment_duration: i32,
 }
-pub fn file_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
+pub fn state_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
     let x = shared_state.lock().unwrap();
     let rx = &x.thread_stopper;

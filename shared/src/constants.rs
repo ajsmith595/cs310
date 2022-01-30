@@ -12,13 +12,19 @@ pub fn data_location() -> String {
 pub fn media_output_location() -> String {
     format!("{}\\output", data_location())
 }
+pub fn source_files_location() -> String {
+    format!("{}\\source", data_location())
+}
 pub fn store_json_location() -> String {
     format!("{}\\pipeline.json", data_location())
 }
 
 pub fn init(data_location: String) {
-    fs::create_dir_all(data_location.clone()).unwrap();
-
     let mut value = DATA_LOCATION.lock().unwrap();
     *value = Some(data_location);
+
+    drop(value);
+
+    fs::create_dir_all(media_output_location()).unwrap();
+    fs::create_dir_all(source_files_location()).unwrap();
 }

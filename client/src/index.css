@@ -5,6 +5,11 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fira+Mono&family=Inconsolata&display=swap');
 
+:root {
+  --progress-bar-size: 50px;
+  --progress-bar-border: 4px;
+}
+
 body {
   margin: 0;
   font-family: 'Fira Mono', monospace;
@@ -39,4 +44,70 @@ code {
 
 .custom-edge-component { 
   fill: none;
+}
+
+
+
+
+.wrapper {
+  width: var(--progress-bar-size); /* Set the size of the progress bar */
+  height: var(--progress-bar-size);
+  position: absolute; /* Enable clipping */
+  clip-path: rect(0px, var(--progress-bar-size),var(--progress-bar-size), calc(var(--progress-bar-size) / 2)); /* Hide half of the progress bar */
+}
+/* Set the sizes of the elements that make up the progress bar */
+.circle {
+  width: calc(var(--progress-bar-size) - 2 * var(--progress-bar-border));
+  height: calc(var(--progress-bar-size) - 2 * var(--progress-bar-border));
+  border: var(--progress-bar-border) solid green;
+  border-radius: calc(var(--progress-bar-size) / 2);
+  position: absolute;
+  clip-path: rect(0px, calc(var(--progress-bar-size) / 2), var(--progress-bar-size), 0px);
+}
+/* Using the data attributes for the animation selectors. */
+/* Base settings for all animated elements */
+div[data-anim~=base] {
+  animation-iteration-count: 1;  /* Only run once */
+  animation-fill-mode: forwards; /* Hold the last keyframe */
+  animation-timing-function:linear; /* Linear animation */
+}
+
+.wrapper[data-anim~=wrapper] {
+  animation-duration: 0.01s; /* Complete keyframes asap */
+  animation-delay: 3s; /* Wait half of the animation */
+  animation-name: close-wrapper; /* Keyframes name */
+}
+
+.circle[data-anim~=left] {
+  animation-duration: 6s; /* Full animation time */
+  animation-name: left-spin;
+}
+
+.circle[data-anim~=right] {
+  animation-duration: 3s; /* Half animation time */
+  animation-name: right-spin;
+}
+/* Rotate the right side of the progress bar from 0 to 180 degrees */
+@keyframes right-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(180deg);
+  }
+}
+/* Rotate the left side of the progress bar from 0 to 360 degrees */
+@keyframes left-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* Set the wrapper clip to auto, effectively removing the clip */
+@keyframes close-wrapper {
+  to {
+    clip: rect(auto, auto, auto, auto);
+  }
 }

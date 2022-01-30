@@ -17,3 +17,6 @@ gstreamer = "0.17.3"
 gstreamer-audio = "0.17.2"
 gstreamer-video = "0.17.2"
 gstreamer-pbutils = "0.17.2"
+
+log = "0.4.14"
+simple_logger = "2.1.0"

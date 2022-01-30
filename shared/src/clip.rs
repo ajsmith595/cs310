@@ -57,12 +57,20 @@ pub struct ClipInfo {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum SourceClipServerStatus {
+    LocalOnly,
+    Uploading,
+    Uploaded(String),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceClip {
     pub id: ID,
     pub name: String,
     pub file_location: String,
     pub thumbnail_location: Option<String>,
     pub info: Option<ClipInfo>,
+    pub status: SourceClipServerStatus,
 }
 
 impl SourceClip {

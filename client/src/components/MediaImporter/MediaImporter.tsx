@@ -33,6 +33,10 @@ class MediaImporter extends React.Component<Props, State> {
 
 		this.onImportMediaButtonClick = this.onImportMediaButtonClick.bind(this);
 	}
+
+	componentDidMount(): void {
+	}
+
 	setOpenTab(t: 'source' | 'composited') {
 		this.setState({
 			openTab: t

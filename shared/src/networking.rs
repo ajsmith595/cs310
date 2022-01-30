@@ -1,8 +1,11 @@
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
+use progress_streams::ProgressReader;
 use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 
 pub const SERVER_HOST: &str = "127.0.0.1";
@@ -19,7 +22,8 @@ enum_from_primitive! {
         Response,
         EndFile,
         NewChunk,
-        AllChunksGenerated
+        AllChunksGenerated,
+        GetFileID
     }
 }
 
@@ -33,6 +37,26 @@ pub fn send_file(stream: &mut TcpStream, file: &mut File) {
     send_data(stream, &bytes).unwrap(); // send the file length
     std::io::copy(file, stream).unwrap();
 }
+pub fn send_file_with_progress<F>(stream: &mut TcpStream, file: &mut File, callback: F)
+where
+    F: Fn(f64, usize),
+{
+    let file_length = file.metadata().unwrap().len();
+
+    let total = Arc::new(AtomicUsize::new(0));
+    let mut reader = ProgressReader::new(file, |progress| {
+        total.fetch_add(progress, Ordering::SeqCst);
+
+        let total = total.load(Ordering::SeqCst);
+        let perc = (100 * total) as f64 / file_length as f64;
+        (callback)(perc, total);
+    });
+
+    let bytes = file_length.to_ne_bytes();
+    send_data(stream, &bytes).unwrap(); // send the file length
+    std::io::copy(&mut reader, stream).unwrap();
+}
+
 pub fn receive_file(stream: &mut TcpStream, output_file: &mut File) {
     let file_length = receive_data(stream, 8).unwrap();
     let mut file_length_bytes = [0 as u8; 8];

@@ -1,18 +1,29 @@
 use core::time;
-use std::{collections::HashMap, fs::File, io::Write, net::TcpStream, thread};
+use std::{
+  collections::HashMap,
+  fs::File,
+  io::Write,
+  net::TcpStream,
+  sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc, Mutex,
+  },
+  thread,
+};
 
 use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
 use gstreamer_pbutils::{
   traits::DiscovererStreamInfoExt, Discoverer, DiscovererAudioInfo, DiscovererStreamInfo,
   DiscovererSubtitleInfo, DiscovererVideoInfo,
 };
+use progress_streams::ProgressReader;
 use rfd::AsyncFileDialog;
 use serde_json::{Number, Value};
 use uuid::Uuid;
 
 use crate::state_manager::SharedStateWrapper;
 use cs310_shared::{
-  clip::{CompositedClip, SourceClip},
+  clip::{self, CompositedClip, SourceClip},
   constants::media_output_location,
   global::uniq_id,
   networking::{self, SERVER_HOST, SERVER_PORT},
@@ -47,7 +58,15 @@ pub async fn import_media(
         }
         let info = info.unwrap();
 
-        let id = uniq_id();
+        println!("Sending file: {}", file_path.clone());
+        let mut stream = networking::connect_to_server();
+
+        networking::send_message(&mut stream, networking::Message::GetFileID).unwrap();
+        let temp = networking::receive_data(&mut stream, 16).unwrap();
+        let mut uuid_bytes = [0 as u8; 16];
+        uuid_bytes.copy_from_slice(&temp);
+        let id = Uuid::from_bytes(uuid_bytes);
+
         let mut thumbnail = None;
         if info.clone().video_streams.len() > 0 {
           Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
@@ -65,21 +84,13 @@ pub async fn import_media(
           file_location: file_path.clone(),
           thumbnail_location: thumbnail,
           info: Some(info),
+          status: clip::SourceClipServerStatus::LocalOnly,
         };
 
         hm.insert(clip.id.clone(), clip.clone());
 
         (&mut state.0.clone().lock().unwrap().store.clips.source)
           .insert(clip.id.clone(), clip.clone());
-
-        println!("Sending file: {}", file_path.clone());
-        let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT)).unwrap();
-
-        networking::send_message(&mut stream, networking::Message::UploadFile).unwrap();
-        thread::sleep(time::Duration::from_secs(5));
-        let mut file = File::open(file_path.clone()).unwrap();
-        networking::send_file(&mut stream, &mut file);
-        networking::send_message(&mut stream, networking::Message::EndFile).unwrap();
       }
       Ok(hm)
     }

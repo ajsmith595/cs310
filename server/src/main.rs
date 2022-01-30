@@ -13,7 +13,7 @@ use std::{
 
 use cs310_shared::{
     abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
-    constants::{media_output_location, store_json_location},
+    constants::{media_output_location, source_files_location, store_json_location},
     networking::{self, send_file, send_message, SERVER_PORT},
     node::PipeableStreamType,
     nodes::{get_node_register, NodeRegister},
@@ -21,6 +21,7 @@ use cs310_shared::{
     store::Store,
 };
 use gstreamer::{glib, prelude::*};
+use simple_logger::SimpleLogger;
 use state::State;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
@@ -28,6 +29,8 @@ use uuid::Uuid;
 mod state;
 
 fn main() {
+    SimpleLogger::new().init().unwrap();
+
     let current_dir = std::env::current_dir().unwrap();
     let current_dir = current_dir.to_str().unwrap();
     cs310_shared::constants::init(format!("{}/application_data", current_dir));
@@ -44,10 +47,11 @@ fn main() {
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", SERVER_PORT)).unwrap();
 
+    log::info!("Server opened on port {}", SERVER_PORT);
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                println!("New connection: {}", stream.peer_addr().unwrap());
+                log::info!("New connection from: {}", stream.peer_addr().unwrap());
                 let state = state.clone();
                 thread::spawn(move || {
                     handle_client(stream, state);
@@ -61,34 +65,63 @@ fn main() {
 }
 
 fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+    log::info!("Handling client: {}", stream.peer_addr().unwrap());
+
     while match networking::receive_message(&mut stream) {
         Ok(message) => {
-            println!("Valid message received: {:?}", message);
+            let operation_id = &format!("{}", Uuid::new_v4())[..8];
 
+            log::info!(
+                "[{}] New operation from: {}",
+                operation_id,
+                stream.peer_addr().unwrap()
+            );
             match message {
                 networking::Message::GetStore => {
+                    log::info!("[{}] Getting store ", operation_id);
                     let mut file = File::open(store_json_location()).unwrap();
 
                     networking::send_file(&mut stream, &mut file);
+                    log::info!("[{}] Store sent ", operation_id);
+                }
+                networking::Message::GetFileID => {
+                    log::info!("[{}] Getting unique file ID", operation_id);
+                    let uuid = Uuid::new_v4();
+                    networking::send_data(&mut stream, uuid.as_bytes()).unwrap();
+                    log::info!("[{}] New file ID: {}", operation_id, uuid);
                 }
                 networking::Message::UploadFile => {
-                    println!("Receiving file...");
-                    let mut output_file = File::create("output-test-file.txt").unwrap();
+                    log::info!("[{}] Receiving file", operation_id);
+                    let temp = networking::receive_data(&mut stream, 16).unwrap();
+                    let mut uuid_bytes = [0 as u8; 16];
+                    uuid_bytes.copy_from_slice(&temp);
+                    let uuid = Uuid::from_bytes(uuid_bytes);
+
+                    log::info!("[{}] File ID: {}", operation_id, uuid);
+
+                    let mut output_file = File::create(format!(
+                        "{}/source-file-{}.mp4",
+                        source_files_location(),
+                        uuid
+                    ))
+                    .unwrap();
                     networking::receive_file(&mut stream, &mut output_file);
                     let msg = networking::receive_message(&mut stream).unwrap();
 
-                    println!("Received file! End message: {:?}", msg);
+                    log::info!("[{}] File received successfully", operation_id);
                 }
                 networking::Message::SetStore => {
-                    println!("Receiving store...");
+                    log::info!("[{}] Receiving store", operation_id);
                     let mut output_file = File::create(store_json_location()).unwrap();
                     networking::receive_file(&mut stream, &mut output_file);
 
-                    println!("store received. playing pipeline...");
+                    log::info!("[{}] Store received", operation_id);
 
                     let store = Store::from_file(store_json_location()).unwrap();
                     let node_register = get_node_register();
+                    log::info!("[{}] Executing pipeline", operation_id);
                     execute_pipeline(&mut stream, &store, &node_register);
+                    log::info!("[{}] Pipeline executed", operation_id);
                 }
                 _ => println!("Unknown message"),
             }
@@ -103,8 +136,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 false
             } else {
                 if error.kind() != ErrorKind::WouldBlock {
-                    println!("Error type: {:?}", error.kind());
-                    println!("Error description: {}", error.to_string());
+                    log::error!(
+                        "Error occurred for connection {}: {:?}",
+                        stream.peer_addr().unwrap(),
+                        error
+                    );
                     // println!(
                     //     "Error encountered whilst reading from client: {}; shutting down stream",
                     //     error

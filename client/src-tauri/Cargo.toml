@@ -31,6 +31,8 @@ gstreamer-audio = "0.17.2"
 gstreamer-video = "0.17.2"
 gstreamer-pbutils = "0.17.2"
 
+progress-streams = "1.1.0"
+
 [features]
 default = [ "custom-protocol" ]
 custom-protocol = [ "tauri/custom-protocol" ]
