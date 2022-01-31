@@ -1,5 +1,5 @@
-use gstreamer::prelude::Cast;
-use gstreamer_pbutils::{
+use gst::prelude::Cast;
+use gst_pbutils::{
     Discoverer, DiscovererAudioInfo, DiscovererInfo, DiscovererSubtitleInfo, DiscovererVideoInfo,
 };
 use serde_json::Value;
@@ -95,7 +95,7 @@ impl SourceClip {
         let file_location = format!("file:///{}", filename.replace("\\", "/"));
         println!("Location: {}", file_location);
 
-        let discoverer = Discoverer::new(gstreamer::ClockTime::from_seconds(10)).unwrap();
+        let discoverer = Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
 
         let info = discoverer.discover_uri(&file_location);
         if info.is_err() {
@@ -141,7 +141,7 @@ impl SourceClip {
                 let sample_rate = audio_info.sample_rate();
                 let language = audio_info
                     .language()
-                    .unwrap_or(gstreamer::glib::GString::from("und".to_string()))
+                    .unwrap_or(gst::glib::GString::from("und".to_string()))
                     .to_string();
 
                 let num_channels = audio_info.channels();
@@ -165,7 +165,7 @@ impl SourceClip {
             if let Ok(subtitle_info) = subtitle_info {
                 let language = subtitle_info
                     .language()
-                    .unwrap_or(gstreamer::glib::GString::from("und".to_string()))
+                    .unwrap_or(gst::glib::GString::from("und".to_string()))
                     .to_string();
                 let subtitle_info = SubtitleStreamInfo { language };
                 subtitle_streams_vec.push(subtitle_info);

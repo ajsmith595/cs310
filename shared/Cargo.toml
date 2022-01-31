@@ -12,14 +12,15 @@ petgraph = {version = "0.6.0", features = [ "serde-1"] }
 serde_derive = "1.0"
 bimap = "0.6.1"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-gstreamer = "0.17.3"
 rfd = "0.4.3"
 dirs = "3.0"
 
-gstreamer-audio = "0.17.2"
-gstreamer-video = "0.17.2"
-gstreamer-pbutils = "0.17.2"
-
+gst = {package = "gstreamer", version = "0.18.0"}
+gst-audio = {package = "gstreamer-audio", version = "0.18.0" }
+gst-video = {package = "gstreamer-video", version = "0.18.0" }
+gst-pbutils = {package = "gstreamer-pbutils", version = "0.18.0"}
+ges  = {package = "gstreamer-editing-services",version = "0.18.0" }
+glib = "0.15.3"
 
 num-traits = "0.2"
 num-derive = "0.2"

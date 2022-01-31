@@ -6,8 +6,8 @@ use std::{
     thread,
 };
 
-use gstreamer::{glib, prelude::*};
-use gstreamer_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
+use gst::{glib, prelude::*};
+use gst_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
 use petgraph::visit::EdgeRef;
 use petgraph::{
     graph::{DiGraph, NodeIndex},
@@ -311,12 +311,12 @@ impl Pipeline {
         //println!("Pipeline: {}", pipeline);
         // This creates a pipeline by parsing the gst-launch pipeline syntax.
 
-        let pipeline = gstreamer::parse_launch(pipeline.as_str()).unwrap();
-        let pipeline = pipeline.dynamic_cast::<gstreamer::Pipeline>().unwrap();
+        let pipeline = gst::parse_launch(pipeline.as_str()).unwrap();
+        let pipeline = pipeline.dynamic_cast::<gst::Pipeline>().unwrap();
 
         let bus = pipeline.bus().unwrap();
 
-        let res = pipeline.set_state(gstreamer::State::Playing);
+        let res = pipeline.set_state(gst::State::Playing);
         if res.is_err() {
             println!("Error! {:?}", res.unwrap_err());
             return Err(());
@@ -349,7 +349,7 @@ impl Pipeline {
         }
         let tx_clone = tx.clone();
         bus.add_watch(move |_, msg| {
-            use gstreamer::MessageView;
+            use gst::MessageView;
 
             let main_loop = &main_loop_clone;
             match msg.view() {
@@ -418,7 +418,7 @@ impl Pipeline {
             println!("Loop executed");
 
             pipeline
-                .set_state(gstreamer::State::Null)
+                .set_state(gst::State::Null)
                 .expect("Unable to set the pipeline to the `Null` state");
 
             bus.remove_watch().unwrap();
