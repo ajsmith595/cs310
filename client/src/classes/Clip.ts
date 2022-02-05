@@ -9,20 +9,22 @@ export class SourceClip {
     public file_location: string;
     public thumbnail_location: string;
     public info: any; // TODO: implement proper (de)serialiser for this
-    constructor(id: ID, name: string, file_location: string, thumbnail_location: string, info: any) {
+    public status: any;
+    constructor(id: ID, name: string, file_location: string, thumbnail_location: string, info: any, status: any) {
         this.id = id;
         this.name = name;
         this.file_location = file_location;
         this.thumbnail_location = thumbnail_location;
         this.info = info;
+        this.status = status;
     }
 
     static deserialise(obj: any) {
         if (obj == null) return null;
-        if (Utils.propsUndefined(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info)) {
+        if (Utils.propsUndefined(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info, obj.status)) {
             throw new Error("Could not deserialise! Malformed object");
         }
-        return new SourceClip(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info);
+        return new SourceClip(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info, obj.status);
     }
 
 

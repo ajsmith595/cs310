@@ -364,6 +364,8 @@ impl AbstractPipeline {
 
     fn optimise(&mut self) {
         // removes double encoding/decoding pairs, etc.
+
+        // remove unused
     }
 
     fn convert_aliases(&mut self) {
@@ -395,22 +397,76 @@ impl AbstractPipeline {
         // converts the aliases (e.g. encoder/decoders) to the actual required representations
     }
 
+    fn remove_dangling(&mut self) {
+        let mut nodes_to_check = self
+            .nodes
+            .clone()
+            .into_iter()
+            .map(|(id, node)| id)
+            .collect::<Vec<_>>();
+
+        while (nodes_to_check.len() > 0) {
+            let next_item = nodes_to_check.remove(0);
+
+            match self.check_and_remove_dangling_node(next_item) {
+                Some(vec) => {
+                    let mut vec = vec.clone();
+                    nodes_to_check.append(&mut vec);
+                }
+                None => {}
+            }
+        }
+    }
+
+    /// Checks the node specified to see if it is a "dead-end" that's not a filesink.
+    ///
+    /// If it is a dead-end that's not a filesink, it will be removed, and a list of node IDs that
+    /// were connected to it are then returned. `None` returned otherwise
+    fn check_and_remove_dangling_node(&mut self, id: String) -> Option<Vec<String>> {
+        let node = self.nodes.get(&id);
+        let node = match node {
+            Some(node) => node,
+            None => return None,
+        };
+
+        match node.node_type.as_str() {
+            "splitmuxsink" | "filesink" => {
+                return None;
+            }
+            _ => {}
+        }
+
+        let links_from_node: Vec<AbstractLink> = self
+            .links
+            .clone()
+            .into_iter()
+            .filter(|x| x.from.id == id)
+            .collect::<Vec<_>>();
+
+        if links_from_node.len() > 0 {
+            return None;
+        }
+
+        let nodes_incoming: Vec<String> = self
+            .links
+            .clone()
+            .into_iter()
+            .filter(|x| x.to.id == id)
+            .map(|x| x.from.id)
+            .collect::<Vec<_>>();
+
+        self.nodes.remove(&id);
+        self.links.retain(|x| x.to.id != id);
+
+        Some(nodes_incoming)
+    }
+
     pub fn to_gstreamer_pipeline(&mut self) -> String {
         self.handle_splits();
+        self.remove_dangling();
         self.optimise();
-
-        let mut str = String::from("");
-
-        for link in &self.links {
-            str = format!("{}\n {}", str, link.to_gstreamer_pipeline());
-        }
-
-        for (id, node) in &self.nodes {
-            str = format!("{}\n {}", str, node.to_gstreamer_pipeline());
-        }
-        //println!("Aliased pipeline: {}", str);
-
         self.convert_aliases();
+        self.remove_dangling();
 
         // todo!();
 

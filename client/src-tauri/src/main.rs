@@ -18,7 +18,6 @@ use gstreamer::{glib, prelude::*};
 use uuid::Uuid;
 
 use crate::file_uploader_thread::file_uploader_thread;
-use crate::pipeline_executor_thread::pipeline_executor_thread;
 use crate::state_uploader_thread::state_uploader_thread;
 use cs310_shared::{
   clip::{ClipIdentifier, CompositedClip, SourceClip},
@@ -49,7 +48,6 @@ extern crate serde;
 extern crate serde_json;
 
 mod file_uploader_thread;
-mod pipeline_executor_thread;
 mod state_manager;
 mod state_uploader_thread;
 mod tauri_commands;

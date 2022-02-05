@@ -36,11 +36,18 @@ fn main() {
     cs310_shared::constants::init(format!("{}/application_data", current_dir));
     gstreamer::init().expect("GStreamer could not be initialised");
 
-    let store = Store::from_file(String::from("state.json"));
+    let store = Store::from_file(store_json_location());
 
     let store = match store {
         Ok(store) => store,
-        Err(_) => Store::new(),
+        Err(_) => {
+            let store = Store::new();
+
+            let json = serde_json::to_string(&store).unwrap();
+            std::fs::write(store_json_location(), json).unwrap();
+
+            store
+        }
     };
 
     let state = Arc::new(Mutex::new(State { store }));
@@ -254,6 +261,7 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                 let lock = Arc::new(Mutex::new(stream));
                 let lock_clone = lock.clone();
                 // let shared_state_clone = shared_state.clone();
+                println!("Pipeline: {:?}", output);
                 Pipeline::execute_pipeline(
                     output,
                     180,

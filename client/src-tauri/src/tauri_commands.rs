@@ -123,6 +123,14 @@ pub async fn get_file_info(
   }
   let info = info.unwrap();
 
+  /*
+   *  codec_data - use this.
+   *  e.g.: 0164002affe1001a6764002aacd940780227e584000003000400000301e23c60c65801000468efbcb0
+   *  codec string is 64002A. (use the chars 2:8)
+   */
+
+  println!("Info: {:?}", info);
+
   let duration = info.duration().unwrap();
   let mut hm = HashMap::new();
   hm.insert(
@@ -349,10 +357,12 @@ pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Resul
 
 #[tauri::command]
 pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
+  println!("Updating store...");
   let mut state = state.0.lock().unwrap();
   state.store = store.clone();
   state.file_written = false;
   state.pipeline_executed = false;
+  println!("Store updated");
 
   // let pipeline_result = state
   //   .stored_state

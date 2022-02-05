@@ -4,6 +4,41 @@ use ges::prelude::{ElementExt, *};
 
 use std::env;
 
+/*
+
+Don't use GESPipeline!
+
+This only allows for one output pretty much, since it's only there for convenience.
+
+To be able to utilise the caching algos mentioned, we need to use a standard GST Pipeline.
+
+
+The GESTimeline is a GSTElement, hence we can use it in a standard GST pipeline.
+
+
+
+Wait...
+we can literally just put LOADs of tracks (outputs) on the timeline, and
+have each thing we want to cache output to separate tracks, which can then be written to files for caching or whatever.
+
+
+
+
+
+
+
+
+
+Look here: https://gitlab.freedesktop.org/gstreamer/gst-editing-services/-/blob/master/ges/ges-project.c
+- use subprojects. Bit clunky, have to save to file, then load that file, but might be able to use custom ges protocol?
+
+
+
+
+
+
+*/
+
 fn configure_pipeline(pipeline: &ges::Pipeline, output_name: &str) {
     // Every audiostream piped into the encodebin should be encoded using opus.
     let audio_profile =
@@ -37,12 +72,14 @@ fn main_loop(uri: &str, output: Option<&String>) -> Result<(), glib::BoolError> 
     ges::init()?;
 
     // Begin by creating a timeline with audio and video tracks
-    let timeline = ges::Timeline::new_audio_video();
+    let timeline = ges::Timeline::new();
+    let track = ges::Track::new(ges::TrackType::VIDEO, &gst::Caps::builder("video").build());
+
+    timeline.add_track(&track);
     // Create a new layer that will contain our timed clips.
     let layer = timeline.append_layer();
     let pipeline = ges::Pipeline::new();
     pipeline.set_timeline(&timeline)?;
-
     // If requested, configure the pipeline so it renders to a file.
     if let Some(output_name) = output {
         configure_pipeline(&pipeline, output_name);
@@ -52,8 +89,21 @@ fn main_loop(uri: &str, output: Option<&String>) -> Result<(), glib::BoolError> 
     let clip = ges::UriClip::new(uri).expect("Failed to create clip");
     layer.add_clip(&clip)?;
 
+    let group = ges::Group::new();
+
+    let t = ges::Group::static_type();
+
     // Add an effect to the clip's video stream.
     let effect = ges::Effect::new("agingtv").expect("Failed to create effect");
+    group.add(&effect).unwrap();
+
+    group.add(&clip).unwrap();
+
+    let project = ges::Project::new(None);
+    let x = project.create_asset_sync(None, t).unwrap().unwrap();
+
+    let x = group.track_types();
+
     clip.add(&effect).unwrap();
 
     println!(
