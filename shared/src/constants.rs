@@ -19,6 +19,14 @@ pub fn store_json_location() -> String {
     format!("{}\\pipeline.json", data_location())
 }
 
+pub fn temp_location() -> String {
+    format!("{}\\temp", data_location())
+}
+
+pub fn projects_location() -> String {
+    format!("{}\\projects", temp_location())
+}
+
 pub fn init(data_location: String) {
     let mut value = DATA_LOCATION.lock().unwrap();
     *value = Some(data_location);
@@ -27,4 +35,6 @@ pub fn init(data_location: String) {
 
     fs::create_dir_all(media_output_location()).unwrap();
     fs::create_dir_all(source_files_location()).unwrap();
+    fs::create_dir_all(temp_location()).unwrap();
+    fs::create_dir_all(projects_location()).unwrap();
 }
