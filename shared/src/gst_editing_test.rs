@@ -2,7 +2,9 @@ use gst::prelude::*;
 
 use ges::prelude::{ElementExt, *};
 
-use std::env;
+use std::{env, sync::mpsc};
+
+use crate::{constants::projects_location, global::uniq_id};
 
 /*
 
@@ -68,122 +70,105 @@ fn configure_pipeline(pipeline: &ges::Pipeline, output_name: &str) {
         .expect("Failed to set pipeline to render mode");
 }
 
-fn main_loop(uri: &str, output: Option<&String>) -> Result<(), glib::BoolError> {
+pub fn main_loop(uri: &str) -> Result<(), glib::BoolError> {
     ges::init()?;
 
-    // Begin by creating a timeline with audio and video tracks
-    let timeline = ges::Timeline::new();
-    let track = ges::Track::new(ges::TrackType::VIDEO, &gst::Caps::builder("video").build());
+    let project_loc = format!("file:///{}\\test-project.xges", projects_location());
+    let project = ges::Project::new(None);
 
-    timeline.add_track(&track);
-    // Create a new layer that will contain our timed clips.
+    let timeline: ges::Timeline = project.extract().unwrap().dynamic_cast().unwrap();
+
+    let clip_location = "file:///D:\\Data\\Libraries\\Videos\\Samples\\sample1.mp4";
     let layer = timeline.append_layer();
-    let pipeline = ges::Pipeline::new();
-    pipeline.set_timeline(&timeline)?;
-    // If requested, configure the pipeline so it renders to a file.
-    if let Some(output_name) = output {
-        configure_pipeline(&pipeline, output_name);
-    }
 
-    // Load a clip from the given uri and add it to the layer.
-    let clip = ges::UriClip::new(uri).expect("Failed to create clip");
+    let clip = ges::UriClip::new(clip_location).expect("Failed to create clip");
+
     layer.add_clip(&clip)?;
 
-    let group = ges::Group::new();
+    let loc = format!("file:///{}\\test-timeline.xges", projects_location());
 
-    let t = ges::Group::static_type();
+    timeline
+        .save_to_uri(loc.as_str(), None as Option<&ges::Asset>, true)
+        .unwrap();
 
-    // Add an effect to the clip's video stream.
-    let effect = ges::Effect::new("agingtv").expect("Failed to create effect");
-    group.add(&effect).unwrap();
+    // project
+    //     .save(
+    //         &timeline,
+    //         project_loc.as_str(),
+    //         None as Option<&ges::Asset>,
+    //         true,
+    //     )
+    //     .unwrap();
 
-    group.add(&clip).unwrap();
+    let timeline = ges::Timeline::new_audio_video();
+    let clip = ges::UriClip::new(project_loc.as_str()).unwrap();
 
-    let project = ges::Project::new(None);
-    let x = project.create_asset_sync(None, t).unwrap().unwrap();
+    let layer = timeline.append_layer();
+    layer.add_clip(&clip).unwrap();
 
-    let x = group.track_types();
+    let loc = format!("file:///{}\\test-timeline2.xges", projects_location());
 
-    clip.add(&effect).unwrap();
+    timeline
+        .save_to_uri(loc.as_str(), None as Option<&ges::Asset>, true)
+        .unwrap();
+    let timeline = ges::Timeline::from_uri(loc.as_str()).unwrap();
 
-    println!(
-        "Agingtv scratch-lines: {}",
-        clip.child_property("scratch-lines")
-            .unwrap()
-            .serialize()
-            .unwrap()
-    );
+    println!("timeline: {:?}", timeline);
+
+    return Ok(());
+    let project_location = format!("{}\\test-project", projects_location());
+    let project_location = format!("{}", project_location.replace("/", "\\"));
+
+    println!("Project location: {}", project_location);
+
+    let uri = format!("test-project.xges");
+    let project = ges::Project::new(Some(uri.as_str()));
+
+    let (tx, rx) = mpsc::channel();
+    project.connect_loaded(move |project, timeline| {
+        tx.send(());
+    });
+    /* Now extract a timeline from it */
+    let timeline: ges::Timeline = project.extract().unwrap().dynamic_cast().unwrap();
+
+    rx.recv().unwrap();
+
+    let project_location = format!("test-project-tmp.xges");
+
+    project
+        .save(
+            &timeline,
+            project_location.as_str(),
+            None as Option<&ges::Asset>,
+            true,
+        )
+        .unwrap();
+
+    // Create a new layer that will contain our timed clips.
+    // let layer = timeline.append_layer();
+    // // Load a clip from the given uri and add it to the layer.
+
+    // let clip = ges::UriClip::new(uri).expect("Failed to create clip");
+
+    // layer.add_clip(&clip)?;
+    // // Add an effect to the clip's video stream.
+    // let effect = ges::Effect::new("agingtv").expect("Failed to create effect");
+
+    // clip.add(&effect)?;
+
+    // println!(
+    //     "Agingtv scratch-lines: {}",
+    //     clip.child_property("scratch-lines")
+    //         .unwrap()
+    //         .serialize()
+    //         .unwrap()
+    // );
 
     // Retrieve the asset that was automatically used behind the scenes, to
     // extract the clip from.
-    let asset = clip.asset().unwrap();
-    let duration = asset
-        .downcast::<ges::UriClipAsset>()
-        .unwrap()
-        .duration()
-        .expect("unknown duration");
-    println!(
-        "Clip duration: {} - playing file from {} for {}",
-        duration,
-        duration / 2,
-        duration / 4,
-    );
-
-    // The inpoint specifies where in the clip we start, the duration specifies
-    // how much we play from that point onwards. Setting the inpoint to something else
-    // than 0, or the duration something smaller than the clip's actual duration will
-    // cut the clip.
-    clip.set_inpoint(duration / 2);
-    clip.set_duration(duration / 4);
-
-    pipeline
-        .set_state(gst::State::Playing)
-        .expect("Unable to set the pipeline to the `Playing` state");
-
-    let bus = pipeline.bus().unwrap();
-    for msg in bus.iter_timed(gst::ClockTime::NONE) {
-        use gst::MessageView;
-
-        match msg.view() {
-            MessageView::Eos(..) => break,
-            MessageView::Error(err) => {
-                println!(
-                    "Error from {:?}: {} ({:?})",
-                    err.src().map(|s| s.path_string()),
-                    err.error(),
-                    err.debug()
-                );
-                break;
-            }
-            _ => (),
-        }
-    }
-
-    pipeline
-        .set_state(gst::State::Null)
-        .expect("Unable to set the pipeline to the `Null` state");
-
+    let x: Option<&ges::Asset> = None;
+    project
+        .save(&timeline, project_location.as_str(), x, true)
+        .unwrap();
     Ok(())
-}
-
-#[allow(unused_variables)]
-fn example_main() {
-    let args: Vec<_> = env::args().collect();
-    if args.len() < 2 || args.len() > 3 {
-        println!("Usage: ges input [output]");
-        std::process::exit(-1)
-    }
-
-    let input_uri: &str = args[1].as_ref();
-    let output = args.get(2);
-
-    match main_loop(input_uri, output) {
-        Ok(r) => r,
-        Err(e) => eprintln!("Error! {}", e),
-    }
-}
-
-fn main() {
-    // tutorials_common::run is only required to set up the application environment on macOS
-    // (but not necessary in normal Cocoa applications where this is set up automatically)
 }
