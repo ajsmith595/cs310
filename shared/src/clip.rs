@@ -194,10 +194,11 @@ impl SourceClip {
 
     pub fn get_location(&self) -> String {
         if (is_server()) {
-            format!("{}/{}", source_files_location(), self.id)
+            format!("file:///{}/{}", source_files_location(), self.id)
         } else {
-            self.file_location.clone()
+            format!("file:///{}", self.file_location.clone())
         }
+        .replace("\\", "/")
     }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -228,7 +229,12 @@ impl CompositedClip {
 
     pub fn get_location(&self) -> String {
         if (is_server()) {
-            format!("{}/{}", composited_clips_projects_location(), self.id)
+            format!(
+                "file:///{}/{}",
+                composited_clips_projects_location(),
+                self.id
+            )
+            .replace("\\", "/")
         } else {
             panic!("Cannot get location of composited clip when not on server")
         }

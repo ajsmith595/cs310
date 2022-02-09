@@ -153,6 +153,9 @@ impl PipedType {
     }
 
     pub fn get_location(&self) -> String {
+        format!("file:///{}", self.get_location_real())
+    }
+    pub fn get_location_real(&self) -> String {
         format!(
             "{}/{}_{}_{}.xges",
             intermediate_files_location(),
@@ -160,6 +163,7 @@ impl PipedType {
             self.property_name,
             self.io
         )
+        .replace("\\", "/")
     }
 }
 #[derive(PartialEq, Eq, Hash)]

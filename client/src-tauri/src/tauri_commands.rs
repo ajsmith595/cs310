@@ -41,7 +41,7 @@ pub async fn import_media(
   let dialog = AsyncFileDialog::new().add_filter("Media", &["mp4", "mkv", "mp3"]);
 
   #[cfg(not(target_os = "linux"))]
-  dialog
+  let dialog = dialog
     .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"));
 
   let file = dialog.pick_files().await;
@@ -308,7 +308,7 @@ pub fn get_node_outputs(
   let res = state
     .store
     .pipeline
-    .gen_graph_new(&state.store, &state.node_register);
+    .gen_graph_new(&state.store, &state.node_register, false);
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }
@@ -333,7 +333,7 @@ pub fn get_node_inputs(
   let res = state
     .store
     .pipeline
-    .gen_graph_new(&state.store, &state.node_register);
+    .gen_graph_new(&state.store, &state.node_register, false);
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }

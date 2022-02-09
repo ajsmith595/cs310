@@ -106,12 +106,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                     log::info!("[{}] File ID: {}", operation_id, uuid);
 
-                    let mut output_file = File::create(format!(
-                        "{}/source-file-{}.mp4",
-                        source_files_location(),
-                        uuid
-                    ))
-                    .unwrap();
+                    let mut output_file =
+                        File::create(format!("{}/{}", source_files_location(), uuid)).unwrap();
                     networking::receive_file(&mut stream, &mut output_file);
                     let msg = networking::receive_message(&mut stream).unwrap();
 
@@ -163,7 +159,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 }
 
 fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeRegister) {
-    let mut pipeline = store.pipeline.gen_graph_new(store, node_register);
+    let mut pipeline = store.pipeline.gen_graph_new(store, node_register, true);
     let clips = store.clips.clone();
     if let Ok((node_type_data, composited_clip_data, output)) = pipeline {
         if let Some(mut output) = output {

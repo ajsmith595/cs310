@@ -82,11 +82,6 @@ fn main() {
 
   let register = get_node_register();
 
-  let res = store.pipeline.gen_graph_new(&store, &register);
-  if res.is_err() {
-    println!("Result (error): {};", res.unwrap_err());
-  }
-
   let (tx, rx) = mpsc::channel();
   let shared_state = SharedState {
     store,

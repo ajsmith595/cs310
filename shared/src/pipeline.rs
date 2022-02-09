@@ -76,6 +76,7 @@ impl Pipeline {
         &self,
         store: &Store,
         node_register: &NodeRegister,
+        get_output: bool,
     ) -> Result<
         (
             HashMap<
@@ -219,14 +220,19 @@ impl Pipeline {
             // println!("Data for node {}: {:#?}", node.id.clone(), data.clone());
             node_type_data.insert(node.id.clone(), data);
 
-            let pipeline = (node_registration.get_output)(
-                node.id.clone(),
-                &node.properties,
-                &piped_inputs,
-                &composited_clip_data,
-                store,
-                node_register,
-            );
+            let pipeline = if get_output {
+                (node_registration.get_output)(
+                    node.id.clone(),
+                    &node.properties,
+                    &piped_inputs,
+                    &composited_clip_data,
+                    store,
+                    node_register,
+                )
+            } else {
+                Err(String::from(""))
+            };
+
             if pipeline.is_err() {
                 do_return = false;
             } else {
@@ -244,7 +250,8 @@ impl Pipeline {
 
                     let output_location = from_piped_type.get_location();
 
-                    v.save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true);
+                    v.save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)
+                        .unwrap();
                 }
             }
 
@@ -295,8 +302,8 @@ impl Pipeline {
                     };
 
                     if do_return {
-                        let from_location = from_piped_type.get_location();
-                        let to_location = to_piped_type.get_location();
+                        let from_location = from_piped_type.get_location_real();
+                        let to_location = to_piped_type.get_location_real();
                         fs::copy(from_location, to_location).unwrap();
                     }
 
