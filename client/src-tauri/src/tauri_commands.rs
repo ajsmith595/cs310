@@ -38,9 +38,12 @@ pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
 ) -> Result<HashMap<ID, SourceClip>, String> {
-  let dialog = AsyncFileDialog::new()
-    .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"))
-    .add_filter("Media", &["mp4", "mkv", "mp3"]);
+  let dialog = AsyncFileDialog::new().add_filter("Media", &["mp4", "mkv", "mp3"]);
+
+  #[cfg(not(target_os = "linux"))]
+  dialog
+    .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"));
+
   let file = dialog.pick_files().await;
   match file {
     None => Err(String::from("No file selected")),
