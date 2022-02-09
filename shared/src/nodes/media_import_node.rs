@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ges::traits::{LayerExt, TimelineExt};
 use serde_json::Value;
 
 use crate::{
@@ -118,7 +119,7 @@ fn get_output(
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
-) -> Result<AbstractPipeline, String> {
+) -> Result<HashMap<String, ges::Timeline>, String> {
     let mut pipeline = AbstractPipeline::new();
 
     let io = get_io(
@@ -148,63 +149,32 @@ fn get_output(
         stream_type: output.property_type,
         property_name: OUTPUTS::OUTPUT.to_string(),
     };
-    match clip_identifier.clip_type {
+
+    let timeline = match clip_identifier.clip_type {
         ClipType::Source => {
             let clip = store.clips.source.get(&clip_identifier.id).unwrap();
-            let clip_type = clip.get_clip_type();
 
-            for (stream_type, num) in clip_type.get_map() {
-                for i in 0..num {
-                    let gst1 = clip.get_gstreamer_id(&stream_type, i);
-                    let gst2 = output.get_gst_handle(&stream_type, i);
-                    if gst2.is_none() {
-                        return Err(format!("Cannot get handle for media"));
-                    }
-                    let gst2 = gst2.unwrap();
-
-                    let stream_linker = stream_type.stream_linker();
-                    let stream_linker_node =
-                        AbstractNode::new(stream_linker.as_str(), Some(gst2.clone()));
-                    let link = AbstractLink {
-                        from: AbstractLinkEndpoint::new(gst1),
-                        to: AbstractLinkEndpoint::new(stream_linker_node.id.clone()),
-                    };
-                    pipeline.add_node(stream_linker_node);
-                    pipeline.link_abstract(link);
-                }
-            }
+            let timeline = output.stream_type.create_timeline();
+            let layer = timeline.append_layer();
+            let clip = ges::UriClip::new(clip.get_location().as_str()).unwrap();
+            layer.add_clip(&clip).unwrap();
+            timeline
         }
         ClipType::Composited => {
-            let clip_type = composited_clip_types
-                .get(&clip_identifier.id)
-                .unwrap()
-                .stream_type;
-
             let clip = store.clips.composited.get(&clip_identifier.id).unwrap();
-            for (stream_type, num) in clip_type.get_map() {
-                for i in 0..num {
-                    let gst1 = clip.get_gstreamer_id(&stream_type, i);
-                    let gst2 = output.get_gst_handle(&stream_type, i);
-                    if gst2.is_none() {
-                        return Err(format!("Cannot get handle for media"));
-                    }
-                    let gst2 = gst2.unwrap();
 
-                    let stream_linker = stream_type.stream_linker();
-                    let stream_linker_node =
-                        AbstractNode::new(stream_linker.as_str(), Some(gst2.clone()));
-                    let link = AbstractLink {
-                        from: AbstractLinkEndpoint::new(gst1),
-                        to: AbstractLinkEndpoint::new(stream_linker_node.id.clone()),
-                    };
-                    pipeline.add_node(stream_linker_node);
-                    pipeline.link_abstract(link);
-                }
-            }
+            let timeline = output.stream_type.create_timeline();
+            let layer = timeline.append_layer();
+            let clip = ges::UriClip::new(clip.get_location().as_str()).unwrap();
+            layer.add_clip(&clip).unwrap();
+
+            timeline
         }
     };
 
-    return Ok(pipeline);
+    let mut hm = HashMap::new();
+    hm.insert(OUTPUTS::OUTPUT.to_string(), timeline);
+    Ok(hm)
 }
 
 pub fn media_import_node() -> NodeType {

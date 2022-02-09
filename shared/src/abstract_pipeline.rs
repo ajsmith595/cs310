@@ -12,6 +12,8 @@ pub struct AbstractNode {
     pub properties: HashMap<String, String>,
 }
 
+pub enum AbstractNodeEnum {}
+
 impl AbstractNode {
     pub fn new(node_type: &str, id: Option<String>) -> Self {
         let id = match id {

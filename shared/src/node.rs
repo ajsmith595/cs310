@@ -1,3 +1,4 @@
+use ges::traits::TimelineExt;
 use std::{
     collections::{hash_map, HashMap},
     hash::Hash,
@@ -5,6 +6,8 @@ use std::{
 use uuid::Uuid;
 
 use serde_json::Value;
+
+use crate::constants::intermediate_files_location;
 
 use super::{
     abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
@@ -93,12 +96,43 @@ impl PipeableType {
         map.insert(PipeableStreamType::Subtitles, self.subtitles);
         map
     }
+
+    pub fn create_timeline(&self) -> ges::Timeline {
+        let timeline = ges::Timeline::new();
+
+        for _ in 0..self.video {
+            let track = ges::VideoTrack::new();
+            timeline.add_track(&track).unwrap();
+        }
+        for _ in 0..self.audio {
+            let track = ges::AudioTrack::new();
+            timeline.add_track(&track).unwrap();
+        }
+        if self.subtitles > 0 {
+            panic!("Subtitles have not yet been implemented due to GES ")
+        }
+
+        timeline
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum InputOrOutput {
     Input,
     Output,
+}
+
+impl std::fmt::Display for InputOrOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                InputOrOutput::Input => "input",
+                InputOrOutput::Output => "output",
+            }
+        )
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -116,6 +150,16 @@ impl PipedType {
             PipeableStreamType::Audio => self.stream_type.audio,
             PipeableStreamType::Subtitles => self.stream_type.subtitles,
         }
+    }
+
+    pub fn get_location(&self) -> String {
+        format!(
+            "{}/{}_{}_{}.xges",
+            intermediate_files_location(),
+            self.node_id,
+            self.property_name,
+            self.io
+        )
     }
 }
 #[derive(PartialEq, Eq, Hash)]
@@ -270,7 +314,7 @@ pub struct NodeType {
     )>,
 
     #[serde(skip_serializing)]
-    pub get_output: NodeTypeFunc<AbstractPipeline>,
+    pub get_output: NodeTypeFunc<HashMap<String, ges::Timeline>>,
 }
 
 // impl NodeType {

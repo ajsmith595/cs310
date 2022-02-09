@@ -28,21 +28,13 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 mod state;
-fn main() {
-    let current_dir = std::env::current_dir().unwrap();
-    let current_dir = current_dir.to_str().unwrap();
-    cs310_shared::constants::init(format!("{}/application_data", current_dir));
-    gst_editing_test::main_loop("file:////mnt/d/Videos/OBS Recordings/2020-02-03 15-32-43.mp4")
-        .unwrap();
-}
 
-fn main2() {
+fn main() {
     SimpleLogger::new().init().unwrap();
 
     let current_dir = std::env::current_dir().unwrap();
     let current_dir = current_dir.to_str().unwrap();
-    cs310_shared::constants::init(format!("{}/application_data", current_dir));
-    gstreamer::init().expect("GStreamer could not be initialised");
+    cs310_shared::constants::init(format!("{}/application_data", current_dir), true);
 
     let store = Store::from_file(store_json_location());
 

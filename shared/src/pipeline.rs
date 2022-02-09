@@ -1,11 +1,13 @@
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
+    fs,
     hash::Hash,
     sync::mpsc,
     thread,
 };
 
+use ges::traits::TimelineExt;
 use gst::{glib, prelude::*};
 use gst_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
 use petgraph::visit::EdgeRef;
@@ -229,7 +231,21 @@ impl Pipeline {
                 do_return = false;
             } else {
                 let pipeline = pipeline.unwrap();
-                abstract_pipeline.merge(pipeline);
+
+                for (k, v) in pipeline {
+                    let out_type = outputs.get(&k).unwrap();
+
+                    let from_piped_type = PipedType {
+                        stream_type: out_type.property_type,
+                        node_id: node.id.clone(),
+                        property_name: k.clone(),
+                        io: InputOrOutput::Output,
+                    };
+
+                    let output_location = from_piped_type.get_location();
+
+                    v.save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true);
+                }
             }
 
             if node.node_type == output_node::IDENTIFIER {
@@ -270,12 +286,20 @@ impl Pipeline {
                         property_name: from_property.clone(),
                         io: InputOrOutput::Output,
                     };
+
                     let to_piped_type = PipedType {
                         stream_type: out_type.property_type,
                         node_id: to_node.clone(),
                         property_name: to_property.clone(),
                         io: InputOrOutput::Input,
                     };
+
+                    if do_return {
+                        let from_location = from_piped_type.get_location();
+                        let to_location = to_piped_type.get_location();
+                        fs::copy(from_location, to_location).unwrap();
+                    }
+
                     next_node_inputs.insert(to_property.clone(), to_piped_type.clone());
 
                     let output =

@@ -52,39 +52,6 @@ mod state_manager;
 mod state_uploader_thread;
 mod tauri_commands;
 
-// fn main2() {
-//   let mut stream = TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT));
-
-//   if stream.is_err() {
-//     panic!(&stream.unwrap_err().to_string()[..]);
-//   }
-//   let mut stream = stream.unwrap();
-
-//   networking::send_message(&mut stream, Message::GetStore).unwrap();
-//   let (message, data) = networking::receive_message(&mut stream).unwrap();
-//   let mut new_data = [0 as u8; 8];
-//   new_data.clone_from_slice(&data[0..8]);
-//   let data_length = u64::from_ne_bytes(new_data);
-
-//   let data = networking::receive_data(&mut stream, data_length).unwrap();
-//   let str = String::from_utf8(data).unwrap();
-//   println!("Received: {}", str);
-
-//   thread::sleep(time::Duration::from_millis(1000));
-
-//   networking::send_message(&mut stream, Message::GetStore).unwrap();
-//   let (message, data) = networking::receive_message(&mut stream).unwrap();
-//   let mut new_data = [0 as u8; 8];
-//   new_data.clone_from_slice(&data[0..8]);
-//   let data_length = u64::from_ne_bytes(new_data);
-
-//   let data = networking::receive_data(&mut stream, data_length).unwrap();
-//   let str = String::from_utf8(data).unwrap();
-//   println!("Received: {}", str);
-
-//   stream.shutdown(std::net::Shutdown::Both).unwrap();
-// }
-
 fn main() {
   println!("Testing 1 2 3.");
   let path = dirs::data_dir().unwrap();
@@ -95,22 +62,8 @@ fn main() {
 
   println!("Initialising...");
 
-  init(path);
+  init(path, false);
   println!("Initialised");
-
-  if let Some(directory) = dirs::data_dir() {
-    if !directory.join(media_output_location()).exists() {
-      create_dir_all(directory.join(media_output_location()));
-    }
-  }
-
-  let mut path = None;
-  match dirs::data_dir() {
-    Some(p) => {
-      path = Some(p.join(store_json_location()));
-    }
-    None => println!("Cannot get data directory!"),
-  }
 
   println!("Connecting to server...");
   let mut stream = networking::connect_to_server();
@@ -133,8 +86,6 @@ fn main() {
   if res.is_err() {
     println!("Result (error): {};", res.unwrap_err());
   }
-
-  gstreamer::init().expect("GStreamer could not be initialised");
 
   let (tx, rx) = mpsc::channel();
   let shared_state = SharedState {

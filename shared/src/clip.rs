@@ -5,7 +5,10 @@ use gst_pbutils::{
 use serde_json::Value;
 
 use crate::{
-    constants::{media_output_location, CHUNK_FILENAME_NUMBER_LENGTH},
+    constants::{
+        composited_clips_projects_location, is_server, media_output_location,
+        source_files_location, CHUNK_FILENAME_NUMBER_LENGTH,
+    },
     node::PipeableType,
 };
 
@@ -188,6 +191,14 @@ impl SourceClip {
             index,
         )
     }
+
+    pub fn get_location(&self) -> String {
+        if (is_server()) {
+            format!("{}/{}", source_files_location(), self.id)
+        } else {
+            self.file_location.clone()
+        }
+    }
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CompositedClip {
@@ -213,5 +224,13 @@ impl CompositedClip {
             self.get_output_location(),
             CHUNK_FILENAME_NUMBER_LENGTH
         )
+    }
+
+    pub fn get_location(&self) -> String {
+        if (is_server()) {
+            format!("{}/{}", composited_clips_projects_location(), self.id)
+        } else {
+            panic!("Cannot get location of composited clip when not on server")
+        }
     }
 }

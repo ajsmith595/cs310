@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use ges::traits::{GESContainerExt, LayerExt, TimelineExt};
 use serde_json::Value;
 
 use crate::{
@@ -111,7 +112,7 @@ pub fn get_output(
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
-) -> Result<AbstractPipeline, String> {
+) -> Result<HashMap<String, ges::Timeline>, String> {
     let io = get_io(
         node_id.clone(),
         properties,
@@ -138,9 +139,8 @@ pub fn get_output(
     if let Value::Number(gain) = gain {
         let mut pipeline = AbstractPipeline::new();
 
-        //let gst_string = String::from("");
-
         let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
+
         let output = PipedType {
             stream_type: output.property_type,
             node_id,
@@ -148,43 +148,21 @@ pub fn get_output(
             io: InputOrOutput::Output,
         };
 
-        let video_passthrough =
-            PipedType::gst_transfer_pipe_type(&media, &output, &PipeableStreamType::Video);
-        let subtitle_passthrough =
-            PipedType::gst_transfer_pipe_type(&media, &output, &PipeableStreamType::Subtitles);
+        let effect = ges::Effect::new(
+            format!("volume volume={}", gain.as_f64().unwrap().to_string()).as_str(),
+        )
+        .unwrap();
+        let timeline = output.stream_type.create_timeline();
 
-        if video_passthrough.is_none() || subtitle_passthrough.is_none() {
-            return Err(format!("Could not get video/subtitle passthrough"));
-        }
-        let (video_passthrough, subtitle_passthrough) =
-            (video_passthrough.unwrap(), subtitle_passthrough.unwrap());
+        let layer = timeline.append_layer();
+        let clip = ges::UriClip::new(media.get_location().as_str()).unwrap();
 
-        pipeline.merge(video_passthrough);
-        pipeline.merge(subtitle_passthrough);
+        clip.add(&effect).unwrap();
+        layer.add_clip(&clip).unwrap();
 
-        for i in 0..output.stream_type.audio {
-            let mut props = HashMap::new();
-            props.insert("volume".to_string(), gain.as_f64().unwrap().to_string());
-            let volume_node = AbstractNode::new_with_props("volume", None, props);
-
-            pipeline.link_abstract(AbstractLink {
-                from: AbstractLinkEndpoint::new(
-                    media.get_gst_handle(&PipeableStreamType::Audio, i).unwrap(),
-                ),
-                to: AbstractLinkEndpoint::new(volume_node.id.clone()),
-            });
-            pipeline.link_abstract(AbstractLink {
-                from: AbstractLinkEndpoint::new(volume_node.id.clone()),
-                to: AbstractLinkEndpoint::new(
-                    output
-                        .get_gst_handle(&PipeableStreamType::Audio, i)
-                        .unwrap(),
-                ),
-            });
-            pipeline.add_node(volume_node);
-        }
-
-        return Ok(pipeline);
+        let mut hm = HashMap::new();
+        hm.insert(OUTPUTS::OUTPUT.to_string(), timeline);
+        return Ok(hm);
     }
     return Err(format!("Media is invalid type (audio gain blur)"));
 }

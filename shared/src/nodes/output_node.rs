@@ -1,5 +1,9 @@
 use std::collections::HashMap;
 
+use ges::{
+    traits::{LayerExt, TimelineExt},
+    TrackType,
+};
 use serde_json::Value;
 
 use crate::{
@@ -84,7 +88,7 @@ fn get_output(
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
-) -> Result<AbstractPipeline, String> {
+) -> Result<HashMap<String, ges::Timeline>, String> {
     let mut pipeline = AbstractPipeline::new();
 
     let media = piped_inputs.get(INPUTS::MEDIA);
@@ -98,109 +102,18 @@ fn get_output(
     }
     let clip = clip.unwrap();
 
-    let gst_clip_id = format!("composited-clip-file-{}", clip.id);
-    {
-        let mut props = HashMap::new();
-        props.insert("location".to_string(), clip.get_output_location_template());
-        props.insert("muxer-factory".to_string(), "mp4mux".to_string());
-        props.insert(
-            "muxer-properties".to_string(),
-            "\"properties,streamable=true,fragment-duration=1000\"".to_string(),
-        );
-        // makes it fragmented; one fragment each second (=1000 ms)
-        props.insert("async-finalize".to_string(), "true".to_string());
-        let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
-        props.insert("max-size-time".to_string(), nanoseconds.to_string());
-        props.insert("send-keyframe-requests".to_string(), "true".to_string());
+    let output_location = clip.get_location();
 
-        let splitmuxsink_node =
-            AbstractNode::new_with_props("splitmuxsink", Some(gst_clip_id.clone()), props);
+    let timeline = media.stream_type.create_timeline();
+    let clip = ges::UriClipAsset::request_sync(media.get_location().as_str()).unwrap();
 
-        pipeline.add_node(splitmuxsink_node);
-    }
+    let layer = timeline.append_layer();
+    layer.add_asset(&clip, None, None, None, TrackType::UNKNOWN);
 
-    for (stream_type, num) in media.stream_type.get_map() {
-        if stream_type == PipeableStreamType::Video && num > 1 {
-            panic!("Currently, splitmuxsink only supports one video stream. The application has attempted to pipe in {} streams, which is unsupported", num);
-        }
-        for i in 0..num {
-            let gst1 = media.get_gst_handle(&stream_type, i);
-            let gst2 = clip.get_gstreamer_id(&stream_type, i);
-            if gst1.is_none() {
-                return Err(format!("Cannot get handle for media"));
-            }
-            let gst1 = gst1.unwrap();
-            {
-                let stream_linker_node =
-                    AbstractNode::new(stream_type.stream_linker().as_str(), Some(gst2.clone()));
-                let link = AbstractLink {
-                    from: AbstractLinkEndpoint::new(gst1),
-                    to: AbstractLinkEndpoint::new(stream_linker_node.id.clone()),
-                };
-                pipeline.add_node(stream_linker_node);
-                pipeline.link_abstract(link);
-            }
-            {
-                let queue_node = AbstractNode::new("queue", None);
-                let link = AbstractLink {
-                    from: AbstractLinkEndpoint::new(gst2.clone()),
-                    to: AbstractLinkEndpoint::new(queue_node.id.clone()),
-                };
-
-                pipeline.link_abstract(link);
-
-                let encoder_input_id;
-                let encoder_output_id;
-
-                match &stream_type {
-                    PipeableStreamType::Video => {
-                        let mut props = HashMap::new();
-                        props.insert("bitrate".to_string(), 400.to_string());
-                        let nvh264enc_node = AbstractNode::new_with_props("nvh264enc", None, props);
-
-                        let h264parse_node = AbstractNode::new("h264parse", None);
-
-                        encoder_input_id = nvh264enc_node.id.clone();
-                        encoder_output_id = h264parse_node.id.clone();
-
-                        pipeline.link(&nvh264enc_node, &h264parse_node);
-                        pipeline.add_node(nvh264enc_node);
-                        pipeline.add_node(h264parse_node);
-                    }
-                    PipeableStreamType::Audio => {
-                        let avenc_aac_node = AbstractNode::new("avenc_aac", None);
-
-                        encoder_input_id = avenc_aac_node.id.clone();
-                        encoder_output_id = avenc_aac_node.id.clone();
-
-                        pipeline.add_node(avenc_aac_node);
-                    }
-                    PipeableStreamType::Subtitles => todo!(),
-                }
-
-                let link = AbstractLink {
-                    from: AbstractLinkEndpoint::new(queue_node.id.clone()),
-                    to: AbstractLinkEndpoint::new(encoder_input_id.clone()),
-                };
-                pipeline.link_abstract(link);
-
-                let link = AbstractLink {
-                    from: AbstractLinkEndpoint::new(encoder_output_id.clone()),
-                    to: AbstractLinkEndpoint::new_with_property(
-                        gst_clip_id.clone(),
-                        match stream_type {
-                            PipeableStreamType::Video => String::from("video"),
-                            _ => format!("{}_{}", stream_type.to_string(), i),
-                        },
-                    ),
-                };
-                pipeline.link_abstract(link);
-
-                pipeline.add_node(queue_node);
-            }
-        }
-    }
-    return Ok(pipeline);
+    timeline
+        .save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)
+        .unwrap();
+    Ok(HashMap::new())
 }
 
 pub fn output_node() -> NodeType {
