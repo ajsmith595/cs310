@@ -14,6 +14,7 @@ use std::{
 use cs310_shared::{
     abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
     constants::{media_output_location, source_files_location, store_json_location},
+    gst_editing_test,
     networking::{self, send_file, send_message, SERVER_PORT},
     node::PipeableStreamType,
     nodes::{get_node_register, NodeRegister},
@@ -27,8 +28,15 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 mod state;
-
 fn main() {
+    let current_dir = std::env::current_dir().unwrap();
+    let current_dir = current_dir.to_str().unwrap();
+    cs310_shared::constants::init(format!("{}/application_data", current_dir));
+    gst_editing_test::main_loop("file:////mnt/d/Videos/OBS Recordings/2020-02-03 15-32-43.mp4")
+        .unwrap();
+}
+
+fn main2() {
     SimpleLogger::new().init().unwrap();
 
     let current_dir = std::env::current_dir().unwrap();

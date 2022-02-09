@@ -10,21 +10,21 @@ pub fn data_location() -> String {
     DATA_LOCATION.lock().unwrap().as_ref().unwrap().clone()
 }
 pub fn media_output_location() -> String {
-    format!("{}\\output", data_location())
+    format!("{}/output", data_location())
 }
 pub fn source_files_location() -> String {
-    format!("{}\\source", data_location())
+    format!("{}/source", data_location())
 }
 pub fn store_json_location() -> String {
-    format!("{}\\pipeline.json", data_location())
+    format!("{}/pipeline.json", data_location())
 }
 
 pub fn temp_location() -> String {
-    format!("{}\\temp", data_location())
+    format!("{}/temp", data_location())
 }
 
 pub fn projects_location() -> String {
-    format!("{}\\projects", temp_location())
+    format!("{}/projects", temp_location())
 }
 
 pub fn init(data_location: String) {
