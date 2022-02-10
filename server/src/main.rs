@@ -8,6 +8,10 @@ use std::{
     net::{Shutdown, TcpListener, TcpStream},
     path::Path,
     rc::Rc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread,
 };
 
@@ -21,7 +25,12 @@ use cs310_shared::{
     pipeline::Pipeline,
     store::Store,
 };
-use gstreamer::{glib, prelude::*};
+use ges::{
+    prelude::EncodingProfileBuilder,
+    traits::{AssetExt, ExtractableExt, GESPipelineExt, LayerExt, ProjectExt, TimelineExt},
+};
+use glib::gobject_ffi::GValue;
+use gst::{glib, prelude::*};
 use simple_logger::SimpleLogger;
 use state::State;
 use std::sync::{Arc, Mutex};
@@ -54,10 +63,21 @@ fn main() {
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", SERVER_PORT)).unwrap();
 
+    listener.set_nonblocking(true).unwrap();
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    })
+    .expect("Error setting CTRL+C handler");
+
     log::info!("Server opened on port {}", SERVER_PORT);
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                stream.set_nonblocking(false).unwrap();
                 log::info!("New connection from: {}", stream.peer_addr().unwrap());
                 let state = state.clone();
                 thread::spawn(move || {
@@ -65,6 +85,9 @@ fn main() {
                 });
             }
             Err(e) => {}
+        }
+        if !running.load(Ordering::SeqCst) {
+            break;
         }
     }
 
@@ -158,97 +181,113 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     }
 }
 
+fn set_pipeline_props(pipeline: &ges::Pipeline, stream_type: &cs310_shared::node::PipeableType) {
+    // Every audiostream piped into the encodebin should be encoded using opus.
+    let audio_profile =
+        gst_pbutils::EncodingAudioProfile::builder(&gst::Caps::builder("audio/x-vorbis").build())
+            .build();
+
+    // Every videostream piped into the encodebin should be encoded using vp8.
+    let video_profile =
+        gst_pbutils::EncodingVideoProfile::builder(&gst::Caps::builder("video/x-vp8").build())
+            .build();
+
+    // All streams are then finally combined into a webm container.
+
+    let container_profile =
+        gst_pbutils::EncodingContainerProfile::builder(&gst::Caps::builder("video/webm").build())
+            .add_profile(&audio_profile)
+            .add_profile(&video_profile)
+            .build();
+
+    // Apply the EncodingProfile to the pipeline, and set it to render mode
+    let output_uri = format!("file:////home/ajsmith/cs310/server/application_data/out.webm");
+    pipeline
+        .set_render_settings(&output_uri, &container_profile)
+        .expect("Failed to set render settings");
+    pipeline
+        .set_mode(ges::PipelineFlags::RENDER)
+        .expect("Failed to set pipeline to render mode");
+}
+
 fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeRegister) {
     let mut pipeline = store.pipeline.gen_graph_new(store, node_register, true);
     let clips = store.clips.clone();
     if let Ok((node_type_data, composited_clip_data, output)) = pipeline {
         if let Some(mut output) = output {
             if output.nodes.len() > 0 {
-                for (id, clip) in clips.source {
-                    let mut props = HashMap::new();
-                    props.insert(
-                        "location".to_string(),
-                        format!("\"{}\"", clip.file_location.replace("\\", "/")),
-                    );
-                    let filesrc_node = AbstractNode::new_with_props("filesrc", None, props);
-
-                    let qtdemux_node = AbstractNode::new("qtdemux", None);
-
-                    output.link(&filesrc_node, &qtdemux_node);
-
-                    if let Some(info) = clip.info {
-                        for i in 0..info.video_streams.len() {
-                            let decoder_node =
-                                AbstractNode::new_decoder(&PipeableStreamType::Video);
-                            let videoconvert_node = AbstractNode::new(
-                                "videoconvert",
-                                Some(format!("source-clip-{}-video-{}", id.clone(), i)),
-                            );
-
-                            output.link_abstract(AbstractLink {
-                                from: AbstractLinkEndpoint::new_with_property(
-                                    qtdemux_node.id.clone(),
-                                    format!("video_{}", i),
-                                ),
-                                to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
-                            });
-                            output.link(&decoder_node, &videoconvert_node);
-
-                            output.add_node(decoder_node);
-                            output.add_node(videoconvert_node);
-                        }
-                        for i in 0..info.audio_streams.len() {
-                            let decoder_node =
-                                AbstractNode::new_decoder(&PipeableStreamType::Audio);
-                            let audioconvert_node = AbstractNode::new(
-                                "audioconvert",
-                                Some(format!("source-clip-{}-audio-{}", id.clone(), i)),
-                            );
-
-                            output.link_abstract(AbstractLink {
-                                from: AbstractLinkEndpoint::new_with_property(
-                                    qtdemux_node.id.clone(),
-                                    format!("audio_{}", i),
-                                ),
-                                to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
-                            });
-                            output.link(&decoder_node, &audioconvert_node);
-
-                            output.add_node(decoder_node);
-                            output.add_node(audioconvert_node);
-                        }
-                        for i in 0..info.subtitle_streams.len() {
-                            let decoder_node =
-                                AbstractNode::new_decoder(&PipeableStreamType::Subtitles);
-                            let subparse_node = AbstractNode::new(
-                                "subparse",
-                                Some(format!("source-clip-{}-subtitles-{}", id.clone(), i)),
-                            );
-
-                            output.link_abstract(AbstractLink {
-                                from: AbstractLinkEndpoint::new_with_property(
-                                    qtdemux_node.id.clone(),
-                                    format!("subtitles_{}", i),
-                                ),
-                                to: AbstractLinkEndpoint::new(decoder_node.id.clone()),
-                            });
-                            output.link(&decoder_node, &subparse_node);
-
-                            output.add_node(decoder_node);
-                            output.add_node(subparse_node);
-                        }
-                    }
-
-                    output.add_node(filesrc_node);
-                    output.add_node(qtdemux_node);
-                }
-
                 for (id, clip) in &clips.composited {
-                    let directory = clip.get_output_location();
-                    if !Path::new(&directory).exists() {
-                        fs::create_dir_all(directory).unwrap();
+                    let out_type = composited_clip_data.get(id).unwrap();
+
+                    let timeline_location = clip.get_location();
+
+                    // let project = ges::Project::new(Some(timeline_location.as_str()));
+
+                    // let (tx, rx) = mpsc::channel();
+                    // project.connect_loaded(move |project, timeline| {
+                    //     println!("Project loaded!");
+                    //     tx.send(()).unwrap();
+                    // });
+
+                    // let timeline: ges::Timeline =
+                    //     project.extract().unwrap().dynamic_cast().unwrap();
+
+                    // let timeline = ges::Timeline::from_uri(timeline_location.as_str())
+                    //     .unwrap()
+                    //     .unwrap();
+
+                    // timeline.commit_sync();
+                    // let project: ges::Project = timeline.asset().unwrap().dynamic_cast().unwrap();
+
+                    // println!("{:?}", project.list_encoding_profiles());
+                    // println!("Waiting for project to load!");
+                    // rx.recv().unwrap();
+
+                    let timeline = out_type.stream_type.create_timeline();
+
+                    let clip = ges::UriClipAsset::request_sync(timeline_location.as_str()).unwrap();
+                    let layer = timeline.append_layer();
+                    layer
+                        .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
+                        .unwrap();
+
+                    let pipeline = ges::Pipeline::new();
+                    pipeline.set_timeline(&timeline).unwrap();
+
+                    set_pipeline_props(&pipeline, &out_type.stream_type);
+
+                    println!("Starting pipeline...");
+                    pipeline
+                        .set_state(gst::State::Playing)
+                        .expect("Unable to set the pipeline to the `Playing` state");
+
+                    let bus = pipeline.bus().unwrap();
+                    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+                        use gst::MessageView;
+
+                        match msg.view() {
+                            MessageView::Eos(..) => break,
+                            MessageView::Error(err) => {
+                                println!(
+                                    "Error from {:?}: {} ({:?})",
+                                    err.src().map(|s| s.path_string()),
+                                    err.error(),
+                                    err.debug()
+                                );
+                                break;
+                            }
+                            _ => (),
+                        }
                     }
+
+                    pipeline
+                        .set_state(gst::State::Null)
+                        .expect("Unable to set the pipeline to the `Null` state");
+                    println!("Pipeline complete!");
                 }
+
+                println!("Composited clips done!");
+                return;
 
                 let output = output.to_gstreamer_pipeline();
                 //println!("Executing pipeline: {} ", output);

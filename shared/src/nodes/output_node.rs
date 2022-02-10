@@ -108,7 +108,9 @@ fn get_output(
     let clip = ges::UriClipAsset::request_sync(media.get_location().as_str()).unwrap();
 
     let layer = timeline.append_layer();
-    layer.add_asset(&clip, None, None, None, TrackType::UNKNOWN);
+    layer
+        .add_asset(&clip, None, None, None, TrackType::UNKNOWN)
+        .unwrap();
 
     timeline
         .save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)

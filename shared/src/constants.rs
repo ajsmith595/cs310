@@ -48,6 +48,7 @@ pub fn init(data_location: String, is_server: bool) {
     *value = Some(is_server);
     drop(value);
 
+    gst::init().unwrap();
     ges::init().unwrap();
 
     fs::create_dir_all(media_output_location()).unwrap();

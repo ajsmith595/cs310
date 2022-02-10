@@ -156,8 +156,10 @@ fn get_output(
 
             let timeline = output.stream_type.create_timeline();
             let layer = timeline.append_layer();
-            let clip = ges::UriClip::new(clip.get_location().as_str()).unwrap();
-            layer.add_clip(&clip).unwrap();
+            let clip = ges::UriClipAsset::request_sync(clip.get_location().as_str()).unwrap();
+            layer
+                .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
+                .unwrap();
             timeline
         }
         ClipType::Composited => {
@@ -165,9 +167,10 @@ fn get_output(
 
             let timeline = output.stream_type.create_timeline();
             let layer = timeline.append_layer();
-            let clip = ges::UriClip::new(clip.get_location().as_str()).unwrap();
-            layer.add_clip(&clip).unwrap();
-
+            let clip = ges::UriClipAsset::request_sync(clip.get_location().as_str()).unwrap();
+            layer
+                .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
+                .unwrap();
             timeline
         }
     };

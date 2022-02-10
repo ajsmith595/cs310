@@ -230,7 +230,7 @@ impl CompositedClip {
     pub fn get_location(&self) -> String {
         if (is_server()) {
             format!(
-                "file:///{}/{}",
+                "file:///{}/{}.xges",
                 composited_clips_projects_location(),
                 self.id
             )
