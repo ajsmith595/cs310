@@ -216,7 +216,7 @@ impl CompositedClip {
         )
     }
     pub fn get_output_location(&self) -> String {
-        format!("{}\\composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
+        format!("{}/composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
     }
 
     pub fn get_output_location_template(&self) -> String {
