@@ -114,6 +114,13 @@ impl PipeableType {
 
         timeline
     }
+
+    pub fn is_singular_type(&self) -> bool {
+        let v = self.video > 0;
+        let a = self.audio > 0;
+        let s = self.subtitles > 0;
+        return !((v && a) || (v && s) || (a && s));
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -216,7 +216,7 @@ impl CompositedClip {
         )
     }
     pub fn get_output_location(&self) -> String {
-        format!("{}\\composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
+        format!("{}/composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
     }
 
     pub fn get_output_location_template(&self) -> String {
@@ -230,7 +230,7 @@ impl CompositedClip {
     pub fn get_location(&self) -> String {
         if (is_server()) {
             format!(
-                "file:///{}/{}",
+                "file:///{}/{}.xges",
                 composited_clips_projects_location(),
                 self.id
             )
