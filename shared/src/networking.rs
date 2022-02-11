@@ -23,7 +23,8 @@ enum_from_primitive! {
         EndFile,
         NewChunk,
         AllChunksGenerated,
-        GetFileID
+        GetFileID,
+        CompositedClipLength
     }
 }
 

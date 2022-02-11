@@ -226,10 +226,20 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
 
                     let timeline_asset =
                         ges::UriClipAsset::request_sync(timeline_location.as_str()).unwrap();
+
                     let layer = timeline.append_layer();
                     layer
                         .add_asset(&timeline_asset, None, None, None, ges::TrackType::UNKNOWN)
                         .unwrap();
+
+                    let total_duration = timeline.duration().mseconds();
+
+                    networking::send_message(stream, networking::Message::CompositedClipLength)
+                        .unwrap();
+
+                    let node_id_bytes = id.as_bytes();
+                    networking::send_data(stream, node_id_bytes).unwrap();
+                    networking::send_data(stream, &total_duration.to_le_bytes());
 
                     pipeline.add(&timeline).unwrap();
 
@@ -240,6 +250,8 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                     .unwrap();
                     muxer.set_property("location", clip.get_output_location_template());
                     muxer.set_property("muxer-factory", "mp4mux");
+
+                    std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
                     let structure = gst::Structure::new(
                         "properties",
