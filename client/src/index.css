@@ -22,6 +22,10 @@ code {
     monospace;
 }
 
+
+
+
+
 /* width */
 ::-webkit-scrollbar {
   width: 10px;
@@ -110,4 +114,8 @@ div[data-anim~=base] {
   to {
     clip: rect(auto, auto, auto, auto);
   }
+}
+
+.small-caps {
+  font-variant: small-caps;
 }

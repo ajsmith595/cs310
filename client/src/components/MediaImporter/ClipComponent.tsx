@@ -1,10 +1,10 @@
-import { faFileImport } from '@fortawesome/free-solid-svg-icons';
+import { faBox, faClosedCaptioning, faFileImport, faMusic, faVideo } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import Communicator from '../../classes/Communicator';
 import Store from '../../classes/Store';
 import { CompositedClip, SourceClip } from '../../classes/Clip';
-import { faEdit } from '@fortawesome/free-regular-svg-icons';
+import { faEdit, faFile } from '@fortawesome/free-regular-svg-icons';
 import EventBus from '../../classes/EventBus';
 import Utils from '../../classes/Utils';
 import { fs } from '@tauri-apps/api';
@@ -131,19 +131,50 @@ class ClipComponent extends React.Component<Props, State> {
     }
 
     render() {
+
+
+        let type_indicator = null;
+
+        let type = this.props.clip.getType();
+        if (type) {
+            let colour = Utils.Colours.Unknown;
+            let icon = faFile;
+            if (type.video > 1) {
+                colour = Utils.Colours.Container;
+                icon = faBox;
+            }
+            else if (type.video == 1) {
+                colour = Utils.Colours.Video;
+                icon = faVideo;
+            }
+            else if (type.audio > 0) {
+                colour = Utils.Colours.Audio;
+                icon = faMusic;
+            }
+            else if (type.subtitles > 0) {
+                colour = Utils.Colours.Subtitles;
+                icon = faClosedCaptioning;
+            }
+            type_indicator = <FontAwesomeIcon icon={icon} className={`text-${colour} mr-2`} />;
+        }
+        else {
+            this.props.clip.fetchType().then(e => this.forceUpdate());
+        }
         let text = (
             <div>
-                <h1 className="text-gray-200 text-xl inline" onDoubleClick={this.enableEditingMode}>{this.props.clip.name.replaceAll(' ', '\u00a0')}</h1>
-                <button className="inline pt-2 ml-3 text-sm text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
+
+                <span className="text-gray-200 text-xs inline" onDoubleClick={this.enableEditingMode}>{type_indicator}{this.props.clip.name.replaceAll(' ', '\u00a0')}</span>
+                <button className="inline ml-3 text-xs text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
             </div>
         );
         if (this.state.editing) {
-            text = <input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xl focus:outline-none w-full"
+            text = <div className="flex">{type_indicator}<input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xs focus:outline-none flex-1"
                 defaultValue={this.props.clip.name} onBlur={() => this.disableEditingMode()} onKeyDown={(e) => {
                     if (e.key == "Enter") {
                         this.disableEditingMode();
                     }
-                }} />;
+                }} />
+            </div>;
         }
 
         let extraDisplay = null;
@@ -167,27 +198,34 @@ class ClipComponent extends React.Component<Props, State> {
             img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;
         }
 
-        let type_indicator = null;
-        if (this.props.clip instanceof SourceClip) {
-            let colour = Utils.Colours.Unknown;
-            if (this.props.clip.file_location.endsWith("mp3")) {
-                colour = Utils.Colours.Audio;
-            }
-            else {
-                colour = Utils.Colours.Video;
-            }
-            type_indicator = <div className={`w-1/4 bg-${colour} rounded-full h-1`}></div>;
+        let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip;
+
+        let durationString = '-';
+        if (this.props.clip.getDuration()) {
+            let ms = this.props.clip.getDuration();
+
+            let s = ms / 1000;
+            console.log(this.props.clip.name);
+            console.log(this.props.clip);
+            console.log(s);
+            let hrs = Math.floor(s / 3600);
+            let mins = Math.floor(s / 60) % 60;
+            let seconds = Math.floor(s) % 60;
+
+            durationString = hrs.toString().padStart(2, '0') + ":" + mins.toString().padStart(2, '0') + ":" + seconds.toString().padStart(2, '0');
         }
 
-        let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip;
-        return <div className={`gap-2 inline-flex w-1/2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
+        return <tr className={`gap-2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
             draggable="true"
             onDragStart={this.onDragStart}
             onClick={this.selectClip}>
-            <div>
+            {/* <div>
                 {img}
-            </div>
-            <div className="flex items-center">
+            </div> */}
+            <td className='border border-gray-800'>{text}</td>
+            <td className='border border-gray-800'>{durationString}</td>
+            <td className='border border-gray-800'>Status</td>
+            {/* <div className="flex items-center">
                 <div>
                     {text}
                     {extraDisplay}
@@ -196,12 +234,8 @@ class ClipComponent extends React.Component<Props, State> {
 
 
 
-                <div className="wrapper" data-anim="base wrapper">
-                    <div className="circle" data-anim="base left"></div>
-                    <div className="circle" data-anim="base right"></div>
-                </div>
-            </div>
-        </div>
+            </div> */}
+        </tr>
 
     }
 

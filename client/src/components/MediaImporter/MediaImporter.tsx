@@ -1,4 +1,4 @@
-import { faFileImport, faLayerGroup, faPhotoVideo, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
+import { faFileImport, faLayerGroup, faPhotoVideo, faPlus, faPlusSquare } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { ClipIdentifier, CompositedClip, SourceClip } from '../../classes/Clip';
@@ -89,7 +89,7 @@ class MediaImporter extends React.Component<Props, State> {
 			return (
 				<button
 					className={
-						"text-xs font-bold uppercase px-5 py-3 shadow-lg rounded block leading-normal flex-grow border " + className + " " +
+						"text-xs font-bold uppercase px-1 py-1 shadow-lg rounded block leading-normal flex-grow border " + className + " " +
 						(this.state.openTab === type
 							? "text-white bg-pink-600 dark:text-white dark:bg-gray-800 border-red-800"
 							: "text-pink-600 bg-white dark:text-gray-400 dark:bg-gray-800 border-transparent")
@@ -134,14 +134,14 @@ class MediaImporter extends React.Component<Props, State> {
 		return <div className="flex w-full h-full flex-col gap-2">
 			<div className="flex">
 				<button
-					className={"text-lg px-4 font-bold uppercase shadow-lg rounded rounded-r-none block leading-normal border border-r-0 text-white"
+					className={"text-xl px-4 font-bold uppercase shadow-lg rounded rounded-r-none block leading-normal border border-r-0 text-white"
 						+ (this.state.openTab === 'composited'
 							? "text-white bg-pink-600 dark:text-white border-red-800"
 							: "text-pink-600 bg-white dark:text-gray-400  border-transparent")}
 					onClick={() => this.onCreateCompositedClipButtonClick()}
 					data-toggle="tab"
 					role="tablist"
-				><FontAwesomeIcon icon={faPlusSquare} /></button>
+				><FontAwesomeIcon icon={faPlus} /></button>
 				{tabSelection('composited', 'Composited Clips', 'rounded-l-none')}
 				{tabSelection('source', 'Source Clips', "rounded-r-none")}
 				<button
@@ -154,10 +154,19 @@ class MediaImporter extends React.Component<Props, State> {
 					role="tablist"
 				><FontAwesomeIcon icon={faFileImport} /></button>
 			</div>
-			<div className="flex-grow border border-gray-800 relative overflow-y-scroll">
-				<div className="h-full w-full absolute">
-					{files}
-				</div>
+			<div className="flex-grow relative overflow-y-scroll">
+				<table className='table-auto w-full text-xs absolute border-collapse text-white'>
+					<thead>
+						<tr>
+							<th className='text-left  border border-gray-800 small-caps'>file</th>
+							<th className='text-left  border border-gray-800 small-caps'>duration</th>
+							<th className='text-left  border border-gray-800 small-caps'>status</th>
+						</tr>
+					</thead>
+					<tbody>
+						{files}
+					</tbody>
+				</table>
 			</div>
 		</div>
 	}

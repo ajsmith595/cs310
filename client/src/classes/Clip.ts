@@ -1,5 +1,6 @@
-import { ID } from "./Communicator";
+import Communicator, { ID } from "./Communicator";
 import EventBus from "./EventBus";
+import { PipeableType } from "./NodeRegistration";
 import Store from "./Store";
 import Utils from "./Utils";
 
@@ -28,11 +29,34 @@ export class SourceClip {
     }
 
 
+    getDuration() {
+        if (this.info && this.info.duration) {
+            return this.info.duration;
+        }
+    }
+
+
     getIdentifier() {
         return {
             clip_type: 'Source',
             id: this.id
         }
+    }
+
+    private _type: PipeableType = null;
+    getType() {
+        return this._type;
+    }
+    async fetchType() {
+        await new Promise((res, rej) => {
+            Communicator.invoke('get_clip_type', {
+                clipType: 'source',
+                id: this.id
+            }, (type) => {
+                this._type = type;
+                res(type);
+            });
+        })
     }
 }
 
@@ -42,6 +66,15 @@ export class CompositedClip {
     constructor(id: ID, name: string) {
         this.id = id;
         this.name = name;
+
+        Communicator.on('composited-clip-length', (data) => {
+            let id = data[0];
+            let duration_ms = data[1];
+
+            if (id == this.id) {
+                this._duration_ms = duration_ms;
+            }
+        });
     }
 
     static deserialise(obj: any) {
@@ -71,6 +104,27 @@ export class CompositedClip {
                 }
             }
         }
+    }
+
+    private _duration_ms: number = null;
+    getDuration() {
+        return this._duration_ms;
+    }
+
+    private _type: PipeableType = null;
+    getType() {
+        return this._type;
+    }
+    async fetchType() {
+        await new Promise((res, rej) => {
+            Communicator.invoke('get_clip_type', {
+                clipType: 'composited',
+                id: this.id
+            }, (type) => {
+                this._type = type;
+                res(type);
+            });
+        })
     }
 }
 

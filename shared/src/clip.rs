@@ -176,7 +176,7 @@ impl SourceClip {
         }
 
         return Ok(ClipInfo {
-            duration,
+            duration: duration / 1000000,
             audio_streams: audio_streams_vec,
             video_streams: video_streams_vec,
             subtitle_streams: subtitle_streams_vec,
