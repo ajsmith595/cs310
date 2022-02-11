@@ -262,12 +262,28 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                         if video < out_type.stream_type.video {
                             let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
 
+                            let videoconvert =
+                                gst::ElementFactory::make("videoconvert", None).unwrap();
+                            let queue = gst::ElementFactory::make("queue", None).unwrap();
+
                             pipeline.add(&encoder).unwrap();
+                            pipeline.add(&videoconvert).unwrap();
+                            pipeline.add(&queue).unwrap();
+
+                            //pipeline.add(&videoconvert2).unwrap();
                             timeline
-                                .link_pads(Some(x.name().as_str()), &encoder, None)
+                                .link_pads(Some(x.name().as_str()), &videoconvert, None)
                                 .unwrap();
-                            encoder
-                                .link_pads(None, &muxer, Some(format!("video_{}", video).as_str()))
+                            videoconvert.link(&encoder).unwrap();
+                            //encoder.link(&videoconvert2).unwrap();
+
+                            encoder.link(&queue).unwrap();
+
+                            if video > 0 {
+                                panic!("Can only handle one video stream!");
+                            }
+                            queue
+                                .link_pads(None, &muxer, Some(format!("video").as_str()))
                                 .unwrap();
                         } else {
                             let audioconvert1 =
@@ -277,11 +293,14 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                             let audioconvert2 =
                                 gst::ElementFactory::make("audioconvert", None).unwrap();
 
+                            let queue = gst::ElementFactory::make("queue", None).unwrap();
+
                             let encoder = gst::ElementFactory::make("avenc_aac", None).unwrap();
 
                             pipeline.add(&audioconvert1).unwrap();
                             pipeline.add(&audioresample).unwrap();
                             pipeline.add(&audioconvert2).unwrap();
+                            pipeline.add(&queue).unwrap();
                             pipeline.add(&encoder).unwrap();
                             timeline
                                 .link_pads(Some(x.name().as_str()), &audioconvert1, None)
@@ -289,7 +308,8 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
                             audioconvert1.link(&audioresample).unwrap();
                             audioresample.link(&audioconvert2).unwrap();
                             audioconvert2.link(&encoder).unwrap();
-                            encoder
+                            encoder.link(&queue).unwrap();
+                            queue
                                 .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
                                 .unwrap();
                         }
