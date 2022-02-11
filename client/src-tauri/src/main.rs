@@ -108,6 +108,7 @@ fn main() {
       tauri_commands::get_file_info,
       tauri_commands::get_node_inputs,
       tauri_commands::get_output_directory,
+      tauri_commands::get_clip_type
     ])
     .setup(move |app| {
       let window = app.get_window("main").unwrap();

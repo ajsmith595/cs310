@@ -69,6 +69,10 @@ class VideoPreview extends React.Component<Props, State> {
         return this.video_element_ref.current?.currentTime;
     }
     get duration() {
+        if (this.state.clip) {
+            let clip = Store.getCurrentStore().clips.composited.get(this.state.clip);
+            if (clip.getDuration()) return clip.getDuration() / 1000;
+        }
         return this.video_element_ref.current?.duration;
     }
 
@@ -219,10 +223,14 @@ class VideoPreview extends React.Component<Props, State> {
     last_time_update = -Infinity;
     async timeUpdate(event: React.SyntheticEvent<HTMLVideoElement, Event>) {
         let time = this.currentTimestamp;
+
+        this.forceUpdate();
         if (Math.abs(time - this.last_time_update) > 1) {
             await this.videoUpdate();
+
+
+            this.last_time_update = time;
         }
-        this.last_time_update = time;
     }
 
 
@@ -311,7 +319,9 @@ class VideoPreview extends React.Component<Props, State> {
 
                     let boundingBox = (e.target as HTMLElement).getBoundingClientRect();
                     let proportion = (e.clientX - boundingBox.left) / boundingBox.width;
-                    let newTime = this.video_element_ref.current?.duration * proportion;
+
+
+                    let newTime = this.duration * proportion;
                     this.video_element_ref.current.currentTime = newTime;
                 }}>
                     <div className="absolute pointer-events-none" style={{ left: this.currentPercentage + "%", transform: "translateX(-50%)" }}>

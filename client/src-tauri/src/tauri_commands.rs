@@ -27,7 +27,7 @@ use cs310_shared::{
   constants::media_output_location,
   global::uniq_id,
   networking::{self, SERVER_HOST, SERVER_PORT},
-  node::{Node, NodeTypeInput, NodeTypeOutput},
+  node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
   nodes::NodeRegister,
   pipeline::Pipeline,
   store::Store,
@@ -72,6 +72,11 @@ pub async fn import_media(
 
         let mut thumbnail = None;
         if info.clone().video_streams.len() > 0 {
+          let x = format!(
+            "{}/thumbnails/source",
+            std::env::current_dir().unwrap().to_str().unwrap()
+          );
+          std::fs::create_dir_all(x).unwrap();
           Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
 
           thumbnail = Some(format!(
@@ -383,4 +388,37 @@ pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Re
 #[tauri::command]
 pub fn get_output_directory() -> String {
   media_output_location()
+}
+
+#[tauri::command]
+pub fn get_clip_type(
+  state: tauri::State<SharedStateWrapper>,
+  clip_type: String,
+  id: ID,
+) -> PipeableType {
+  let state = state.0.lock().unwrap();
+  match clip_type.as_str() {
+    "source" => {
+      let clip = state.store.clips.source.get(&id).unwrap();
+      clip.get_clip_type()
+    }
+    "composited" => {
+      let res = state
+        .store
+        .pipeline
+        .gen_graph_new(&state.store, &state.node_register, false);
+
+      if let Ok((_, clip_data, _)) = res {
+        let piped_type = clip_data.get(&id).unwrap();
+        piped_type.stream_type
+      } else {
+        PipeableType {
+          audio: 0,
+          video: 0,
+          subtitles: 0,
+        }
+      }
+    }
+    _ => todo!(),
+  }
 }

@@ -51,6 +51,7 @@ export default class Utils {
     static getColourFromRestriction(t: PipeableTypeRestriction) {
         this.getColour(t.min);
     }
+
     static getColour(t: PipeableType) {
         if (t.video > 1) return this.Colours.Container;
         if (t.video == 1) return this.Colours.Video;

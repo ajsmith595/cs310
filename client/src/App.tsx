@@ -21,12 +21,12 @@ function Section(props: { width: string, height: string, text: string, children:
 			<p className="dark:text-white text-center w-full text-4xl">NOT YET IMPLEMENTED</p>
 		</div>;
 	}
-	return (<div className={`${props.width} ${props.height} p-3 border-gray-800 dark:border-gray-500 border ${props.className || ''} align-top inline-flex flex-col`}>
+	return (<div className={`${props.width} ${props.height} p-1 border-gray-800 dark:border-gray-500 border ${props.className || ''} align-top inline-flex flex-col`}>
 		<div>
-			<h1 className="font-bold text-black dark:text-white text-xl"><FontAwesomeIcon icon={props.icon} className="mr-2" />{props.text.toUpperCase()}
+			<h1 className="font-bold text-black dark:text-white text-xs"><FontAwesomeIcon icon={props.icon} className="mr-2" />{props.text.toUpperCase()}
 				<span className="float-right">{props.rightContent}</span>
 			</h1>
-			<hr className="border-gray-800 dark:border-gray-500 my-2" />
+			<hr className="border-gray-800 dark:border-gray-500 my-1" />
 		</div>
 		<div style={{ flex: "1 1 auto" }} className="min-h-0">
 			{children}
