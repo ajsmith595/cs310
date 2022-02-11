@@ -41,6 +41,8 @@ class VideoPreview extends React.Component<Props, State> {
      */
     clip_chunks_ready: Map<string, number>;
 
+    clip_codecs: Map<string, string>;
+
 
     change_lock: Mutex;
 
@@ -51,6 +53,7 @@ class VideoPreview extends React.Component<Props, State> {
         this.video_element_ref = React.createRef();
         this.clip_chunks_ready = new Map();
         this.change_lock = new Mutex();
+        this.clip_codecs = new Map();
 
         this.state = {
             currentTime: 0,
@@ -91,12 +94,38 @@ class VideoPreview extends React.Component<Props, State> {
 
             await this.videoUpdate();
         });
+
+        Communicator.on('new-clip-codec', async (data) => {
+            console.log("New clip codec!: ");
+            console.log(data);
+
+            let node_id: string = data[0];
+            let codec: string = data[1];
+
+            let release = await this.change_lock.acquire();
+
+            this.clip_codecs.set(node_id, codec);
+            let do_codec_update = false;
+            if (node_id == this.state.clip) {
+                do_codec_update = true;
+            }
+            release();
+
+
+            if (do_codec_update) {
+                await this.changeClipCodec();
+            }
+        });
     }
 
     componentWillUnmount() {
         Communicator.clear('video-chunk-ready');
     }
 
+
+    async changeClipCodec() {
+        await this.onClipChanged(this.state.clip);
+    }
 
     update_end_callbacks: Array<() => void> = [];
     async loadChunk(directory: string, segment_id: number) {
@@ -232,13 +261,21 @@ class VideoPreview extends React.Component<Props, State> {
         this.media_source.removeEventListener('sourceopen', res);
 
 
-        const MIME_TYPE = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
+
+        let mime_type = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
+        if (this.clip_codecs.get(clip)) {
+            mime_type = this.clip_codecs.get(clip);
+        }
+        else {
+            release();
+            console.log("WARNING: no codec found!");
+            return;
+        }
 
 
 
 
-
-        this.source_buffer = this.media_source.addSourceBuffer(MIME_TYPE);
+        this.source_buffer = this.media_source.addSourceBuffer(mime_type);
         console.log("New source buffer:");
         console.log(this.source_buffer);
 

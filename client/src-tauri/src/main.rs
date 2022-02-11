@@ -42,8 +42,8 @@ extern crate serde_derive;
 // extern crate erased_serde;
 // extern crate dirs;
 extern crate dirs;
-extern crate gstreamer;
-extern crate gstreamer_pbutils;
+extern crate gst;
+extern crate gst_pbutils;
 extern crate serde;
 extern crate serde_json;
 

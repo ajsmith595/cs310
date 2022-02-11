@@ -11,8 +11,8 @@ use std::{
   thread,
 };
 
-use gstreamer::{prelude::Cast, traits::PluginFeatureExt};
-use gstreamer_pbutils::{
+use gst::{prelude::Cast, traits::PluginFeatureExt};
+use gst_pbutils::{
   traits::DiscovererStreamInfoExt, Discoverer, DiscovererAudioInfo, DiscovererStreamInfo,
   DiscovererSubtitleInfo, DiscovererVideoInfo,
 };
@@ -115,7 +115,7 @@ pub async fn get_file_info(
 
   let file_location = format!("file:///{}", clip.file_location.replace("\\", "/"));
 
-  let discoverer = Discoverer::new(gstreamer::ClockTime::from_seconds(10)).unwrap();
+  let discoverer = Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
 
   let info = discoverer.discover_uri(&file_location);
   if info.is_err() {
@@ -208,7 +208,7 @@ pub async fn get_file_info(
       let sample_rate = audio_info.sample_rate();
       let language = audio_info
         .language()
-        .unwrap_or(gstreamer::glib::GString::from("und".to_string()))
+        .unwrap_or(gst::glib::GString::from("und".to_string()))
         .to_string();
 
       let num_channels = audio_info.channels();
