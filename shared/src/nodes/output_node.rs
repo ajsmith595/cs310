@@ -4,6 +4,7 @@ use ges::{
     traits::{LayerExt, TimelineExt},
     TrackType,
 };
+use glib::StaticType;
 use serde_json::Value;
 
 use crate::{
@@ -115,6 +116,8 @@ fn get_output(
     timeline
         .save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)
         .unwrap();
+
+    ges::Asset::needs_reload(ges::UriClip::static_type(), Some(output_location.as_str()));
     Ok(HashMap::new())
 }
 

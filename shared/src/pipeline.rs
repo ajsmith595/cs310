@@ -252,6 +252,10 @@ impl Pipeline {
 
                     v.save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)
                         .unwrap();
+                    ges::Asset::needs_reload(
+                        ges::UriClip::static_type(),
+                        Some(output_location.as_str()),
+                    );
                 }
             }
 
@@ -305,6 +309,12 @@ impl Pipeline {
                         let from_location = from_piped_type.get_location_real();
                         let to_location = to_piped_type.get_location_real();
                         fs::copy(from_location, to_location).unwrap();
+
+                        let to_location = to_piped_type.get_location();
+                        ges::Asset::needs_reload(
+                            ges::UriClip::static_type(),
+                            Some(to_location.as_str()),
+                        );
                     }
 
                     next_node_inputs.insert(to_property.clone(), to_piped_type.clone());

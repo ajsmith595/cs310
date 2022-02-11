@@ -4,6 +4,7 @@ use ges::{
     traits::{LayerExt, TimelineExt},
     TrackType,
 };
+use glib::StaticType;
 use serde_json::Value;
 
 use crate::{

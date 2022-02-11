@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use ges::traits::{LayerExt, TimelineExt};
+use ges::traits::{AssetExt, LayerExt, TimelineExt};
+use glib::StaticType;
 use serde_json::Value;
 
 use crate::{
@@ -156,7 +157,10 @@ fn get_output(
 
             let timeline = output.stream_type.create_timeline();
             let layer = timeline.append_layer();
-            let clip = ges::UriClipAsset::request_sync(clip.get_location().as_str()).unwrap();
+
+            let location = clip.get_location();
+            ges::Asset::needs_reload(ges::UriClip::static_type(), Some(location.as_str()));
+            let clip = ges::UriClipAsset::request_sync(location.as_str()).unwrap();
             layer
                 .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
                 .unwrap();
@@ -167,7 +171,10 @@ fn get_output(
 
             let timeline = output.stream_type.create_timeline();
             let layer = timeline.append_layer();
-            let clip = ges::UriClipAsset::request_sync(clip.get_location().as_str()).unwrap();
+
+            let location = clip.get_location();
+            ges::Asset::needs_reload(ges::UriClip::static_type(), Some(location.as_str()));
+            let clip = ges::UriClipAsset::request_sync(location.as_str()).unwrap();
             layer
                 .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
                 .unwrap();
