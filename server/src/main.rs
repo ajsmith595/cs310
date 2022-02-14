@@ -224,6 +224,10 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
 
                     let timeline = out_type.stream_type.create_timeline();
 
+                    ges::Asset::needs_reload(
+                        ges::UriClip::static_type(),
+                        Some(timeline_location.as_str()),
+                    );
                     let timeline_asset =
                         ges::UriClipAsset::request_sync(timeline_location.as_str()).unwrap();
 
@@ -239,7 +243,7 @@ fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeR
 
                     let node_id_bytes = id.as_bytes();
                     networking::send_data(stream, node_id_bytes).unwrap();
-                    networking::send_data(stream, &total_duration.to_le_bytes());
+                    networking::send_data(stream, &total_duration.to_le_bytes()).unwrap();
 
                     pipeline.add(&timeline).unwrap();
 
