@@ -65,7 +65,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
 
                 properties.push(
-                    <div className={`relative p-2 transition-colors rounded-md ${this.state.hovered_property === property && this.state.expanded ? 'bg-gray-300' : ''}`}
+                    <div className={`relative p-2 border-l border-white transition-colors ${this.state.hovered_property === property && this.state.expanded ? 'bg-white bg-opacity-10' : ''}`}
                         onMouseEnter={() => this.setState({ hovered_property: property })}
                         onMouseLeave={() => this.setState({ hovered_property: null })}>
 
@@ -95,7 +95,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
         for (let [output_type, output] of this.props.data.node.outputs.entries()) {
             properties.push(
-                <div className={`relative p-2 rounded-md transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-gray-300' : ''}`}
+                <div className={`relative p-2 border-r border-white transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-white bg-opacity-10' : ''}`}
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}
                     onMouseLeave={() => this.setState({ hovered_property: null })}>
                     <Handle type="source" position={Position.Right} id={output_type}
@@ -112,13 +112,13 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
 
 
-        let border = "border-gray-900 border-opacity-80";
+        let border = "border-black border-opacity-80";
         if (EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) === this.props.data.node) {
             border = "border-pink-600";
         }
 
         let delete_btn = (
-            <button className="float-right text-red-600 mr-2" onClick={(e) => { this.props.data.deleteNode(); e.stopPropagation() }}>
+            <button className="float-right text-red-600 hover:bg-white hover:bg-opacity-20 px-1 rounded transition-colors" onClick={(e) => { this.props.data.deleteNode(); e.stopPropagation() }}>
                 <FontAwesomeIcon icon={faTrash} />
             </button>
         );
@@ -126,20 +126,20 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             delete_btn = null;
         }
         return (
-            <div className={`bg-gray-200 rounded-md border-2 ${border}`} onClick={(e) => EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node)}>
-                <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-2 ${this.state.expanded ? "border-gray-500" : 'border-transparent'} `}>
+            <div className={`bg-gray-900 text-white rounded-md border ${border} pb-1`} onClick={(e) => EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node)}>
+                <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-1 ${this.state.expanded ? "border-gray-800" : 'border-transparent'} `}>
 
-                    <h1>
+                    <span className="text-sm">
                         <button className="mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>
                             <FontAwesomeIcon icon={faChevronDown} className={`transition-transform duration-${EditorNodeComponent.EXPAND_DURATION} transform  ${!this.state.expanded ? '-rotate-90' : ''}`} />
                         </button>
                         {node_registration.display_name}
 
                         {delete_btn}
-                    </h1>
-                    <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
+                    </span>
+                    {/* <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                         <small className={`block overflow-hidden`}>{node_registration.description}</small>
-                    </AnimateHeight>
+                    </AnimateHeight> */}
                 </div>
                 {properties}
                 {/* <Handle type="source" position={Position.Right} />

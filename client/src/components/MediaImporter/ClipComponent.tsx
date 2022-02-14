@@ -215,16 +215,19 @@ class ClipComponent extends React.Component<Props, State> {
             durationString = hrs.toString().padStart(2, '0') + ":" + mins.toString().padStart(2, '0') + ":" + seconds.toString().padStart(2, '0');
         }
 
-        return <tr className={`gap-2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
+        let border = `border border-gray-800`;
+
+
+        return <tr className={`gap-2 cursor-pointer ${isSelected ? 'bg-pink-600' : 'hover:bg-white hover:bg-opacity-10'} transition-colors`}
             draggable="true"
             onDragStart={this.onDragStart}
             onClick={this.selectClip}>
             {/* <div>
                 {img}
             </div> */}
-            <td className='border border-gray-800'>{text}</td>
-            <td className='border border-gray-800'>{durationString}</td>
-            <td className='border border-gray-800'>Status</td>
+            <td className={border}>{text}</td>
+            <td className={border}>{durationString}</td>
+            <td className={border}>Status</td>
             {/* <div className="flex items-center">
                 <div>
                     {text}

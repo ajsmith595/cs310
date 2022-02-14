@@ -71,7 +71,9 @@ class VideoPreview extends React.Component<Props, State> {
     get duration() {
         if (this.state.clip) {
             let clip = Store.getCurrentStore().clips.composited.get(this.state.clip);
-            if (clip.getDuration()) return clip.getDuration() / 1000;
+            if (clip) {
+                if (clip.getDuration()) return clip.getDuration() / 1000;
+            }
         }
         return this.video_element_ref.current?.duration;
     }
@@ -86,12 +88,12 @@ class VideoPreview extends React.Component<Props, State> {
         });
         Communicator.on('video-chunk-ready', async (data) => {
             let node_id: string = data[0];
-            let segment_id: string = data[1];
+            let segment_id: number = data[1];
             let clip_id = node_id;
 
             console.log(`Segment ${segment_id} of clip ${clip_id} is now ready - awaiting lock`);
             const release = await this.change_lock.acquire();
-            this.clip_chunks_ready[clip_id] = segment_id;
+            this.clip_chunks_ready.set(clip_id, segment_id);
             release();
 
             console.log(`Segment ${segment_id} of clip ${clip_id} is now ready`);
@@ -184,7 +186,7 @@ class VideoPreview extends React.Component<Props, State> {
         console.log("Loading up to chunk " + next_segment);
         for (let segment = 0; segment <= next_segment; segment++) {
             if (!this.chunk_loading_statuses[segment] || this.chunk_loading_statuses[segment] != LoadedStatus.Loaded) {
-                if (!this.clip_chunks_ready[this.state.clip] || this.clip_chunks_ready[this.state.clip] < segment) {
+                if (this.clip_chunks_ready.get(this.state.clip) === undefined || this.clip_chunks_ready.get(this.state.clip) < segment) {
                     console.log("Lock releasing for videoUpdate");
                     release();
                     console.log("Lock released for videoUpdate");
@@ -277,6 +279,8 @@ class VideoPreview extends React.Component<Props, State> {
         else {
             release();
             console.log("WARNING: no codec found!");
+            console.log(this.clip_codecs);
+            console.log(clip);
             return;
         }
 
@@ -322,6 +326,20 @@ class VideoPreview extends React.Component<Props, State> {
 
 
                     let newTime = this.duration * proportion;
+                    if (isNaN(newTime)) {
+                        newTime = 0;
+                    }
+                    this.video_element_ref.current.currentTime = newTime;
+                }} onDrag={(e) => {
+                    e.preventDefault();
+                    let boundingBox = (e.target as HTMLElement).getBoundingClientRect();
+                    let proportion = (e.clientX - boundingBox.left) / boundingBox.width;
+
+
+                    let newTime = this.duration * proportion;
+                    if (isNaN(newTime)) {
+                        newTime = 0;
+                    }
                     this.video_element_ref.current.currentTime = newTime;
                 }}>
                     <div className="absolute pointer-events-none" style={{ left: this.currentPercentage + "%", transform: "translateX(-50%)" }}>

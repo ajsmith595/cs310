@@ -71,20 +71,24 @@ pub async fn import_media(
         let id = Uuid::from_bytes(uuid_bytes);
 
         let mut thumbnail = None;
-        if info.clone().video_streams.len() > 0 {
-          let x = format!(
-            "{}/thumbnails/source",
-            std::env::current_dir().unwrap().to_str().unwrap()
-          );
-          std::fs::create_dir_all(x).unwrap();
-          Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
+        let x = format!(
+          "{}/thumbnails/source",
+          std::env::current_dir().unwrap().to_str().unwrap()
+        );
+        std::fs::create_dir_all(x).unwrap();
 
-          thumbnail = Some(format!(
-            "{}/thumbnails/source/{}.jpg",
-            std::env::current_dir().unwrap().to_str().unwrap(),
-            id.clone()
-          ));
+        let source_type = info.to_pipeable_type();
+        if source_type.video > 0 {
+          Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
+        } else if source_type.audio > 0 {
+          Pipeline::get_audio_thumbnail(file_path.clone(), id.to_string());
         }
+
+        thumbnail = Some(format!(
+          "{}/thumbnails/source/{}.jpg",
+          std::env::current_dir().unwrap().to_str().unwrap(),
+          id.clone()
+        ));
 
         let clip = SourceClip {
           id,

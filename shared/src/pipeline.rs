@@ -488,4 +488,10 @@ impl Pipeline {
         let pipeline = format!("filesrc location=\"{}\" ! decodebin ! jpegenc snapshot=TRUE ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
         Self::execute_pipeline(pipeline, 10, None).unwrap();
     }
+
+    pub fn get_audio_thumbnail(path: String, id: String) {
+        let path = path.replace("\\", "/");
+        let pipeline = format!("filesrc location=\"{}\" ! decodebin ! audioconvert ! wavescope ! jpegenc ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
+        Self::execute_pipeline(pipeline, 10, None).unwrap();
+    }
 }

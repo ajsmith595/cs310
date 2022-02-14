@@ -59,6 +59,16 @@ pub struct ClipInfo {
     pub subtitle_streams: Vec<SubtitleStreamInfo>,
 }
 
+impl ClipInfo {
+    pub fn to_pipeable_type(&self) -> PipeableType {
+        PipeableType {
+            video: self.video_streams.len() as i32,
+            audio: self.audio_streams.len() as i32,
+            subtitles: self.subtitle_streams.len() as i32,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SourceClipServerStatus {
     LocalOnly,
@@ -80,11 +90,7 @@ impl SourceClip {
     pub fn get_clip_type(&self) -> PipeableType {
         if self.info.is_some() {
             let info = self.info.clone().unwrap();
-            return PipeableType {
-                video: info.video_streams.len() as i32,
-                audio: info.audio_streams.len() as i32,
-                subtitles: info.subtitle_streams.len() as i32,
-            };
+            return info.to_pipeable_type();
         }
         return PipeableType {
             video: -1,
