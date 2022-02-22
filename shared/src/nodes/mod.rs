@@ -11,7 +11,7 @@ use self::{
 
 use super::node::NodeType;
 use crate::nodes::media_import_node::media_import_node;
-use std::{collections::HashMap, fmt::Display};
+use std::collections::HashMap;
 
 pub type NodeRegister = HashMap<String, NodeType>;
 

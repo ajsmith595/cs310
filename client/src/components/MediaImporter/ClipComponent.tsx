@@ -160,11 +160,20 @@ class ClipComponent extends React.Component<Props, State> {
         else {
             this.props.clip.fetchType().then(e => this.forceUpdate());
         }
+
+
+        let source_clip_location = null;
+
+        if (this.props.clip instanceof SourceClip) {
+            // source_clip_location = <span className="ml-2 text-gray-400 text-xs">({this.props.clip.file_location})</span>;
+        }
+
         let text = (
             <div>
 
                 <span className="text-gray-200 text-xs inline" onDoubleClick={this.enableEditingMode}>{type_indicator}{this.props.clip.name.replaceAll(' ', '\u00a0')}</span>
                 <button className="inline ml-3 text-xs text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
+                {source_clip_location}
             </div>
         );
         if (this.state.editing) {
@@ -205,9 +214,6 @@ class ClipComponent extends React.Component<Props, State> {
             let ms = this.props.clip.getDuration();
 
             let s = ms / 1000;
-            console.log(this.props.clip.name);
-            console.log(this.props.clip);
-            console.log(s);
             let hrs = Math.floor(s / 3600);
             let mins = Math.floor(s / 60) % 60;
             let seconds = Math.floor(s) % 60;
@@ -215,16 +221,19 @@ class ClipComponent extends React.Component<Props, State> {
             durationString = hrs.toString().padStart(2, '0') + ":" + mins.toString().padStart(2, '0') + ":" + seconds.toString().padStart(2, '0');
         }
 
-        return <tr className={`gap-2 cursor-pointer hover:bg-white hover:bg-opacity-10 transition-colors rounded border ${isSelected ? 'border-pink-600' : 'border-transparent'}`}
+        let border = `border border-gray-800`;
+
+
+        return <tr className={`gap-2 cursor-pointer ${isSelected ? 'bg-pink-600' : 'hover:bg-white hover:bg-opacity-10'} transition-colors`}
             draggable="true"
             onDragStart={this.onDragStart}
             onClick={this.selectClip}>
             {/* <div>
                 {img}
             </div> */}
-            <td className='border border-gray-800'>{text}</td>
-            <td className='border border-gray-800'>{durationString}</td>
-            <td className='border border-gray-800'>Status</td>
+            <td className={border}>{text}</td>
+            <td className={border}>{durationString}</td>
+            <td className={border}>Status</td>
             {/* <div className="flex items-center">
                 <div>
                     {text}

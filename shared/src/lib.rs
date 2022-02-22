@@ -14,7 +14,6 @@ extern crate serde;
 extern crate serde_json;
 extern crate uuid;
 
-pub mod abstract_pipeline;
 pub mod clip;
 pub mod global;
 pub mod networking;
@@ -24,4 +23,3 @@ pub mod pipeline;
 pub mod store;
 pub type ID = Uuid;
 pub mod constants;
-pub mod gst_editing_test;

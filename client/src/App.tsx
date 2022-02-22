@@ -44,7 +44,9 @@ type Selectable = EditorNode | SourceClip | CompositedClip;
 
 interface State {
 	Store: Store,
-	selection: Selectable
+	selection: Selectable,
+	initialConnectionDone: boolean;
+	connectionError: string;
 }
 
 class App extends React.Component<Props, State> {
@@ -57,11 +59,20 @@ class App extends React.Component<Props, State> {
 
 		this.state = {
 			Store: null,
-			selection: null
+			selection: null,
+			initialConnectionDone: false,
+			connectionError: null
 		}
 		this.nodeEditor = React.createRef<NodeEditor>();
 
 		this.onClick = this.onClick.bind(this);
+		this.connectionStatusUpdate = this.connectionStatusUpdate.bind(this);
+
+
+		this.setSelectionHandler = this.setSelectionHandler.bind(this);
+		this.setStoreHandler = this.setStoreHandler.bind(this);
+		this.setStoreUIHandler = this.setStoreUIHandler.bind(this);
+		this.changeGroupHandler = this.changeGroupHandler.bind(this);
 	}
 
 	async onClick(e: React.MouseEvent<HTMLDivElement, MouseEvent>) {
@@ -72,56 +83,98 @@ class App extends React.Component<Props, State> {
 		}
 	}
 
+	connectionStatusUpdate(connectionStatus) {
+		if (connectionStatus === 'InitialisingConnection') {
+			this.setState({
+				connectionError: null,
+				initialConnectionDone: false
+			});
+		}
+		else if (connectionStatus === 'Connected') {
+
+			if (!this.state.initialConnectionDone) {
+				Communicator.invoke('get_initial_data', null, (data) => {
+					let node_register = data[1];
+					EditorNode.deserialiseRegister(node_register);
+					this.setState({
+						Store: Store.deserialise(data[0])
+					})
+				});
+			}
+
+			this.setState({
+				connectionError: null,
+				initialConnectionDone: true
+			});
+		}
+		else if (Object.keys(connectionStatus)[0] === 'InitialConnectionFailed') {
+			this.setState({
+				connectionError: connectionStatus['InitialConnectionFailed'],
+				initialConnectionDone: false
+			});
+		}
+		else if (Object.keys(connectionStatus)[0] === 'ConnectionFailed') {
+			this.setState({
+				connectionError: connectionStatus['ConnectionFailed'],
+				initialConnectionDone: true
+			});
+		}
+	}
+
+	setSelectionHandler(value: Selectable) {
+		this.setState({
+			selection: value
+		});
+	}
+	setStoreHandler(value: Store) {
+		this.setState({
+			Store: value
+		});
+		Communicator.invoke('store_update', {
+			store: value.serialise()
+		});
+	}
+	setStoreUIHandler(value: Store) {
+		this.setState({
+			Store: value
+		});
+	}
+	changeGroupHandler() {
+		this.forceUpdate();
+	}
+
 	componentDidMount() {
-		Communicator.invoke('get_initial_data', null, (data) => {
-			console.log(data);
-			let node_register = data[1];
-			EditorNode.deserialiseRegister(node_register);
-			this.setState({
-				Store: Store.deserialise(data[0])
-			})
-		});
 
-		EventBus.registerGetter(EventBus.GETTERS.APP.CURRENT_SELECTION, () => {
-			return this.state.selection;
-		})
+		Communicator.invoke('get_connection_status', null, this.connectionStatusUpdate);
+		Communicator.on('connection-status', this.connectionStatusUpdate);
 
-		EventBus.on(EventBus.EVENTS.APP.SET_SELECTION, (value: Selectable) => {
-			this.setState({
-				selection: value
-			});
-		});
 
-		EventBus.registerGetter(EventBus.GETTERS.APP.STORE, () => {
-			return this.state.Store;
-		});
-		EventBus.on(EventBus.EVENTS.APP.SET_STORE, (value: Store) => {
-			this.setState({
-				Store: value
-			});
-			Communicator.invoke('store_update', {
-				store: value.serialise()
-			});
-		});
-		EventBus.on(EventBus.EVENTS.APP.SET_STORE_UI, (value: any) => {
-			this.setState({
-				Store: value
-			});
-		});
+		// Getters
+		EventBus.registerGetter(EventBus.GETTERS.APP.STORE, () => this.state.Store);
+		EventBus.registerGetter(EventBus.GETTERS.APP.CURRENT_SELECTION, () => this.state.selection);
 
-		EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, () => {
-			this.forceUpdate();
-		});
+		// Events
+		EventBus.on(EventBus.EVENTS.APP.SET_SELECTION, this.setSelectionHandler);
+		EventBus.on(EventBus.EVENTS.APP.SET_STORE, this.setStoreHandler);
+		EventBus.on(EventBus.EVENTS.APP.SET_STORE_UI, this.setStoreUIHandler);
+		EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroupHandler);
 	}
 
 	componentWillUnmount() {
+
+		Communicator.off('connection-status', this.connectionStatusUpdate);
+
 		EventBus.unregisterGetter(EventBus.GETTERS.APP.STORE);
 		EventBus.unregisterGetter(EventBus.GETTERS.APP.CURRENT_SELECTION);
+
+		EventBus.remove(EventBus.EVENTS.APP.SET_SELECTION, this.setSelectionHandler);
+		EventBus.remove(EventBus.EVENTS.APP.SET_STORE, this.setStoreHandler);
+		EventBus.remove(EventBus.EVENTS.APP.SET_STORE_UI, this.setStoreUIHandler);
+		EventBus.remove(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroupHandler);
 	}
 
 	render() {
-
-		if (this.state.Store) {
+		if (this.state.Store && this.state.initialConnectionDone) {
 			let firstClip: CompositedClip = this.state.Store.clips.composited.values().next().value;
 			let firstClipGroup = "";
 			if (firstClip) {
@@ -149,11 +202,47 @@ class App extends React.Component<Props, State> {
 						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
 							<PropertiesPanel cache={this.cache} />
 						</Section>
+						{/* <div className="absolute right-1 top-1 bg-white bg-opacity-40 hover:bg-opacity-80 px-2 rounded">
+							<p className="text-green-600">Connected to server</p>
+						</div> */}
 					</div>
 				</div>
-			)
+			);
 		}
-		return <h1>Loading...</h1>;
+
+		let content = null;
+
+
+		if (!this.state.initialConnectionDone) {
+
+			if (this.state.connectionError) {
+				content = <>
+					<p>Connection failed</p>
+					<small>(trying again in 5 seconds)</small>
+					<p>Error: {this.state.connectionError}</p>
+				</>
+			}
+			else {
+				content = <>
+					<p>Connecting</p>
+					<FontAwesomeIcon icon={faCog} className="animate-spin text-3xl" />
+				</>
+			}
+		}
+		else if (!this.state.Store) {
+			content = <>
+				<p>Connected to server, loading user interface</p>
+				<FontAwesomeIcon icon={faCog} className="animate-spin text-3xl" />
+			</>
+		}
+
+		return (
+			<div className="flex h-screen w-screen">
+				<div className="m-auto w-1/2 text-center">
+					{content}
+				</div>
+			</div>
+		);
 	}
 }
 

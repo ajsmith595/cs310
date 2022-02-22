@@ -157,10 +157,10 @@ class MediaImporter extends React.Component<Props, State> {
 			<div className="flex-grow relative overflow-y-scroll">
 				<table className='table-auto w-full text-xs absolute border-collapse text-white'>
 					<thead>
-						<tr>
-							<th className='text-left  border border-gray-800 small-caps'>file</th>
-							<th className='text-left  border border-gray-800 small-caps'>duration</th>
-							<th className='text-left  border border-gray-800 small-caps'>status</th>
+						<tr className="bg-black bg-opacity-20">
+							<td className='text-left  border border-gray-800 small-caps'>file</td>
+							<td className='text-left  border border-gray-800 small-caps'>duration</td>
+							<td className='text-left  border border-gray-800 small-caps'>status</td>
 						</tr>
 					</thead>
 					<tbody>

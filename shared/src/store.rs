@@ -1,12 +1,8 @@
-use std::{cell::Cell, collections::HashMap, hash::Hash};
-
-use petgraph::graph::DiGraph;
-use serde_json::Value;
+use std::collections::HashMap;
 
 use super::{
-    clip::{ClipType, CompositedClip, SourceClip},
-    node::{Node, NodeType, PipeableType},
-    nodes::NodeRegister,
+    clip::{CompositedClip, SourceClip},
+    node::{Node, PipeableType},
     pipeline::Pipeline,
     ID,
 };

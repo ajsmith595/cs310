@@ -1,7 +1,5 @@
-use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use progress_streams::ProgressReader;
-use std::convert::TryFrom;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -28,8 +26,8 @@ enum_from_primitive! {
     }
 }
 
-pub fn connect_to_server() -> TcpStream {
-    TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT)).unwrap()
+pub fn connect_to_server() -> Result<TcpStream, Error> {
+    TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT))
 }
 
 pub fn send_file(stream: &mut TcpStream, file: &mut File) {

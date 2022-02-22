@@ -1,27 +1,22 @@
 use std::collections::HashMap;
 
-use ges::traits::{AssetExt, LayerExt, TimelineExt};
+use ges::traits::{LayerExt, TimelineExt};
 use glib::StaticType;
 use serde_json::Value;
 
 use crate::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
     clip::{ClipIdentifier, ClipType},
-    node::{
-        self, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType,
-        PipedType, Type,
-    },
+    node::{self, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
     nodes::NodeRegister,
-    pipeline,
     store::Store,
     ID,
 };
 
 pub const IDENTIFIER: &str = "clip_import";
-pub mod INPUTS {
+pub mod inputs {
     pub const CLIP: &str = "clip";
 }
-pub mod OUTPUTS {
+pub mod outputs {
     pub const OUTPUT: &str = "output";
 }
 
@@ -29,7 +24,7 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     let mut default_properties = HashMap::new();
 
     default_properties.insert(
-        String::from(INPUTS::CLIP),
+        String::from(inputs::CLIP),
         NodeTypeInput {
             name: String::from("clip"),
             display_name: String::from("Clip"),
@@ -41,12 +36,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 fn get_io(
-    node_id: ID,
+    _node_id: ID,
     properties: &HashMap<String, Value>,
-    piped_inputs: &HashMap<String, PipedType>,
+    _piped_inputs: &HashMap<String, PipedType>,
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
-    node_register: &NodeRegister,
+    _node_register: &NodeRegister,
 ) -> Result<
     (
         HashMap<String, NodeTypeInput>,
@@ -56,13 +51,13 @@ fn get_io(
 > {
     let inputs = default_properties();
 
-    let clip = properties.get(INPUTS::CLIP);
+    let clip = properties.get(inputs::CLIP);
     if clip.is_none() {
         let mut hm = HashMap::new();
         hm.insert(
-            String::from(OUTPUTS::OUTPUT),
+            String::from(outputs::OUTPUT),
             NodeTypeOutput {
-                name: String::from(OUTPUTS::OUTPUT),
+                name: String::from(outputs::OUTPUT),
                 display_name: String::from("Output"),
                 description: String::from("The clip itself"),
                 property_type: PipeableType {
@@ -103,9 +98,9 @@ fn get_io(
     }
     let mut hm = HashMap::new();
     hm.insert(
-        String::from(OUTPUTS::OUTPUT),
+        String::from(outputs::OUTPUT),
         NodeTypeOutput {
-            name: String::from(OUTPUTS::OUTPUT),
+            name: String::from(outputs::OUTPUT),
             display_name: String::from("Output"),
             description: String::from("The clip itself"),
             property_type: property_type,
@@ -121,8 +116,6 @@ fn get_output(
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<HashMap<String, ges::Timeline>, String> {
-    let mut pipeline = AbstractPipeline::new();
-
     let io = get_io(
         node_id.clone(),
         properties,
@@ -135,7 +128,7 @@ fn get_output(
         return Err(io.unwrap_err());
     }
 
-    let (inputs, outputs) = io.unwrap();
+    let (_, outputs) = io.unwrap();
 
     let clip_identifier = get_clip_identifier(properties);
     if clip_identifier.is_err() {
@@ -143,12 +136,12 @@ fn get_output(
     }
     let clip_identifier = clip_identifier.unwrap();
 
-    let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
+    let output = outputs.get(outputs::OUTPUT).unwrap();
     let output = PipedType {
         node_id: node_id.clone(),
         io: node::InputOrOutput::Output,
         stream_type: output.property_type,
-        property_name: OUTPUTS::OUTPUT.to_string(),
+        property_name: outputs::OUTPUT.to_string(),
     };
 
     let timeline = match clip_identifier.clip_type {
@@ -158,7 +151,7 @@ fn get_output(
             let timeline = output.stream_type.create_timeline();
             let layer = timeline.append_layer();
 
-            let location = clip.get_location();
+            let location = clip.get_server_url();
             ges::Asset::needs_reload(ges::UriClip::static_type(), Some(location.as_str()));
             let clip = ges::UriClipAsset::request_sync(location.as_str()).unwrap();
             layer
@@ -183,7 +176,7 @@ fn get_output(
     };
 
     let mut hm = HashMap::new();
-    hm.insert(OUTPUTS::OUTPUT.to_string(), timeline);
+    hm.insert(outputs::OUTPUT.to_string(), timeline);
     Ok(hm)
 }
 
@@ -229,13 +222,13 @@ pub fn media_import_node() -> NodeType {
         //                    properties: &HashMap<String, Value>,
         //                    store: &Store,
         //                    node_register: &NodeRegister| {
-        //   let clip = properties.get(INPUTS::CLIP);
+        //   let clip = properties.get(inputs::CLIP);
         //   if clip.is_none() {
         //     let mut hm = HashMap::new();
         //     hm.insert(
-        //       String::from(OUTPUTS::OUTPUT),
+        //       String::from(outputs::OUTPUT),
         //       NodeTypeOutput {
-        //         name: String::from(OUTPUTS::OUTPUT),
+        //         name: String::from(outputs::OUTPUT),
         //         display_name: String::from("Output"),
         //         description: String::from("The clip itself"),
         //         property_type: PipeableType {
@@ -285,9 +278,9 @@ pub fn media_import_node() -> NodeType {
         //   }
         //   let mut hm = HashMap::new();
         //   hm.insert(
-        //     String::from(OUTPUTS::OUTPUT),
+        //     String::from(outputs::OUTPUT),
         //     NodeTypeOutput {
-        //       name: String::from(OUTPUTS::OUTPUT),
+        //       name: String::from(outputs::OUTPUT),
         //       display_name: String::from("Output"),
         //       description: String::from("The clip itself"),
         //       property_type: property_type,
@@ -299,7 +292,7 @@ pub fn media_import_node() -> NodeType {
 }
 
 pub fn get_clip_identifier(properties: &HashMap<String, Value>) -> Result<ClipIdentifier, String> {
-    let clip = properties.get(INPUTS::CLIP);
+    let clip = properties.get(inputs::CLIP);
     if clip.is_none() {
         return Err(String::from("No clip given"));
     }

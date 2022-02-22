@@ -83,7 +83,6 @@ export default function CustomEdgeComponent({
 
 
 
-
     if (!Utils.pipeableTypeMeetsMinReq(source_type, target_type)) { // type is invalid!
         const edgePath1 = getBezierPath(p1, p2, p3, p4);
         style = style || {};
@@ -126,11 +125,11 @@ export default function CustomEdgeComponent({
             <path id={id} style={style} className={`stroke-current text-${Utils.getColour(source_type)} custom-edge-component`} d={edgePath1} markerEnd={markerEnd} />
             <path id={id} style={style} className={`stroke-current custom-edge-component`} d={edgePath2} markerEnd={markerEnd} />
             <path id={id} style={style} className={`stroke-current text-${Utils.getColour(new_source_type)} custom-edge-component`} d={edgePath3} markerEnd={markerEnd} />
-            {/* <text>
+            <text>
                 <textPath href={`#${id}`} style={{ fontSize: '12px' }} startOffset="50%" textAnchor="middle">
                     {data.text}
                 </textPath>
-            </text> */}
+            </text>
         </>
     );
 }

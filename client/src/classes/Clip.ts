@@ -4,14 +4,40 @@ import { PipeableType } from "./NodeRegistration";
 import Store from "./Store";
 import Utils from "./Utils";
 
+
+interface VideoStreamInfo {
+    width: number,
+    height: number,
+    framerate: number,
+    bitrate: number,
+}
+
+interface AudioStreamInfo {
+    sample_rate: number,
+    number_of_channels: number,
+    bitrate: number,
+    language: string,
+}
+
+interface SubtitleStreamInfo {
+    language: string,
+}
+
+interface SourceClipInfo {
+    duration: number;
+    video_streams: Array<VideoStreamInfo>;
+    audio_streams: Array<AudioStreamInfo>;
+    subtitle_streams: Array<SubtitleStreamInfo>;
+}
+
 export class SourceClip {
     public id: ID;
     public name: string;
     public file_location: string;
     public thumbnail_location: string;
-    public info: any; // TODO: implement proper (de)serialiser for this
+    public info?: SourceClipInfo; // TODO: implement proper (de)serialiser for this
     public status: any;
-    constructor(id: ID, name: string, file_location: string, thumbnail_location: string, info: any, status: any) {
+    constructor(id: ID, name: string, file_location: string, thumbnail_location: string, info: SourceClipInfo, status: any) {
         this.id = id;
         this.name = name;
         this.file_location = file_location;
@@ -48,7 +74,7 @@ export class SourceClip {
         return this._type;
     }
     async fetchType() {
-        await new Promise((res, rej) => {
+        return await new Promise((res, rej) => {
             Communicator.invoke('get_clip_type', {
                 clipType: 'source',
                 id: this.id
@@ -116,7 +142,7 @@ export class CompositedClip {
         return this._type;
     }
     async fetchType() {
-        await new Promise((res, rej) => {
+        return await new Promise((res, rej) => {
             Communicator.invoke('get_clip_type', {
                 clipType: 'composited',
                 id: this.id
