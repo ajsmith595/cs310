@@ -1,35 +1,16 @@
-use core::time;
-use std::{
-  collections::HashMap,
-  fs::File,
-  io::Write,
-  net::TcpStream,
-  sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc, Mutex,
-  },
-  thread,
-};
+use std::{collections::HashMap, fs::File, io::Write};
 
-use gst::{prelude::Cast, traits::PluginFeatureExt};
-use gst_pbutils::{
-  traits::DiscovererStreamInfoExt, Discoverer, DiscovererAudioInfo, DiscovererStreamInfo,
-  DiscovererSubtitleInfo, DiscovererVideoInfo,
-};
-use progress_streams::ProgressReader;
 use rfd::AsyncFileDialog;
-use serde_json::{Number, Value};
 use uuid::Uuid;
 
-use crate::state_manager::SharedStateWrapper;
+use crate::state_manager::{ConnectionStatus, SharedStateWrapper};
 use cs310_shared::{
   clip::{self, CompositedClip, SourceClip},
   constants::media_output_location,
   global::uniq_id,
-  networking::{self, SERVER_HOST, SERVER_PORT},
+  networking::{self},
   node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
   nodes::NodeRegister,
-  pipeline::Pipeline,
   store::Store,
   ID,
 };
@@ -38,6 +19,13 @@ pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
 ) -> Result<HashMap<ID, SourceClip>, String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let dialog = AsyncFileDialog::new().add_filter("Media", &["mp4", "mkv", "mp3"]);
 
   #[cfg(not(target_os = "linux"))]
@@ -62,46 +50,58 @@ pub async fn import_media(
         let info = info.unwrap();
 
         println!("Sending file: {}", file_path.clone());
-        let mut stream = networking::connect_to_server();
+        let stream = networking::connect_to_server();
 
+        if stream.is_err() {
+          return Err(format!(
+            "Could not connect to server: {}",
+            stream.unwrap_err()
+          ));
+        };
+        let mut stream = stream.unwrap();
         networking::send_message(&mut stream, networking::Message::GetFileID).unwrap();
         let temp = networking::receive_data(&mut stream, 16).unwrap();
         let mut uuid_bytes = [0 as u8; 16];
         uuid_bytes.copy_from_slice(&temp);
         let id = Uuid::from_bytes(uuid_bytes);
 
-        let mut thumbnail = None;
+        //        let mut thumbnail = None;
         let x = format!(
           "{}/thumbnails/source",
           std::env::current_dir().unwrap().to_str().unwrap()
         );
         std::fs::create_dir_all(x).unwrap();
 
-        let source_type = info.to_pipeable_type();
-        if source_type.video > 0 {
-          Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
-        } else if source_type.audio > 0 {
-          Pipeline::get_audio_thumbnail(file_path.clone(), id.to_string());
-        }
-
-        thumbnail = Some(format!(
-          "{}/thumbnails/source/{}.jpg",
-          std::env::current_dir().unwrap().to_str().unwrap(),
-          id.clone()
-        ));
+        // let source_type = info.to_pipeable_type();
+        // if source_type.video > 0 {
+        //   Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
+        // } else if source_type.audio > 0 {
+        //   Pipeline::get_audio_thumbnail(file_path.clone(), id.to_string());
+        // }
 
         let clip = SourceClip {
           id,
           name: path.file_name(),
-          file_location: file_path.clone(),
-          thumbnail_location: thumbnail,
+          original_file_location: Some(file_path.clone()),
+          original_device_id: None,
+          file_location: None,
+          thumbnail_location: None,
           info: Some(info),
           status: clip::SourceClipServerStatus::LocalOnly,
         };
 
         hm.insert(clip.id.clone(), clip.clone());
 
-        (&mut state.0.clone().lock().unwrap().store.clips.source)
+        (&mut state
+          .0
+          .clone()
+          .lock()
+          .unwrap()
+          .store
+          .as_mut()
+          .unwrap()
+          .clips
+          .source)
           .insert(clip.id.clone(), clip.clone());
       }
       Ok(hm)
@@ -110,163 +110,34 @@ pub async fn import_media(
 }
 
 #[tauri::command]
-pub async fn get_file_info(
-  clip_id: ID,
-  state: tauri::State<'_, SharedStateWrapper>,
-) -> Result<HashMap<String, Value>, String> {
-  let state = state.0.lock().unwrap();
-  let clip = state.store.clips.source.get(&clip_id);
-  if clip.is_none() {
-    return Err(format!("Clip not found"));
-  }
-
-  let clip = clip.unwrap();
-
-  let file_location = format!("file:///{}", clip.file_location.replace("\\", "/"));
-
-  let discoverer = Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
-
-  let info = discoverer.discover_uri(&file_location);
-  if info.is_err() {
-    return Err(format!(
-      "Error occurred when finding info!: {}",
-      info.unwrap_err()
-    ));
-  }
-  let info = info.unwrap();
-
-  /*
-   *  codec_data - use this.
-   *  e.g.: 0164002affe1001a6764002aacd940780227e584000003000400000301e23c60c65801000468efbcb0
-   *  codec string is 64002A. (use the chars 2:8)
-   */
-
-  println!("Info: {:?}", info);
-
-  let duration = info.duration().unwrap();
-  let mut hm = HashMap::new();
-  hm.insert(
-    "duration".to_string(),
-    Value::Number(Number::from(duration.mseconds())),
-  );
-  let exact_duration = (duration.nseconds() as f64) / (1000000000 as f64);
-  let mut video_streams_vec = Vec::new();
-  let video_streams = info.video_streams();
-  for video_stream in video_streams {
-    let video_info = video_stream.clone().downcast::<DiscovererVideoInfo>();
-    if let Ok(video_info) = video_info {
-      let mut caps = video_stream.caps().unwrap();
-      for x in caps.iter() {
-        println!("Caps stuff (iter): {:#?}", x);
-
-        println!("Name: {}", x.name());
-        for field in x.fields() {
-          println!("Field: {}", field);
-        }
-      }
-
-      println!("CAPS: {:#?}", caps);
-      caps.simplify();
-      println!("CAPS (simplified): {:#?}", caps);
-
-      let mut video_stream_hm = serde_json::Map::new();
-      let width = video_info.width();
-      let height = video_info.height();
-      let (fps_num, fps_den): (i32, i32) = video_info.framerate().into();
-      let (fps_num, fps_den): (f64, f64) = (fps_num.into(), fps_den.into());
-      let fps = fps_num / fps_den;
-
-      let total_frames = exact_duration * fps_num / fps_den;
-      println!(
-        "Frames: {}; numerator: {}; denominator: {}; duration (s): {}; exact duration (ns): {}",
-        total_frames,
-        fps_num,
-        fps_den,
-        exact_duration,
-        duration.nseconds()
-      );
-
-      let total_frames = total_frames.round() as i64;
-
-      let bitrate = video_info.bitrate();
-      {
-        video_stream_hm.insert("width".to_string(), Value::Number(Number::from(width)));
-        video_stream_hm.insert("height".to_string(), Value::Number(Number::from(height)));
-        video_stream_hm.insert(
-          "fps".to_string(),
-          Value::Number(Number::from_f64(fps).unwrap()),
-        );
-        video_stream_hm.insert("bitrate".to_string(), Value::Number(Number::from(bitrate)));
-        video_stream_hm.insert(
-          "frames".to_string(),
-          Value::Number(Number::from(total_frames)),
-        );
-      }
-      let val = Value::Object(video_stream_hm);
-      video_streams_vec.push(val);
-    }
-  }
-  let mut audio_streams_vec = Vec::new();
-  let audio_streams = info.audio_streams();
-  for audio_stream in audio_streams {
-    let audio_info = audio_stream.clone().downcast::<DiscovererAudioInfo>();
-    if let Ok(audio_info) = audio_info {
-      let mut audio_stream_hm = serde_json::Map::new();
-
-      let bitrate = audio_info.bitrate();
-      let sample_rate = audio_info.sample_rate();
-      let language = audio_info
-        .language()
-        .unwrap_or(gst::glib::GString::from("und".to_string()))
-        .to_string();
-
-      let num_channels = audio_info.channels();
-      {
-        audio_stream_hm.insert("bitrate".to_string(), Value::Number(Number::from(bitrate)));
-        audio_stream_hm.insert(
-          "sample_rate".to_string(),
-          Value::Number(Number::from(sample_rate)),
-        );
-        audio_stream_hm.insert("language".to_string(), Value::String(language));
-        audio_stream_hm.insert(
-          "num_channels".to_string(),
-          Value::Number(Number::from(num_channels)),
-        );
-      }
-
-      let val = Value::Object(audio_stream_hm);
-      audio_streams_vec.push(val);
-    } else {
-      println!("Could not cast to audio info");
-    }
-  }
-
-  let subtitle_streams = info.subtitle_streams();
-  for subtitle_stream in subtitle_streams {
-    let subtitle_info = subtitle_stream.clone().downcast::<DiscovererSubtitleInfo>();
-    if let Ok(subtitle_info) = subtitle_info {
-      subtitle_info.language();
-    }
-  }
-  hm.insert("video_streams".to_string(), Value::Array(video_streams_vec));
-  hm.insert("audio_streams".to_string(), Value::Array(audio_streams_vec));
-
-  Ok(hm)
-}
-
-#[tauri::command]
 pub fn create_composited_clip(
   state: tauri::State<'_, SharedStateWrapper>,
-  window: tauri::Window,
 ) -> Result<(ID, Store), String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let clip = CompositedClip {
     id: uniq_id(),
     name: "New Clip".to_string(),
   };
   let id = clip.id.clone();
-  (&mut state.0.clone().lock().unwrap().store.clips.composited).insert(clip.id.clone(), clip);
+  (&mut state
+    .0
+    .clone()
+    .lock()
+    .unwrap()
+    .store
+    .as_mut()
+    .unwrap()
+    .clips
+    .composited)
+    .insert(clip.id.clone(), clip);
 
-  let state = state.0.clone().lock().unwrap().store.clone();
+  let state = state.0.clone().lock().unwrap().store.clone().unwrap();
   let mut f = File::create("state.json").unwrap();
   f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
     .unwrap();
@@ -274,9 +145,15 @@ pub fn create_composited_clip(
 }
 
 #[tauri::command]
-pub fn get_initial_data(state: tauri::State<SharedStateWrapper>) -> (Store, NodeRegister) {
+pub fn get_initial_data(
+  state: tauri::State<SharedStateWrapper>,
+) -> Result<(Store, NodeRegister), String> {
   let state = state.0.lock().unwrap();
-  (state.store.clone(), state.node_register.clone())
+  if state.store.is_none() {
+    Err(format!("Store is not yet set"))
+  } else {
+    Ok((state.store.clone().unwrap(), state.node_register.clone()))
+  }
 }
 
 #[tauri::command]
@@ -285,27 +162,55 @@ pub fn change_clip_name(
   id: ID,
   name: String,
   state: tauri::State<'_, SharedStateWrapper>,
-  window: tauri::Window,
 ) -> Result<Store, String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   match clip_type.as_str() {
     "source" => {
-      if let Some(x) = (&mut state.0.clone().lock().unwrap().store.clips.source).get_mut(&id) {
+      if let Some(x) = (&mut state
+        .0
+        .clone()
+        .lock()
+        .unwrap()
+        .store
+        .as_mut()
+        .unwrap()
+        .clips
+        .source)
+        .get_mut(&id)
+      {
         x.name = name;
       }
     }
     "composited" => {
-      if let Some(x) = (&mut state.0.clone().lock().unwrap().store.clips.composited).get_mut(&id) {
+      if let Some(x) = (&mut state
+        .0
+        .clone()
+        .lock()
+        .unwrap()
+        .store
+        .as_mut()
+        .unwrap()
+        .clips
+        .composited)
+        .get_mut(&id)
+      {
         x.name = name;
       }
     }
     _ => {}
   }
 
-  let state = state.0.clone().lock().unwrap().store.clone();
+  let store = state.0.clone().lock().unwrap().store.clone().unwrap();
   let mut f = File::create("state.json").unwrap();
-  f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
+  f.write_all(serde_json::ser::to_string(&store).unwrap().as_bytes())
     .unwrap();
-  Ok(state)
+  Ok(store)
 }
 
 #[tauri::command]
@@ -313,11 +218,19 @@ pub fn get_node_outputs(
   state: tauri::State<SharedStateWrapper>,
   node: Node,
 ) -> Result<HashMap<String, NodeTypeOutput>, String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let state = state.0.lock().unwrap();
-  let res = state
-    .store
-    .pipeline
-    .gen_graph_new(&state.store, &state.node_register, false);
+  let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+    state.store.as_ref().unwrap(),
+    &state.node_register,
+    false,
+  );
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }
@@ -338,11 +251,19 @@ pub fn get_node_inputs(
   state: tauri::State<SharedStateWrapper>,
   node: Node,
 ) -> Result<HashMap<String, NodeTypeInput>, String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let state = state.0.lock().unwrap();
-  let res = state
-    .store
-    .pipeline
-    .gen_graph_new(&state.store, &state.node_register, false);
+  let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+    &state.store.as_ref().unwrap(),
+    &state.node_register,
+    false,
+  );
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
   }
@@ -360,31 +281,37 @@ pub fn get_node_inputs(
 
 #[tauri::command]
 pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Result<(), String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let mut state = state.0.lock().unwrap();
-  state.store.nodes.insert(node.id.clone(), node.clone());
+  state
+    .store
+    .as_mut()
+    .unwrap()
+    .nodes
+    .insert(node.id.clone(), node.clone());
   state.file_written = false;
-  state.pipeline_executed = false;
   Ok(())
 }
 
 #[tauri::command]
 pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
   println!("Updating store...");
   let mut state = state.0.lock().unwrap();
-  state.store = store.clone();
+  state.store = Some(store.clone());
   state.file_written = false;
-  state.pipeline_executed = false;
   println!("Store updated");
-
-  // let pipeline_result = state
-  //   .stored_state
-  //   .store
-  //   .pipeline
-  //   .generate_pipeline_string(&state.stored_state.store, &state.node_register);
-  // let pipeline_string = match pipeline_result {
-  //   Ok(str) => str,
-  //   Err(str) => str,
-  // };
 
   Ok(())
 }
@@ -399,30 +326,44 @@ pub fn get_clip_type(
   state: tauri::State<SharedStateWrapper>,
   clip_type: String,
   id: ID,
-) -> PipeableType {
+) -> Result<PipeableType, String> {
+  {
+    let lock = state.0.lock().unwrap();
+    if lock.store.is_none() {
+      return Err(format!("Store is not yet set"));
+    }
+  }
+
   let state = state.0.lock().unwrap();
   match clip_type.as_str() {
     "source" => {
-      let clip = state.store.clips.source.get(&id).unwrap();
-      clip.get_clip_type()
+      let clip = state.store.as_ref().unwrap().clips.source.get(&id).unwrap();
+      return Ok(clip.get_clip_type());
     }
     "composited" => {
-      let res = state
-        .store
-        .pipeline
-        .gen_graph_new(&state.store, &state.node_register, false);
+      let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+        state.store.as_ref().unwrap(),
+        &state.node_register,
+        false,
+      );
 
       if let Ok((_, clip_data, _)) = res {
-        let piped_type = clip_data.get(&id).unwrap();
-        piped_type.stream_type
-      } else {
-        PipeableType {
-          audio: 0,
-          video: 0,
-          subtitles: 0,
+        if let Some(piped_type) = clip_data.get(&id) {
+          return Ok(piped_type.stream_type);
         }
       }
     }
     _ => todo!(),
   }
+
+  Ok(PipeableType {
+    audio: 0,
+    video: 0,
+    subtitles: 0,
+  })
+}
+
+#[tauri::command]
+pub fn get_connection_status(state: tauri::State<SharedStateWrapper>) -> ConnectionStatus {
+  state.0.lock().unwrap().connection_status.clone()
 }

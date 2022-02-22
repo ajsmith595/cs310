@@ -8,13 +8,8 @@ use glib::StaticType;
 use serde_json::Value;
 
 use crate::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
-    clip::{ClipIdentifier, ClipType, CompositedClip},
-    constants::{data_location, media_output_location, CHUNK_LENGTH},
-    node::{
-        Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType, PipeableType, PipedType,
-        Type,
-    },
+    clip::{ClipIdentifier, CompositedClip},
+    node::{NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
     store::Store,
     ID,
 };
@@ -22,19 +17,19 @@ use crate::{
 use super::NodeRegister;
 
 pub const IDENTIFIER: &str = "output";
-pub mod INPUTS {
+pub mod inputs {
     pub const MEDIA: &str = "media";
     pub const CLIP: &str = "clip";
 }
-pub mod OUTPUTS {}
+pub mod outputs {}
 
 fn default_properties() -> HashMap<String, NodeTypeInput> {
     let mut default_properties = HashMap::new();
 
     default_properties.insert(
-        String::from(INPUTS::MEDIA),
+        String::from(inputs::MEDIA),
         NodeTypeInput {
-            name: String::from(INPUTS::MEDIA),
+            name: String::from(inputs::MEDIA),
             display_name: String::from("Media"),
             description: String::from("Media to output to clip"),
             property_type: Type::Pipeable(
@@ -53,9 +48,9 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     );
 
     default_properties.insert(
-        String::from(INPUTS::CLIP),
+        String::from(inputs::CLIP),
         NodeTypeInput {
-            name: String::from(INPUTS::CLIP),
+            name: String::from(inputs::CLIP),
             display_name: String::from("Clip"),
             description: String::from("Clip to output"),
             property_type: Type::Clip,
@@ -65,12 +60,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 fn get_io(
-    node_id: ID,
-    properties: &HashMap<String, Value>,
-    piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<ID, PipedType>,
-    store: &Store,
-    node_register: &NodeRegister,
+    _node_id: ID,
+    _properties: &HashMap<String, Value>,
+    _piped_inputs: &HashMap<String, PipedType>,
+    _composited_clip_types: &HashMap<ID, PipedType>,
+    _store: &Store,
+    _node_register: &NodeRegister,
 ) -> Result<
     (
         HashMap<String, NodeTypeInput>,
@@ -83,16 +78,14 @@ fn get_io(
     return Ok((inputs, outputs));
 }
 fn get_output(
-    node_id: ID,
+    _node_id: ID,
     properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<ID, PipedType>,
+    _composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
-    node_register: &NodeRegister,
+    _node_register: &NodeRegister,
 ) -> Result<HashMap<String, ges::Timeline>, String> {
-    let mut pipeline = AbstractPipeline::new();
-
-    let media = piped_inputs.get(INPUTS::MEDIA);
+    let media = piped_inputs.get(inputs::MEDIA);
     if media.is_none() {
         return Err(format!("Media is none!"));
     }
@@ -158,7 +151,7 @@ pub fn output_node() -> NodeType {
             );
         },
         // get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
-        //   let media = properties.get(INPUTS::MEDIA).unwrap();
+        //   let media = properties.get(inputs::MEDIA).unwrap();
         //   if let Value::String(media) = media {
         //     let clip = get_clip(properties, store);
         //     if clip.is_err() {
@@ -180,7 +173,7 @@ pub fn get_clip(
     properties: &HashMap<String, Value>,
     store: &Store,
 ) -> Result<CompositedClip, String> {
-    let clip = properties.get(INPUTS::CLIP);
+    let clip = properties.get(inputs::CLIP);
     if clip.is_none() {
         return Err(String::from("No clip given"));
     }

@@ -65,7 +65,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
 
                 properties.push(
-                    <div className={`relative p-2 border-l border-white transition-colors ${this.state.hovered_property === property && this.state.expanded ? 'bg-white bg-opacity-10' : ''}`}
+                    <div className={`relative p-2 border-l border-white transition-colors ${this.state.hovered_property === property && this.state.expanded ? 'bg-white bg-opacity-10  border-opacity-70' : 'border-opacity-40'}`}
                         onMouseEnter={() => this.setState({ hovered_property: property })}
                         onMouseLeave={() => this.setState({ hovered_property: null })}>
 
@@ -95,7 +95,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
         for (let [output_type, output] of this.props.data.node.outputs.entries()) {
             properties.push(
-                <div className={`relative p-2 border-r border-white transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-white bg-opacity-10' : ''}`}
+                <div className={`relative p-2 border-r border-white transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-white bg-opacity-10  border-opacity-70' : 'border-opacity-40'}`}
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}
                     onMouseLeave={() => this.setState({ hovered_property: null })}>
                     <Handle type="source" position={Position.Right} id={output_type}
@@ -127,7 +127,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
         return (
             <div className={`bg-gray-900 text-white rounded-md border ${border} pb-1`} onClick={(e) => EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.data.node)}>
-                <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b-1 ${this.state.expanded ? "border-gray-800" : 'border-transparent'} `}>
+                <div className={`transition-colors duration-${EditorNodeComponent.EXPAND_DURATION} p-2 border-b ${this.state.expanded ? "border-gray-800" : 'border-transparent'} `}>
 
                     <span className="text-sm">
                         <button className="mr-2" onClick={() => this.setState({ expanded: !this.state.expanded })}>

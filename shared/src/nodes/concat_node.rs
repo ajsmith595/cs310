@@ -4,17 +4,10 @@ use ges::{
     traits::{LayerExt, TimelineExt},
     TrackType,
 };
-use glib::StaticType;
 use serde_json::Value;
 
 use crate::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
-    clip::{ClipIdentifier, ClipType},
-    global::uniq_id,
-    node::{
-        InputOrOutput, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType,
-        PipeableType, PipedType, Type,
-    },
+    node::{InputOrOutput, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
     store::Store,
     ID,
 };
@@ -22,11 +15,11 @@ use crate::{
 use super::NodeRegister;
 
 pub const IDENTIFIER: &str = "concat";
-pub mod INPUTS {
+pub mod inputs {
     pub const MEDIA1: &str = "media1";
     pub const MEDIA2: &str = "media2";
 }
-pub mod OUTPUTS {
+pub mod outputs {
     pub const OUTPUT: &str = "output";
 }
 
@@ -34,9 +27,9 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     let mut default_properties = HashMap::new();
     {
         default_properties.insert(
-            String::from(INPUTS::MEDIA1),
+            String::from(inputs::MEDIA1),
             NodeTypeInput {
-                name: String::from(INPUTS::MEDIA1),
+                name: String::from(inputs::MEDIA1),
                 display_name: String::from("Media 1"),
                 description: String::from("The first media to play"),
                 property_type: Type::Pipeable(
@@ -55,9 +48,9 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
         );
 
         default_properties.insert(
-            String::from(INPUTS::MEDIA2),
+            String::from(inputs::MEDIA2),
             NodeTypeInput {
-                name: String::from(INPUTS::MEDIA2),
+                name: String::from(inputs::MEDIA2),
                 display_name: String::from("Media 2"),
                 description: String::from("The second media to play"),
                 property_type: Type::Pipeable(
@@ -80,12 +73,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
 }
 
 pub fn get_io(
-    node_id: ID,
-    properties: &HashMap<String, Value>,
+    _node_id: ID,
+    _properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<ID, PipedType>,
-    store: &Store,
-    node_register: &NodeRegister,
+    _composited_clip_types: &HashMap<ID, PipedType>,
+    _store: &Store,
+    _node_register: &NodeRegister,
 ) -> Result<
     (
         HashMap<String, NodeTypeInput>,
@@ -93,30 +86,30 @@ pub fn get_io(
     ),
     String,
 > {
-    let mut inputs = default_properties();
+    let inputs = default_properties();
     let mut stream_type = PipeableType {
         video: i32::MAX,
         audio: i32::MAX,
         subtitles: i32::MAX,
     };
 
-    let piped_input1 = piped_inputs.get(INPUTS::MEDIA1);
+    let piped_input1 = piped_inputs.get(inputs::MEDIA1);
     if let Some(piped_input1) = piped_input1 {
         stream_type = PipeableType::min(&piped_input1.stream_type, &stream_type);
     }
-    let piped_input2 = piped_inputs.get(INPUTS::MEDIA2);
+    let piped_input2 = piped_inputs.get(inputs::MEDIA2);
     if let Some(piped_input2) = piped_input2 {
         stream_type = PipeableType::min(&piped_input2.stream_type, &stream_type);
     }
 
-    // inputs.get_mut(INPUTS::MEDIA2).unwrap().property_type =
+    // inputs.get_mut(inputs::MEDIA2).unwrap().property_type =
     //   Type::Pipeable(stream_type.clone(), stream_type.clone());
 
     let mut outputs = HashMap::new();
     outputs.insert(
-        OUTPUTS::OUTPUT.to_string(),
+        outputs::OUTPUT.to_string(),
         NodeTypeOutput {
-            name: OUTPUTS::OUTPUT.to_string(),
+            name: outputs::OUTPUT.to_string(),
             description: "The concatenation of the two media".to_string(),
             display_name: "Output".to_string(),
             property_type: stream_type,
@@ -133,8 +126,6 @@ fn get_output(
     store: &Store,
     node_register: &NodeRegister,
 ) -> Result<HashMap<String, ges::Timeline>, String> {
-    let mut pipeline = AbstractPipeline::new();
-
     let io = get_io(
         node_id.clone(),
         properties,
@@ -147,21 +138,21 @@ fn get_output(
         return Err(io.unwrap_err());
     }
 
-    let (inputs, outputs) = io.unwrap();
+    let (_, outputs) = io.unwrap();
 
-    let media1 = piped_inputs.get(INPUTS::MEDIA1);
-    let media2 = piped_inputs.get(INPUTS::MEDIA2);
+    let media1 = piped_inputs.get(inputs::MEDIA1);
+    let media2 = piped_inputs.get(inputs::MEDIA2);
     if media1.is_none() || media2.is_none() {
         return Err(format!("No media input!"));
     }
     let media1 = media1.unwrap();
     let media2 = media2.unwrap();
 
-    let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
+    let output = outputs.get(outputs::OUTPUT).unwrap();
     let output = PipedType {
         stream_type: output.property_type,
         node_id,
-        property_name: String::from(OUTPUTS::OUTPUT),
+        property_name: String::from(outputs::OUTPUT),
         io: InputOrOutput::Output,
     };
 
@@ -179,7 +170,7 @@ fn get_output(
         .unwrap();
 
     let mut hm = HashMap::new();
-    hm.insert(OUTPUTS::OUTPUT.to_string(), timeline);
+    hm.insert(outputs::OUTPUT.to_string(), timeline);
     return Ok(hm);
 }
 

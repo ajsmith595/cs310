@@ -1,21 +1,11 @@
 use ges::traits::TimelineExt;
-use std::{
-    collections::{hash_map, HashMap},
-    hash::Hash,
-};
-use uuid::Uuid;
+use std::{collections::HashMap, hash::Hash};
 
 use serde_json::Value;
 
 use crate::constants::intermediate_files_location;
 
-use super::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
-    global::uniq_id,
-    nodes::NodeRegister,
-    store::Store,
-    ID,
-};
+use super::{global::uniq_id, nodes::NodeRegister, store::Store, ID};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Position {
@@ -218,63 +208,6 @@ impl PipedType {
             "{}-{}-{}-{}-{}",
             self.node_id, io, self.property_name, stream_type_str, index
         ));
-    }
-
-    pub fn gst_transfer_pipe(from: PipedType, to: PipedType) -> Option<AbstractPipeline> {
-        if from.stream_type.video < to.stream_type.video
-            || from.stream_type.audio < to.stream_type.audio
-            || from.stream_type.subtitles < to.stream_type.subtitles
-        {
-            return None;
-        }
-        let video = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Video);
-        let audio = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Audio);
-        let subtitles = Self::gst_transfer_pipe_type(&from, &to, &PipeableStreamType::Subtitles);
-        if video.is_none() || audio.is_none() || subtitles.is_none() {
-            return None;
-        }
-        let mut p = video.unwrap();
-        p.merge(audio.unwrap());
-        p.merge(subtitles.unwrap());
-        return Some(p);
-    }
-
-    pub fn gst_transfer_pipe_type(
-        from: &PipedType,
-        to: &PipedType,
-        stream_type: &PipeableStreamType,
-    ) -> Option<AbstractPipeline> {
-        if from.stream_type.video < to.stream_type.video
-            || from.stream_type.audio < to.stream_type.audio
-            || from.stream_type.subtitles < to.stream_type.subtitles
-        {
-            return None;
-        }
-        let num = to.get_number_of_streams(stream_type);
-
-        let stream_linker = stream_type.stream_linker();
-        let mut pipeline = AbstractPipeline::new();
-        for i in 0..num {
-            let gst1 = from.get_gst_handle(stream_type, i);
-            let gst2 = to.get_gst_handle(stream_type, i);
-            if gst1.is_none() || gst2.is_none() {
-                return None;
-            }
-            let (gst1, gst2) = (gst1.unwrap(), gst2.unwrap());
-
-            let queue_node = AbstractNode::new("queue", None);
-            let stream_linker_node = AbstractNode::new(&stream_linker, Some(gst2));
-
-            pipeline.link_abstract(AbstractLink {
-                from: AbstractLinkEndpoint::new(gst1),
-                to: AbstractLinkEndpoint::new(queue_node.id.clone()),
-            });
-
-            pipeline.link(&queue_node, &stream_linker_node);
-            pipeline.add_node(queue_node);
-            pipeline.add_node(stream_linker_node);
-        }
-        return Some(pipeline);
     }
 }
 

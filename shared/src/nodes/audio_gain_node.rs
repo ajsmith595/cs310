@@ -4,11 +4,9 @@ use ges::traits::{GESContainerExt, LayerExt, TimelineExt};
 use serde_json::Value;
 
 use crate::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode, AbstractPipeline},
-    clip::{ClipIdentifier, ClipType},
     node::{
-        InputOrOutput, Node, NodeType, NodeTypeInput, NodeTypeOutput, PipeableStreamType,
-        PipeableType, PipedType, Restrictions, Type,
+        InputOrOutput, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType,
+        Restrictions, Type,
     },
     store::Store,
     ID,
@@ -17,11 +15,11 @@ use crate::{
 use super::NodeRegister;
 
 pub const IDENTIFIER: &str = "audio_gain";
-pub mod INPUTS {
+pub mod inputs {
     pub const MEDIA: &str = "media";
     pub const GAIN: &str = "gain";
 }
-pub mod OUTPUTS {
+pub mod outputs {
     pub const OUTPUT: &str = "output";
 }
 
@@ -29,9 +27,9 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     let mut default_properties = HashMap::new();
     {
         default_properties.insert(
-            String::from(INPUTS::MEDIA),
+            String::from(inputs::MEDIA),
             NodeTypeInput {
-                name: String::from(INPUTS::MEDIA),
+                name: String::from(inputs::MEDIA),
                 display_name: String::from("Media"),
                 description: String::from("The media to be gained"),
                 property_type: Type::Pipeable(
@@ -50,9 +48,9 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
         );
 
         default_properties.insert(
-            String::from(INPUTS::GAIN),
+            String::from(inputs::GAIN),
             NodeTypeInput {
-                name: String::from(INPUTS::GAIN),
+                name: String::from(inputs::GAIN),
                 display_name: String::from("Gain Amount"),
                 description: String::from("The amount to gain by"),
                 property_type: Type::Number(Restrictions {
@@ -67,12 +65,12 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
     default_properties
 }
 pub fn get_io(
-    node_id: ID,
-    properties: &HashMap<String, Value>,
+    _node_id: ID,
+    _properties: &HashMap<String, Value>,
     piped_inputs: &HashMap<String, PipedType>,
-    composited_clip_types: &HashMap<ID, PipedType>,
-    store: &Store,
-    node_register: &NodeRegister,
+    _composited_clip_types: &HashMap<ID, PipedType>,
+    _store: &Store,
+    _node_register: &NodeRegister,
 ) -> Result<
     (
         HashMap<String, NodeTypeInput>,
@@ -87,15 +85,15 @@ pub fn get_io(
         audio: 1,
         subtitles: 0,
     };
-    let piped_input = piped_inputs.get(INPUTS::MEDIA);
+    let piped_input = piped_inputs.get(inputs::MEDIA);
     if let Some(piped_input) = piped_input {
         pipeable_type = piped_input.stream_type;
     }
 
     outputs.insert(
-        OUTPUTS::OUTPUT.to_string(),
+        outputs::OUTPUT.to_string(),
         NodeTypeOutput {
-            name: OUTPUTS::OUTPUT.to_string(),
+            name: outputs::OUTPUT.to_string(),
             description: "The gained media".to_string(),
             display_name: "Output".to_string(),
             property_type: pipeable_type,
@@ -124,27 +122,25 @@ pub fn get_output(
     if io.is_err() {
         return Err(io.unwrap_err());
     }
-    let (inputs, outputs) = io.unwrap();
+    let (_, outputs) = io.unwrap();
 
-    let media = piped_inputs.get(INPUTS::MEDIA);
+    let media = piped_inputs.get(inputs::MEDIA);
     if media.is_none() {
         return Err(format!("No media input!"));
     }
     let media = media.unwrap();
-    let gain = properties.get(INPUTS::GAIN);
+    let gain = properties.get(inputs::GAIN);
     if gain.is_none() {
         return Err(format!("No gain input!"));
     }
     let gain = gain.unwrap();
     if let Value::Number(gain) = gain {
-        let mut pipeline = AbstractPipeline::new();
-
-        let output = outputs.get(OUTPUTS::OUTPUT).unwrap();
+        let output = outputs.get(outputs::OUTPUT).unwrap();
 
         let output = PipedType {
             stream_type: output.property_type,
             node_id,
-            property_name: String::from(OUTPUTS::OUTPUT),
+            property_name: String::from(outputs::OUTPUT),
             io: InputOrOutput::Output,
         };
 
@@ -161,7 +157,7 @@ pub fn get_output(
         layer.add_clip(&clip).unwrap();
 
         let mut hm = HashMap::new();
-        hm.insert(OUTPUTS::OUTPUT.to_string(), timeline);
+        hm.insert(outputs::OUTPUT.to_string(), timeline);
         return Ok(hm);
     }
     return Err(format!("Media is invalid type (audio gain blur)"));

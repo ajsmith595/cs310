@@ -1,33 +1,20 @@
-use std::{
-    borrow::{Borrow, BorrowMut},
-    collections::HashMap,
-    fs,
-    hash::Hash,
-    sync::mpsc,
-    thread,
-};
+use std::{collections::HashMap, fs, sync::mpsc, thread};
 
 use ges::traits::TimelineExt;
 use gst::{glib, prelude::*};
-use gst_pbutils::{Discoverer, DiscovererInfo, DiscovererResult, DiscovererStreamInfo};
 use petgraph::visit::EdgeRef;
-use petgraph::{
-    graph::{DiGraph, NodeIndex},
-    EdgeDirection, Graph,
-};
+use petgraph::{graph::DiGraph, EdgeDirection};
 
 use bimap::BiMap;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
     clip::{ClipIdentifier, ClipType},
-    node::{InputOrOutput, PipedType, Type},
-    nodes::{self, NodeRegister},
+    node::{InputOrOutput, PipedType},
+    nodes::NodeRegister,
 };
 
 use super::{
-    abstract_pipeline::AbstractPipeline,
     node::{Node, NodeTypeInput, NodeTypeOutput},
     nodes::{media_import_node, output_node},
     store::Store,
@@ -88,7 +75,7 @@ impl Pipeline {
                 ),
             >,
             HashMap<Uuid, PipedType>,
-            Option<AbstractPipeline>,
+            bool,
         ),
         String,
     > {
@@ -103,7 +90,7 @@ impl Pipeline {
             node_id_to_index.insert(id.to_owned(), node_idx);
 
             if node.node_type == output_node::IDENTIFIER {
-                let clip = node.properties.get(output_node::INPUTS::CLIP);
+                let clip = node.properties.get(output_node::inputs::CLIP);
                 if clip.is_none() {
                     return Err(format!("Output node with no clip detected!"));
                 }
@@ -127,7 +114,7 @@ impl Pipeline {
         // Connect media import nodes of composited clips to the relevant output nodes
         for (id, node) in &store.nodes {
             if node.node_type == media_import_node::IDENTIFIER {
-                let clip = node.properties.get(media_import_node::INPUTS::CLIP);
+                let clip = node.properties.get(media_import_node::inputs::CLIP);
                 if clip.is_none() {
                     return Err(format!("Input node with no clip detected!"));
                 }
@@ -184,7 +171,6 @@ impl Pipeline {
 
         let sorted = sorted.unwrap();
 
-        let mut abstract_pipeline = AbstractPipeline::new();
         let mut do_return = true;
 
         // we can then iterate through the nodes in this order, assign the piped inputs to the dependent nodes before the dependent nodes' relevant method is called
@@ -260,7 +246,7 @@ impl Pipeline {
             }
 
             if node.node_type == output_node::IDENTIFIER {
-                let composited_clip_type = piped_inputs.get(output_node::INPUTS::MEDIA);
+                let composited_clip_type = piped_inputs.get(output_node::inputs::MEDIA);
 
                 if composited_clip_type.is_none() {
                     continue;
@@ -269,7 +255,7 @@ impl Pipeline {
 
                 let composited_clip_id = serde_json::from_value::<ClipIdentifier>(
                     node.properties
-                        .get(output_node::INPUTS::CLIP)
+                        .get(output_node::inputs::CLIP)
                         .unwrap()
                         .to_owned(),
                 )
@@ -318,11 +304,6 @@ impl Pipeline {
                     }
 
                     next_node_inputs.insert(to_property.clone(), to_piped_type.clone());
-
-                    let output =
-                        PipedType::gst_transfer_pipe(from_piped_type, to_piped_type).unwrap();
-
-                    abstract_pipeline.merge(output);
                 }
             }
         }
@@ -333,11 +314,7 @@ impl Pipeline {
         // TODO: check piped inputs meet minimum requirements for the inputs generated
         // TODO: check if a piped input does not correspond to an input, then we need to delete the link from the store, since it's invalid now
 
-        let mut abstract_pipeline = Some(abstract_pipeline);
-        if !do_return {
-            abstract_pipeline = None;
-        }
-        let output = (node_type_data, composited_clip_data, abstract_pipeline);
+        let output = (node_type_data, composited_clip_data, do_return);
 
         return Ok(output);
     }
@@ -370,8 +347,8 @@ impl Pipeline {
 
         let tx_clone = tx.clone();
         glib::timeout_add_seconds(timeout, move || {
-            let pipeline = match pipeline_weak.upgrade() {
-                Some(pipeline) => pipeline,
+            match pipeline_weak.upgrade() {
+                Some(_) => {}
                 None => return glib::Continue(false),
             };
             let main_loop = &main_loop_clone;
@@ -420,7 +397,7 @@ impl Pipeline {
                                 let location = structure.get::<String>("location");
                                 let running_time = structure.get::<u64>("running-time");
 
-                                if let (Ok(location), Ok(running_time)) = (location, running_time) {
+                                if let (Ok(location), Ok(_)) = (location, running_time) {
                                     let node_id = src.name().to_string();
 
                                     let mut parts: Vec<&str> = node_id.split("-").collect();

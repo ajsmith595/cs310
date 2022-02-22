@@ -1,25 +1,18 @@
 use core::time;
 use std::{
-  collections::HashMap,
-  fs::{self, File},
+  fs::File,
   sync::{mpsc, Arc, Mutex},
   thread,
 };
 
-use cs310_shared::{
-  clip,
-  constants::{
-    media_output_location, store_json_location, CHUNK_FILENAME_NUMBER_LENGTH, CHUNK_LENGTH,
-  },
-  networking::{self, send_message, Message},
-};
+use cs310_shared::{clip, networking};
 use uuid::Uuid;
 
-use crate::state_manager::SharedState;
+use crate::state_manager::{ConnectionStatus, SharedState};
 
 pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
-    let mut x = shared_state.lock().unwrap();
+    let x = shared_state.lock().unwrap();
     let rx = &x.thread_stopper;
 
     match rx.try_recv() {
@@ -28,69 +21,95 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
         break;
       }
       Err(mpsc::TryRecvError::Empty) => {
-        let mut clips: Vec<(&Uuid, &mut clip::SourceClip)> = x
-          .store
-          .clips
-          .source
-          .iter_mut()
-          .filter(|(id, clip)| match clip.status {
-            clip::SourceClipServerStatus::LocalOnly => true,
-            _ => false,
-          })
-          .collect();
+        match x.connection_status {
+          ConnectionStatus::InitialisingConnection
+          | ConnectionStatus::InitialConnectionFailed(_) => {
+            drop(x);
+          }
+          _ => {
+            let store = x.store.as_ref();
 
-        if clips.len() > 0 {
-          let (id, clip) = clips.first_mut().unwrap();
-          clip.status = clip::SourceClipServerStatus::Uploading;
+            if let Some(store) = store {
+              let mut clips = store.clips.source.clone();
+              let mut clips: Vec<(&Uuid, &mut clip::SourceClip)> = clips
+                .iter_mut()
+                .filter(|(_, clip)| match clip.status {
+                  clip::SourceClipServerStatus::LocalOnly => clip.original_file_location.is_some(),
+                  _ => false,
+                })
+                .collect();
 
-          let id = id.clone();
-          let clip = clip.clone();
+              if clips.len() > 0 {
+                let (id, clip) = clips.first_mut().unwrap();
+                clip.status = clip::SourceClipServerStatus::Uploading;
 
-          drop(x);
+                let id = id.clone();
+                let clip = clip.clone();
 
-          let mut stream = networking::connect_to_server();
+                drop(x);
 
-          networking::send_message(&mut stream, networking::Message::UploadFile).unwrap();
-          networking::send_data(&mut stream, id.as_bytes()).unwrap();
-          let file_path = clip.file_location;
+                let stream = networking::connect_to_server();
 
-          let last_time_progress = Mutex::new(std::time::Instant::now());
-          let mut file = File::open(file_path.clone()).unwrap();
+                if let Ok(mut stream) = stream {
+                  networking::send_message(&mut stream, networking::Message::UploadFile).unwrap();
+                  networking::send_data(&mut stream, id.as_bytes()).unwrap();
+                  let file_path = clip.original_file_location.unwrap();
 
-          let state_clone = shared_state.clone();
-          networking::send_file_with_progress(&mut stream, &mut file, |perc, bytes_complete| {
-            let now = std::time::Instant::now();
-            let mut prev_time = last_time_progress.lock().unwrap();
-            let duration = now.duration_since(*prev_time).as_millis();
+                  let last_time_progress = Mutex::new(std::time::Instant::now());
+                  let mut file = File::open(file_path.clone()).unwrap();
 
-            if duration > 20 {
-              // do an update at most every 300 ms
-              println!("Perc complete: {}%; bytes done: {}", perc, bytes_complete);
-              *prev_time = now;
+                  let state_clone = shared_state.clone();
+                  networking::send_file_with_progress(
+                    &mut stream,
+                    &mut file,
+                    |perc, bytes_complete| {
+                      let now = std::time::Instant::now();
+                      let mut prev_time = last_time_progress.lock().unwrap();
+                      let duration = now.duration_since(*prev_time).as_millis();
 
-              match &state_clone.lock().unwrap().window {
-                Some(window) => {
-                  window.emit("file-upload-progress", (id, perc)).unwrap();
+                      if duration > 20 {
+                        // do an update at most every 300 ms
+                        println!("Perc complete: {}%; bytes done: {}", perc, bytes_complete);
+                        *prev_time = now;
+
+                        match &state_clone.lock().unwrap().window {
+                          Some(window) => {
+                            window.emit("file-upload-progress", (id, perc)).unwrap();
+                          }
+                          None => todo!(),
+                        }
+                      }
+                    },
+                  );
+                  networking::send_message(&mut stream, networking::Message::EndFile).unwrap();
+
+                  let mut lock_shared_state = shared_state.lock().unwrap();
+
+                  if let Some(store) = &mut lock_shared_state.store {
+                    let clip = store.clips.source.get_mut(&id);
+                    if let Some(clip) = clip {
+                      clip.status = clip::SourceClipServerStatus::Uploaded;
+                    }
+                  }
+                  lock_shared_state
+                    .window
+                    .as_ref()
+                    .unwrap()
+                    .emit("file-upload-progress", (id, 100))
+                    .unwrap();
+                } else {
+                  // cannot connect to server
                 }
-                None => todo!(),
+              } else {
+                drop(x);
               }
+
+              // https://github.com/sdroege/gstreamer-rs/blob/master/examples/src/bin/events.rs
+            } else {
+              drop(x);
             }
-          });
-          networking::send_message(&mut stream, networking::Message::EndFile).unwrap();
-
-          shared_state
-            .lock()
-            .unwrap()
-            .window
-            .as_ref()
-            .unwrap()
-            .emit("file-upload-progress", (id, 100))
-            .unwrap();
-        } else {
-          drop(x);
+          }
         }
-
-        // https://github.com/sdroege/gstreamer-rs/blob/master/examples/src/bin/events.rs
       }
     }
     thread::sleep(time::Duration::from_millis(1000));

@@ -1,4 +1,4 @@
-import { faPause, faPlay, faStepBackward, faStepForward } from '@fortawesome/free-solid-svg-icons';
+import { faCircleNotch, faMusic, faPause, faPlay, faStepBackward, faStepForward } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { fs } from '@tauri-apps/api';
 import React, { ChangeEvent } from 'react';
@@ -6,6 +6,7 @@ import { textChangeRangeIsUnchanged } from 'typescript';
 import Communicator from '../classes/Communicator';
 import Store from '../classes/Store';
 import { Mutex } from 'async-mutex';
+import Utils from '../classes/Utils';
 
 
 interface Props {
@@ -17,7 +18,8 @@ interface State {
     currentTime: number,
     clip: string,
     videoURL: string,
-    playing: boolean
+    playing: boolean,
+    buffering: boolean,
 }
 
 
@@ -25,6 +27,12 @@ enum LoadedStatus {
     Unloaded,
     Loading,
     Loaded
+}
+
+interface ClipInfo {
+    codec: string;
+    no_video_streams: number;
+    no_audio_streams: number;
 }
 
 class VideoPreview extends React.Component<Props, State> {
@@ -41,7 +49,7 @@ class VideoPreview extends React.Component<Props, State> {
      */
     clip_chunks_ready: Map<string, number>;
 
-    clip_codecs: Map<string, string>;
+    clip_codecs: Map<string, ClipInfo>;
 
 
     change_lock: Mutex;
@@ -60,13 +68,14 @@ class VideoPreview extends React.Component<Props, State> {
             clip: null,
             videoURL: URL.createObjectURL(this.media_source),
             playing: false,
+            buffering: false
         }
 
         this.onSourceBufferUpdateEnd = this.onSourceBufferUpdateEnd.bind(this);
     }
 
     get currentTimestamp() {
-        return this.video_element_ref.current?.currentTime;
+        return this.video_element_ref.current?.currentTime || 0;
     }
     get duration() {
         if (this.state.clip) {
@@ -108,9 +117,16 @@ class VideoPreview extends React.Component<Props, State> {
             let node_id: string = data[0];
             let codec: string = data[1];
 
+            let no_video_streams = data[2];
+            let no_audio_streams = data[3];
+
             let release = await this.change_lock.acquire();
 
-            this.clip_codecs.set(node_id, codec);
+            this.clip_codecs.set(node_id, {
+                codec,
+                no_audio_streams,
+                no_video_streams
+            });
             let do_codec_update = false;
             if (node_id == this.state.clip) {
                 do_codec_update = true;
@@ -274,7 +290,7 @@ class VideoPreview extends React.Component<Props, State> {
 
         let mime_type = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
         if (this.clip_codecs.get(clip)) {
-            mime_type = this.clip_codecs.get(clip);
+            mime_type = this.clip_codecs.get(clip).codec;
         }
         else {
             release();
@@ -302,6 +318,8 @@ class VideoPreview extends React.Component<Props, State> {
         await this.videoUpdate();
     }
 
+
+
     render() {
 
         let options = [
@@ -313,40 +331,48 @@ class VideoPreview extends React.Component<Props, State> {
                 {clip.name}
             </option>)
         }
+        let musicDisplay = null;
+        if (this.clip_codecs.get(this.state.clip) && this.clip_codecs.get(this.state.clip).no_video_streams == 0) {
+            musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
+        }
+        let bufferingDisplay = null;
+        if (this.state.buffering) {
+            bufferingDisplay = <FontAwesomeIcon icon={faCircleNotch} className={`text-white animate-spin text-6xl`} />;
+        }
+
+        let loadedPercentage = 0;
+        if (this.state.clip && this.duration != 0) {
+            let chunksReady = this.clip_chunks_ready.get(this.state.clip);
+            let durationReady = chunksReady * 10;
+            console.log(chunksReady);
+            console.log(this.duration);
+            loadedPercentage = durationReady / this.duration * 100;
+        }
 
         return <div className="flex flex-col h-full">
-            <div className="flex-grow overflow-auto flex justify-center items-center p-3 bg-black">
-                <video className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)}></video>
-            </div>
-            <div className="">
-                <div className="w-full bg-gray-200 h-1 mb-3 relative" onClick={(e) => {
-
-                    let boundingBox = (e.target as HTMLElement).getBoundingClientRect();
-                    let proportion = (e.clientX - boundingBox.left) / boundingBox.width;
-
-
-                    let newTime = this.duration * proportion;
-                    if (isNaN(newTime)) {
-                        newTime = 0;
-                    }
-                    this.video_element_ref.current.currentTime = newTime;
-                }} onDrag={(e) => {
-                    e.preventDefault();
-                    let boundingBox = (e.target as HTMLElement).getBoundingClientRect();
-                    let proportion = (e.clientX - boundingBox.left) / boundingBox.width;
-
-
-                    let newTime = this.duration * proportion;
-                    if (isNaN(newTime)) {
-                        newTime = 0;
-                    }
-                    this.video_element_ref.current.currentTime = newTime;
-                }}>
-                    <div className="absolute pointer-events-none" style={{ left: this.currentPercentage + "%", transform: "translateX(-50%)" }}>
-                        <div className="h-3 w-3 border border-black  rounded-full bg-white transform -translate-y-1/4"></div>
-                    </div>
-                    <div className="bg-blue-600 h-1 pointer-events-none" style={{ width: this.currentPercentage + "%" }}></div>
+            <div className="flex-grow overflow-auto flex justify-center items-center p-3 bg-black relative">
+                <video onPlaying={() => this.setState({ buffering: false })} onWaiting={() => this.setState({ buffering: true })} className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)}></video>
+                <div className='absolute flex items-center justify-center h-full'>
+                    {musicDisplay}
                 </div>
+                <div className='absolute flex items-center justify-center h-full'>
+                    {bufferingDisplay}
+                </div>
+            </div>
+            <div className="relative">
+                <div className="w-full absolute top-1">
+                    <div className="bg-white z-10 h-1" style={{ width: loadedPercentage + "%" }}></div>
+                </div>
+                <input type="range" min={0} max={100} className="w-full bg-blue-600 h-1 mb-3 relative" onChange={(e) => {
+
+                    let proportion = parseFloat(e.target.value) / 100;
+
+                    let newTime = this.duration * proportion;
+                    if (isNaN(newTime)) {
+                        newTime = 0;
+                    }
+                    this.video_element_ref.current.currentTime = newTime;
+                }} value={this.currentPercentage} />
                 <div className="flex items-center justify-center gap-1">
                     <div className="flex-1">
                         <select className="px-4 py-2 w-full rounded-md text-white font-medium text-lg bg-gray-900 hover:bg-gray-800" value={this.state.clip} onChange={e => this.onClipChanged(e.target.value)}>
@@ -356,7 +382,7 @@ class VideoPreview extends React.Component<Props, State> {
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepBackward} /></button>
                     <button onClick={() => this.playPause()} className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={this.state.playing ? faPause : faPlay} /></button>
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepForward} /></button>
-                    <button className="flex-1" onClick={() => this.videoUpdate()}>Update!</button>
+                    <div className="flex-1"></div>
                 </div>
             </div>
         </div>;

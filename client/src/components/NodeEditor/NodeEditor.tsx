@@ -214,7 +214,6 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     render() {
-        console.log("rendering node editor...");
         let store = Store.getCurrentStore();
         let elements = [];
 
@@ -255,8 +254,6 @@ class NodeEditor extends React.Component<Props, State> {
             if (input) {
                 let to_node_type = input.property_type;
                 let output = from_node.outputs.get(link.from.property);
-                console.log(link);
-                console.log(output);
                 if (output) {
                     elements.push({
                         id: link.id,

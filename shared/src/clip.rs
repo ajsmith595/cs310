@@ -1,8 +1,5 @@
 use gst::prelude::Cast;
-use gst_pbutils::{
-    Discoverer, DiscovererAudioInfo, DiscovererInfo, DiscovererSubtitleInfo, DiscovererVideoInfo,
-};
-use serde_json::Value;
+use gst_pbutils::{Discoverer, DiscovererAudioInfo, DiscovererSubtitleInfo, DiscovererVideoInfo};
 
 use crate::{
     constants::{
@@ -12,11 +9,7 @@ use crate::{
     node::PipeableType,
 };
 
-use super::{
-    node::{PipeableStreamType, Type},
-    pipeline::Pipeline,
-    ID,
-};
+use super::{node::PipeableStreamType, ID};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum ClipType {
@@ -73,17 +66,24 @@ impl ClipInfo {
 pub enum SourceClipServerStatus {
     LocalOnly,
     Uploading,
-    Uploaded(String),
+    Uploaded,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceClip {
+    // shared:
     pub id: ID,
     pub name: String,
-    pub file_location: String,
-    pub thumbnail_location: Option<String>,
-    pub info: Option<ClipInfo>,
     pub status: SourceClipServerStatus,
+    pub info: Option<ClipInfo>,
+
+    // sometimes shared:
+    pub original_file_location: Option<String>,
+
+    // server only
+    pub file_location: Option<String>,
+    pub original_device_id: Option<ID>,
+    pub thumbnail_location: Option<String>,
 }
 
 impl SourceClip {
@@ -116,7 +116,7 @@ impl SourceClip {
         let info = info.unwrap();
 
         let duration = info.duration().unwrap().nseconds();
-        let exact_duration = (duration as f64) / (1000000000 as f64);
+        // let exact_duration = (duration as f64) / (1000000000 as f64);
         let mut video_streams_vec = Vec::new();
         let video_streams = info.video_streams();
         for video_stream in video_streams {
@@ -128,8 +128,8 @@ impl SourceClip {
                 let (fps_num, fps_den): (f64, f64) = (fps_num.into(), fps_den.into());
                 let fps = fps_num / fps_den;
 
-                let total_frames = exact_duration * fps_num / fps_den; // not 100% accurate
-                let total_frames = total_frames.round() as i64;
+                // let total_frames = exact_duration * fps_num / fps_den; // not 100% accurate
+                // let total_frames = total_frames.round() as i64;
 
                 let bitrate = video_info.bitrate();
                 let video_stream = VideoStreamInfo {
@@ -198,11 +198,11 @@ impl SourceClip {
         )
     }
 
-    pub fn get_location(&self) -> String {
-        if (is_server()) {
+    pub fn get_server_url(&self) -> String {
+        if is_server() {
             format!("file:///{}/{}", source_files_location(), self.id)
         } else {
-            format!("file:///{}", self.file_location.clone())
+            format!("file:///{}", self.file_location.as_ref().unwrap().clone())
         }
         .replace("\\", "/")
     }
@@ -234,7 +234,7 @@ impl CompositedClip {
     }
 
     pub fn get_location(&self) -> String {
-        if (is_server()) {
+        if is_server() {
             format!(
                 "file:///{}/{}.xges",
                 composited_clips_projects_location(),

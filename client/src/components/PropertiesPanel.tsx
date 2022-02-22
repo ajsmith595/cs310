@@ -35,18 +35,9 @@ class PropertiesPanel extends React.Component<Props, State> {
     getSourceClipInfo() {
         let clip: SourceClip = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION);
 
-        let cache_id = "clip_info_" + clip.id;
-        if (this.props.cache.has(cache_id)) {
-            return this.props.cache.get(cache_id);
+        if (clip.info) {
+            return clip.info;
         }
-
-        Communicator.invoke('get_file_info', {
-            clipId: clip.id
-        }, (data) => {
-            this.props.cache.set(cache_id, data);
-            console.log(data);
-            this.forceUpdate();
-        });
         return null;
     }
 
@@ -117,7 +108,7 @@ class PropertiesPanel extends React.Component<Props, State> {
     }
 
     renderSourceClip(selection: SourceClip) {
-        let video_info = this.getSourceClipInfo();
+        let clip_info = this.getSourceClipInfo();
 
         let media_info_display = <p className="text-center">Loading media information <FontAwesomeIcon icon={faCog} className="fa-spin" /></p>;
 
@@ -155,9 +146,9 @@ class PropertiesPanel extends React.Component<Props, State> {
         };
 
 
-        if (video_info) {
+        if (clip_info) {
             let display = [];
-            for (let video_stream of video_info.video_streams) {
+            for (let video_stream of clip_info.video_streams) {
 
                 let bitrate = video_stream.bitrate;
                 let i = 0;
@@ -165,9 +156,9 @@ class PropertiesPanel extends React.Component<Props, State> {
                     bitrate /= 1024;
                     i++;
                 }
-                bitrate = bitrate.toPrecision(4);
+                let bitrate_string = bitrate.toPrecision(4);
 
-                let fps = video_stream.fps.toPrecision(4);
+                let fps = video_stream.framerate.toPrecision(4);
 
 
                 display.push(
@@ -180,11 +171,11 @@ class PropertiesPanel extends React.Component<Props, State> {
                             )}
                             {segment(
                                 (<>Framerate</>),
-                                fps
+                                <>{fps}</>
                             )}
                             {segment(
                                 (<>Bitrate <span className="text-gray-500">({letters[i]}bps)</span></>),
-                                bitrate
+                                <>{bitrate_string}</>
                             )}
                         </div>
                     </div>
@@ -193,14 +184,14 @@ class PropertiesPanel extends React.Component<Props, State> {
                 track++;
             }
 
-            for (let audio_stream of video_info.audio_streams) {
+            for (let audio_stream of clip_info.audio_streams) {
                 let bitrate = audio_stream.bitrate;
                 let i = 0;
                 while (bitrate > 1024) {
                     bitrate /= 1024;
                     i++;
                 }
-                bitrate = bitrate.toPrecision(4);
+                let bitrate_string = bitrate.toPrecision(4);
                 let sample_rate = audio_stream.sample_rate;
                 let j = 0;
                 while (sample_rate >= 1000) {
@@ -214,19 +205,19 @@ class PropertiesPanel extends React.Component<Props, State> {
                         <div className="ml-2 text-xs">
                             {segment(
                                 (<>Sample Rate <span className="text-gray-500">({letters[j]}Hz)</span></>),
-                                sample_rate
+                                <>{sample_rate}</>
                             )}
                             {segment(
                                 (<>Bitrate <span className="text-gray-500">({letters[i]}bps)</span></>),
-                                bitrate
+                                <>{bitrate_string}</>
                             )}
                             {segment(
                                 (<>Number of Channels</>),
-                                audio_stream.num_channels
+                                <>{audio_stream.number_of_channels}</>
                             )}
                             {segment(
                                 (<>Language</>),
-                                audio_stream.language
+                                <>{audio_stream.language}</>
                             )}
                         </div>
                     </div>
@@ -236,7 +227,7 @@ class PropertiesPanel extends React.Component<Props, State> {
                 track++;
             }
 
-            let duration = video_info.duration / 1000;
+            let duration = clip_info.duration / 1000;
             let hrs = Math.floor(duration / 3600);
             let mins = Math.floor((duration % 3600) / 60);
             let seconds = Math.round(duration % 60);
