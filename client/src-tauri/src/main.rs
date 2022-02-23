@@ -35,6 +35,7 @@ extern crate serde;
 extern crate serde_json;
 
 mod file_uploader_thread;
+mod network_task_manager;
 mod state_manager;
 mod state_uploader_thread;
 mod tauri_commands;
@@ -59,6 +60,7 @@ fn main() {
     window: None,
     node_register: register.clone(),
     thread_stopper: rx,
+    network_jobs: Vec::new(),
   };
 
   let shared_state = Arc::new(Mutex::new(shared_state));
@@ -67,15 +69,14 @@ fn main() {
 
   let thread_spawned = Arc::new(Mutex::new(false));
 
+  let threads = Arc::new(Mutex::new(Some(Vec::new())));
+  let threads_clone = threads.clone();
   tauri::Builder::default()
     .manage(SharedStateWrapper(shared_state))
     .invoke_handler(tauri::generate_handler![
       tauri_commands::import_media,
       tauri_commands::get_initial_data,
-      tauri_commands::change_clip_name,
-      tauri_commands::create_composited_clip,
       tauri_commands::get_node_outputs,
-      tauri_commands::update_node,
       tauri_commands::store_update,
       tauri_commands::get_node_inputs,
       tauri_commands::get_output_directory,
@@ -83,6 +84,7 @@ fn main() {
       tauri_commands::get_connection_status
     ])
     .on_page_load(move |app, _ev| {
+      let threads = threads_clone.clone();
       if *thread_spawned.lock().unwrap() {
         println!("Not starting threads again!");
         return;
@@ -99,28 +101,48 @@ fn main() {
 
       {
         let shared_state = shared_state_clone.clone();
-        thread::spawn(move || {
-          store_fetcher_thread(shared_state);
-        });
+        threads
+          .lock()
+          .unwrap()
+          .as_mut()
+          .unwrap()
+          .push(thread::spawn(move || {
+            store_fetcher_thread(shared_state);
+          }));
       }
 
       {
         let shared_state = shared_state_clone.clone();
-        thread::spawn(move || {
-          state_uploader_thread(shared_state);
-        });
+        threads
+          .lock()
+          .unwrap()
+          .as_mut()
+          .unwrap()
+          .push(thread::spawn(move || {
+            state_uploader_thread(shared_state);
+          }));
       }
       {
         let shared_state = shared_state_clone.clone();
-        thread::spawn(move || {
-          file_uploader_thread(shared_state);
-        });
+        threads
+          .lock()
+          .unwrap()
+          .as_mut()
+          .unwrap()
+          .push(thread::spawn(move || {
+            file_uploader_thread(shared_state);
+          }));
       }
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 
   let _ = tx.send(());
+
+  let threads = threads.lock().unwrap().take().unwrap();
+  for t in threads {
+    t.join().unwrap();
+  }
 }
 
 fn store_fetcher_thread(state: Arc<Mutex<SharedState>>) {

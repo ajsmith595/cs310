@@ -64,6 +64,7 @@ impl ClipInfo {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum SourceClipServerStatus {
+    NeedsNewID,
     LocalOnly,
     Uploading,
     Uploaded,

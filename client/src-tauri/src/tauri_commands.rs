@@ -3,7 +3,10 @@ use std::{collections::HashMap, fs::File, io::Write};
 use rfd::AsyncFileDialog;
 use uuid::Uuid;
 
-use crate::state_manager::{ConnectionStatus, SharedStateWrapper};
+use crate::{
+  network_task_manager,
+  state_manager::{ConnectionStatus, SharedStateWrapper},
+};
 use cs310_shared::{
   clip::{self, CompositedClip, SourceClip},
   constants::media_output_location,
@@ -14,6 +17,8 @@ use cs310_shared::{
   store::Store,
   ID,
 };
+
+/// Executed when the 'import' button is pressed (for source clips). Will open a file dialog for the user to choose relevant files.
 #[tauri::command]
 pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
@@ -37,6 +42,7 @@ pub async fn import_media(
     None => Err(String::from("No file selected")),
     Some(paths) => {
       let mut hm = HashMap::new();
+      let mut jobs = Vec::new();
       for path in paths {
         let file_path = path.path().to_str().unwrap().to_string();
 
@@ -48,100 +54,30 @@ pub async fn import_media(
           ));
         }
         let info = info.unwrap();
-
-        println!("Sending file: {}", file_path.clone());
-        let stream = networking::connect_to_server();
-
-        if stream.is_err() {
-          return Err(format!(
-            "Could not connect to server: {}",
-            stream.unwrap_err()
-          ));
-        };
-        let mut stream = stream.unwrap();
-        networking::send_message(&mut stream, networking::Message::GetFileID).unwrap();
-        let temp = networking::receive_data(&mut stream, 16).unwrap();
-        let mut uuid_bytes = [0 as u8; 16];
-        uuid_bytes.copy_from_slice(&temp);
-        let id = Uuid::from_bytes(uuid_bytes);
-
-        //        let mut thumbnail = None;
-        let x = format!(
-          "{}/thumbnails/source",
-          std::env::current_dir().unwrap().to_str().unwrap()
-        );
-        std::fs::create_dir_all(x).unwrap();
-
-        // let source_type = info.to_pipeable_type();
-        // if source_type.video > 0 {
-        //   Pipeline::get_video_thumbnail(file_path.clone(), id.to_string());
-        // } else if source_type.audio > 0 {
-        //   Pipeline::get_audio_thumbnail(file_path.clone(), id.to_string());
-        // }
+        let id = Uuid::new_v4(); // temporarily, we create a random file ID
 
         let clip = SourceClip {
-          id,
+          id: id.clone(),
           name: path.file_name(),
           original_file_location: Some(file_path.clone()),
+          info: Some(info),
+          status: clip::SourceClipServerStatus::NeedsNewID,
           original_device_id: None,
           file_location: None,
           thumbnail_location: None,
-          info: Some(info),
-          status: clip::SourceClipServerStatus::LocalOnly,
         };
 
         hm.insert(clip.id.clone(), clip.clone());
-
-        (&mut state
-          .0
-          .clone()
-          .lock()
-          .unwrap()
-          .store
-          .as_mut()
-          .unwrap()
-          .clips
-          .source)
-          .insert(clip.id.clone(), clip.clone());
+        jobs.push(network_task_manager::Task::GetSourceClipID(id.clone()))
       }
+
+      let mut lock = state.0.lock().unwrap();
+      lock.network_jobs.append(&mut jobs);
+      lock.store.as_mut().unwrap().clips.source.extend(hm.clone());
+
       Ok(hm)
     }
   }
-}
-
-#[tauri::command]
-pub fn create_composited_clip(
-  state: tauri::State<'_, SharedStateWrapper>,
-) -> Result<(ID, Store), String> {
-  {
-    let lock = state.0.lock().unwrap();
-    if lock.store.is_none() {
-      return Err(format!("Store is not yet set"));
-    }
-  }
-
-  let clip = CompositedClip {
-    id: uniq_id(),
-    name: "New Clip".to_string(),
-  };
-  let id = clip.id.clone();
-  (&mut state
-    .0
-    .clone()
-    .lock()
-    .unwrap()
-    .store
-    .as_mut()
-    .unwrap()
-    .clips
-    .composited)
-    .insert(clip.id.clone(), clip);
-
-  let state = state.0.clone().lock().unwrap().store.clone().unwrap();
-  let mut f = File::create("state.json").unwrap();
-  f.write_all(serde_json::ser::to_string(&state).unwrap().as_bytes())
-    .unwrap();
-  Ok((id, state))
 }
 
 #[tauri::command]
@@ -154,63 +90,6 @@ pub fn get_initial_data(
   } else {
     Ok((state.store.clone().unwrap(), state.node_register.clone()))
   }
-}
-
-#[tauri::command]
-pub fn change_clip_name(
-  clip_type: String,
-  id: ID,
-  name: String,
-  state: tauri::State<'_, SharedStateWrapper>,
-) -> Result<Store, String> {
-  {
-    let lock = state.0.lock().unwrap();
-    if lock.store.is_none() {
-      return Err(format!("Store is not yet set"));
-    }
-  }
-
-  match clip_type.as_str() {
-    "source" => {
-      if let Some(x) = (&mut state
-        .0
-        .clone()
-        .lock()
-        .unwrap()
-        .store
-        .as_mut()
-        .unwrap()
-        .clips
-        .source)
-        .get_mut(&id)
-      {
-        x.name = name;
-      }
-    }
-    "composited" => {
-      if let Some(x) = (&mut state
-        .0
-        .clone()
-        .lock()
-        .unwrap()
-        .store
-        .as_mut()
-        .unwrap()
-        .clips
-        .composited)
-        .get_mut(&id)
-      {
-        x.name = name;
-      }
-    }
-    _ => {}
-  }
-
-  let store = state.0.clone().lock().unwrap().store.clone().unwrap();
-  let mut f = File::create("state.json").unwrap();
-  f.write_all(serde_json::ser::to_string(&store).unwrap().as_bytes())
-    .unwrap();
-  Ok(store)
 }
 
 #[tauri::command]
@@ -277,26 +156,6 @@ pub fn get_node_inputs(
   let (_, inputs, _) = data.unwrap();
 
   return Ok(inputs.clone());
-}
-
-#[tauri::command]
-pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) -> Result<(), String> {
-  {
-    let lock = state.0.lock().unwrap();
-    if lock.store.is_none() {
-      return Err(format!("Store is not yet set"));
-    }
-  }
-
-  let mut state = state.0.lock().unwrap();
-  state
-    .store
-    .as_mut()
-    .unwrap()
-    .nodes
-    .insert(node.id.clone(), node.clone());
-  state.file_written = false;
-  Ok(())
 }
 
 #[tauri::command]
