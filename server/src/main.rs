@@ -1,36 +1,24 @@
 use core::time;
 use std::{
-    cell::RefCell,
-    collections::HashMap,
-    convert::Infallible,
+    collections::hash_map::DefaultHasher,
     fs::{self, File},
-    io::{ErrorKind, Read, Write},
+    hash::{Hash, Hasher},
+    io::ErrorKind,
     net::{Shutdown, TcpListener, TcpStream},
-    path::Path,
-    rc::Rc,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::atomic::{AtomicBool, Ordering},
     thread,
+    time::Duration,
 };
 
 use cs310_shared::{
-    abstract_pipeline::{AbstractLink, AbstractLinkEndpoint, AbstractNode},
-    constants::{media_output_location, source_files_location, store_json_location, CHUNK_LENGTH},
-    gst_editing_test,
-    networking::{self, send_file, send_message, SERVER_PORT},
-    node::PipeableStreamType,
+    clip::SourceClipServerStatus,
+    constants::{source_files_location, store_json_location, CHUNK_LENGTH},
+    networking::{self, SERVER_PORT},
     nodes::{get_node_register, NodeRegister},
-    pipeline::Pipeline,
     store::Store,
 };
-use ges::{
-    prelude::EncodingProfileBuilder,
-    traits::{AssetExt, ExtractableExt, GESPipelineExt, LayerExt, ProjectExt, TimelineExt},
-};
-use glib::gobject_ffi::GValue;
-use gst::{ffi::GstStructure, glib, prelude::*};
+use ges::traits::{GESPipelineExt, LayerExt, TimelineExt};
+use gst::prelude::*;
 use simple_logger::SimpleLogger;
 use state::State;
 use std::sync::{Arc, Mutex};
@@ -73,6 +61,35 @@ fn main() {
     })
     .expect("Error setting CTRL+C handler");
 
+    let state_clone = state.clone();
+    let running_clone = running.clone();
+    let store_saver_thread = thread::spawn(move || {
+        let mut previous_hash = None;
+        loop {
+            let lock = state_clone.lock().unwrap();
+            let store = lock.store.clone();
+            drop(lock);
+
+            let bytes = serde_json::to_vec(&store).unwrap();
+            let mut hash = DefaultHasher::new();
+            bytes.hash(&mut hash);
+            let hash = hash.finish();
+            if match previous_hash {
+                None => true,
+                Some(h) => h != hash,
+            } {
+                fs::write(store_json_location(), &bytes).unwrap();
+            }
+            previous_hash = Some(hash);
+
+            thread::sleep(Duration::from_secs(10));
+
+            if !running_clone.load(Ordering::SeqCst) {
+                break;
+            }
+        }
+    });
+
     log::info!("Server opened on port {}", SERVER_PORT);
     for stream in listener.incoming() {
         match stream {
@@ -84,12 +101,14 @@ fn main() {
                     handle_client(stream, state);
                 });
             }
-            Err(e) => {}
+            Err(_) => {}
         }
         if !running.load(Ordering::SeqCst) {
             break;
         }
     }
+
+    store_saver_thread.join().unwrap();
 
     drop(listener);
 }
@@ -108,11 +127,10 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
             );
             match message {
                 networking::Message::GetStore => {
-                    log::info!("[{}] Getting store ", operation_id);
-                    let mut file = File::open(store_json_location()).unwrap();
-
-                    networking::send_file(&mut stream, &mut file);
-                    log::info!("[{}] Store sent ", operation_id);
+                    log::info!("[{}] Getting store", operation_id);
+                    let store = state.lock().unwrap().store.clone();
+                    let data = serde_json::to_vec(&store).unwrap();
+                    networking::send_as_file(&mut stream, &data);
                 }
                 networking::Message::GetFileID => {
                     log::info!("[{}] Getting unique file ID", operation_id);
@@ -129,6 +147,26 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                     log::info!("[{}] File ID: {}", operation_id, uuid);
 
+                    let mut locked_state = state.lock().unwrap();
+
+                    let store = &mut locked_state.store;
+                    let clip = store.clips.source.get_mut(&uuid);
+
+                    if clip.is_none() {
+                        stream.shutdown(Shutdown::Both).unwrap();
+                        return;
+                    }
+                    let clip = clip.unwrap();
+
+                    match &clip.status {
+                        SourceClipServerStatus::LocalOnly => {}
+                        _ => {
+                            stream.shutdown(Shutdown::Both).unwrap();
+                            return;
+                        }
+                    }
+                    clip.status = SourceClipServerStatus::Uploading;
+
                     let mut output_file =
                         File::create(format!("{}/{}", source_files_location(), uuid)).unwrap();
                     networking::receive_file(&mut stream, &mut output_file);
@@ -138,15 +176,25 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 }
                 networking::Message::SetStore => {
                     log::info!("[{}] Receiving store", operation_id);
-                    let mut output_file = File::create(store_json_location()).unwrap();
-                    networking::receive_file(&mut stream, &mut output_file);
+
+                    let bytes = networking::receive_file_as_bytes(&mut stream);
+                    let store = serde_json::from_slice::<Store>(&bytes);
+
+                    if store.is_err() {
+                        log::warn!("[{}] Client sent invalid JSON data!", operation_id);
+                        return;
+                    }
+                    let store = store.unwrap();
 
                     log::info!("[{}] Store received", operation_id);
+                    let mut lock = state.lock().unwrap();
+                    lock.store.merge_client_data(&store);
+                    let store = &lock.store.clone();
+                    drop(lock);
 
-                    let store = Store::from_file(store_json_location()).unwrap();
                     let node_register = get_node_register();
                     log::info!("[{}] Executing pipeline", operation_id);
-                    execute_pipeline(&mut stream, &store, &node_register);
+                    execute_pipeline(&mut stream, store, &node_register);
                     log::info!("[{}] Pipeline executed", operation_id);
                 }
                 _ => println!("Unknown message"),
@@ -181,249 +229,229 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
     }
 }
 
-fn set_pipeline_props(pipeline: &ges::Pipeline, stream_type: &cs310_shared::node::PipeableType) {
-    // Every audiostream piped into the encodebin should be encoded using opus.
-    let audio_profile =
-        gst_pbutils::EncodingAudioProfile::builder(&gst::Caps::builder("audio/x-vorbis").build())
-            .build();
-
-    // Every videostream piped into the encodebin should be encoded using vp8.
-    let video_profile =
-        gst_pbutils::EncodingVideoProfile::builder(&gst::Caps::builder("video/x-vp8").build())
-            .build();
-
-    // All streams are then finally combined into a webm container.
-
-    let container_profile =
-        gst_pbutils::EncodingContainerProfile::builder(&gst::Caps::builder("video/webm").build())
-            .add_profile(&audio_profile)
-            .add_profile(&video_profile)
-            .build();
-
-    // Apply the EncodingProfile to the pipeline, and set it to render mode
-    let output_uri = format!("file:////home/ajsmith/cs310/server/application_data/out.webm");
-    pipeline
-        .set_render_settings(&output_uri, &container_profile)
-        .expect("Failed to set render settings");
-    pipeline
-        .set_mode(ges::PipelineFlags::RENDER)
-        .expect("Failed to set pipeline to render mode");
-}
-
 fn execute_pipeline(stream: &mut TcpStream, store: &Store, node_register: &NodeRegister) {
-    let mut pipeline = store.pipeline.gen_graph_new(store, node_register, true);
+    let pipeline = store.pipeline.gen_graph_new(store, node_register, true);
     let clips = store.clips.clone();
-    if let Ok((node_type_data, composited_clip_data, output)) = pipeline {
-        if let Some(mut output) = output {
-            if output.nodes.len() > 0 {
-                let pipeline = gst::Pipeline::new(None);
-                for (id, clip) in &clips.composited {
-                    let out_type = composited_clip_data.get(id).unwrap();
+    if let Ok((_, composited_clip_data, output)) = pipeline {
+        if output {
+            let pipeline = gst::Pipeline::new(None);
+            for (id, clip) in &clips.composited {
+                let out_type = composited_clip_data.get(id).unwrap();
 
-                    let timeline_location = clip.get_location();
+                let timeline_location = clip.get_location();
 
-                    let timeline = out_type.stream_type.create_timeline();
+                let timeline = out_type.stream_type.create_timeline();
 
-                    ges::Asset::needs_reload(
-                        ges::UriClip::static_type(),
-                        Some(timeline_location.as_str()),
-                    );
-                    let timeline_asset =
-                        ges::UriClipAsset::request_sync(timeline_location.as_str()).unwrap();
+                ges::Asset::needs_reload(
+                    ges::UriClip::static_type(),
+                    Some(timeline_location.as_str()),
+                );
+                let timeline_asset =
+                    ges::UriClipAsset::request_sync(timeline_location.as_str()).unwrap();
 
-                    let layer = timeline.append_layer();
-                    layer
-                        .add_asset(&timeline_asset, None, None, None, ges::TrackType::UNKNOWN)
-                        .unwrap();
-
-                    let total_duration = timeline.duration().mseconds();
-
-                    networking::send_message(stream, networking::Message::CompositedClipLength)
-                        .unwrap();
-
-                    let node_id_bytes = id.as_bytes();
-                    networking::send_data(stream, node_id_bytes).unwrap();
-                    networking::send_data(stream, &total_duration.to_le_bytes()).unwrap();
-
-                    pipeline.add(&timeline).unwrap();
-
-                    let muxer = gst::ElementFactory::make(
-                        "splitmuxsink",
-                        Some(format!("composited-clip-{}", id.to_string()).as_str()),
-                    )
+                let layer = timeline.append_layer();
+                layer
+                    .add_asset(&timeline_asset, None, None, None, ges::TrackType::UNKNOWN)
                     .unwrap();
-                    muxer.set_property("location", clip.get_output_location_template());
-                    muxer.set_property("muxer-factory", "mp4mux");
 
-                    std::fs::create_dir_all(clip.get_output_location()).unwrap();
+                let total_duration = timeline.duration().mseconds();
 
-                    let structure = gst::Structure::new(
-                        "properties",
-                        &[("streamable", &true), ("fragment-duration", &1000)],
-                    );
-                    muxer.set_property("muxer-properties", structure);
-                    muxer.set_property("async-finalize", true);
-                    let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
-                    muxer.set_property("max-size-time", nanoseconds);
-                    muxer.set_property("send-keyframe-requests", true);
-                    pipeline.add(&muxer).unwrap();
+                networking::send_message(stream, networking::Message::CompositedClipLength)
+                    .unwrap();
 
-                    let mut i = 0;
-                    for x in timeline.pads() {
-                        let video = i;
-                        let audio = i - out_type.stream_type.video;
-                        i += 1;
-                        println!("Name: {:?}", x.name());
+                let node_id_bytes = id.as_bytes();
+                networking::send_data(stream, node_id_bytes).unwrap();
+                networking::send_data(stream, &total_duration.to_ne_bytes()).unwrap();
 
-                        if video < out_type.stream_type.video {
-                            let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
+                pipeline.add(&timeline).unwrap();
 
-                            let videoconvert =
-                                gst::ElementFactory::make("videoconvert", None).unwrap();
-                            let queue = gst::ElementFactory::make("queue", None).unwrap();
+                let muxer = gst::ElementFactory::make(
+                    "splitmuxsink",
+                    Some(format!("composited-clip-{}", id.to_string()).as_str()),
+                )
+                .unwrap();
+                muxer.set_property("location", clip.get_output_location_template());
+                muxer.set_property("muxer-factory", "mp4mux");
 
-                            pipeline.add(&encoder).unwrap();
-                            pipeline.add(&videoconvert).unwrap();
-                            pipeline.add(&queue).unwrap();
+                std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
-                            //pipeline.add(&videoconvert2).unwrap();
-                            timeline
-                                .link_pads(Some(x.name().as_str()), &videoconvert, None)
-                                .unwrap();
-                            videoconvert.link(&encoder).unwrap();
-                            //encoder.link(&videoconvert2).unwrap();
+                let structure = gst::Structure::new(
+                    "properties",
+                    &[("streamable", &true), ("fragment-duration", &1000)],
+                );
+                muxer.set_property("muxer-properties", structure);
+                muxer.set_property("async-finalize", true);
+                let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
+                muxer.set_property("max-size-time", nanoseconds);
+                muxer.set_property("send-keyframe-requests", true);
+                pipeline.add(&muxer).unwrap();
 
-                            encoder.link(&queue).unwrap();
+                let mut i = 0;
+                for x in timeline.pads() {
+                    let video = i;
+                    let audio = i - out_type.stream_type.video;
+                    i += 1;
+                    println!("Name: {:?}", x.name());
 
-                            if video > 0 {
-                                panic!("Can only handle one video stream!");
-                            }
-                            queue
-                                .link_pads(None, &muxer, Some(format!("video").as_str()))
-                                .unwrap();
-                        } else {
-                            let audioconvert1 =
-                                gst::ElementFactory::make("audioconvert", None).unwrap();
-                            let audioresample =
-                                gst::ElementFactory::make("audioresample", None).unwrap();
-                            let audioconvert2 =
-                                gst::ElementFactory::make("audioconvert", None).unwrap();
+                    if video < out_type.stream_type.video {
+                        let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
 
-                            let queue = gst::ElementFactory::make("queue", None).unwrap();
+                        let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
+                        let queue = gst::ElementFactory::make("queue", None).unwrap();
 
-                            let encoder = gst::ElementFactory::make("avenc_aac", None).unwrap();
+                        pipeline.add(&encoder).unwrap();
+                        pipeline.add(&videoconvert).unwrap();
+                        pipeline.add(&queue).unwrap();
 
-                            pipeline.add(&audioconvert1).unwrap();
-                            pipeline.add(&audioresample).unwrap();
-                            pipeline.add(&audioconvert2).unwrap();
-                            pipeline.add(&queue).unwrap();
-                            pipeline.add(&encoder).unwrap();
-                            timeline
-                                .link_pads(Some(x.name().as_str()), &audioconvert1, None)
-                                .unwrap();
-                            audioconvert1.link(&audioresample).unwrap();
-                            audioresample.link(&audioconvert2).unwrap();
-                            audioconvert2.link(&encoder).unwrap();
-                            encoder.link(&queue).unwrap();
-                            queue
-                                .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
-                                .unwrap();
+                        //pipeline.add(&videoconvert2).unwrap();
+                        timeline
+                            .link_pads(Some(x.name().as_str()), &videoconvert, None)
+                            .unwrap();
+                        videoconvert.link(&encoder).unwrap();
+                        //encoder.link(&videoconvert2).unwrap();
+
+                        encoder.link(&queue).unwrap();
+
+                        if video > 0 {
+                            panic!("Can only handle one video stream!");
                         }
+                        queue
+                            .link_pads(None, &muxer, Some(format!("video").as_str()))
+                            .unwrap();
+                    } else {
+                        let audioconvert1 =
+                            gst::ElementFactory::make("audioconvert", None).unwrap();
+                        let audioresample =
+                            gst::ElementFactory::make("audioresample", None).unwrap();
+                        let audioconvert2 =
+                            gst::ElementFactory::make("audioconvert", None).unwrap();
+
+                        let queue = gst::ElementFactory::make("queue", None).unwrap();
+
+                        let encoder = gst::ElementFactory::make("avenc_aac", None).unwrap();
+
+                        pipeline.add(&audioconvert1).unwrap();
+                        pipeline.add(&audioresample).unwrap();
+                        pipeline.add(&audioconvert2).unwrap();
+                        pipeline.add(&queue).unwrap();
+                        pipeline.add(&encoder).unwrap();
+                        timeline
+                            .link_pads(Some(x.name().as_str()), &audioconvert1, None)
+                            .unwrap();
+                        audioconvert1.link(&audioresample).unwrap();
+                        audioresample.link(&audioconvert2).unwrap();
+                        audioconvert2.link(&encoder).unwrap();
+                        encoder.link(&queue).unwrap();
+                        queue
+                            .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
+                            .unwrap();
                     }
                 }
+            }
 
-                println!("Starting pipeline...");
-                pipeline
-                    .set_state(gst::State::Playing)
-                    .expect("Unable to set the pipeline to the `Playing` state");
+            println!("Starting pipeline...");
+            pipeline
+                .set_state(gst::State::Playing)
+                .expect("Unable to set the pipeline to the `Playing` state");
 
-                let bus = pipeline.bus().unwrap();
+            let bus = pipeline.bus().unwrap();
 
-                for msg in bus.iter_timed(gst::ClockTime::NONE) {
-                    use gst::MessageView;
+            for msg in bus.iter_timed(gst::ClockTime::NONE) {
+                use gst::MessageView;
 
-                    match msg.view() {
-                        MessageView::Eos(..) => break,
-                        MessageView::Error(err) => {
-                            println!(
-                                "Error from {:?}: {} ({:?})",
-                                err.src().map(|s| s.path_string()),
-                                err.error(),
-                                err.debug()
-                            );
-                            break;
-                        }
-                        MessageView::Element(_) => {
-                            let src = msg.src();
-                            let structure = msg.structure();
+                match msg.view() {
+                    MessageView::Eos(..) => break,
+                    MessageView::Error(err) => {
+                        println!(
+                            "Error from {:?}: {} ({:?})",
+                            err.src().map(|s| s.path_string()),
+                            err.error(),
+                            err.debug()
+                        );
+                        break;
+                    }
+                    MessageView::Element(_) => {
+                        let src = msg.src();
+                        let structure = msg.structure();
 
-                            if let (Some(src), Some(structure)) = (src, structure) {
-                                let event = structure.name().to_string();
+                        if let (Some(src), Some(structure)) = (src, structure) {
+                            let event = structure.name().to_string();
 
-                                if event == String::from("splitmuxsink-fragment-closed") {
-                                    let location = structure.get::<String>("location");
-                                    let running_time = structure.get::<u64>("running-time");
+                            if event == String::from("splitmuxsink-fragment-closed") {
+                                let location = structure.get::<String>("location");
+                                let running_time = structure.get::<u64>("running-time");
 
-                                    if let (Ok(location), Ok(running_time)) =
-                                        (location, running_time)
-                                    {
-                                        println!("Name: {}", src.name());
-                                        let node_id = src.name().to_string();
+                                if let (Ok(location), Ok(running_time)) = (location, running_time) {
+                                    println!("Name: {}", src.name());
+                                    let node_id = src.name().to_string();
 
-                                        let mut parts: Vec<&str> = node_id.split("-").collect();
-                                        parts.drain(0..(parts.len() - 5));
-                                        let node_id = parts.join("-");
+                                    let mut parts: Vec<&str> = node_id.split("-").collect();
+                                    parts.drain(0..(parts.len() - 5));
+                                    let node_id = parts.join("-");
 
-                                        let parts: Vec<&str> = location.split("/").collect();
-                                        let filename = parts.last().unwrap();
-                                        let parts: Vec<&str> = filename.split(".").collect();
-                                        let number_string: String = parts
-                                            .first() // the bit of the filename excluding the extension
-                                            .unwrap()
-                                            .chars()
-                                            .filter(|c| c.is_digit(10)) // extract all the numbers
-                                            .collect();
-                                        let segment = number_string.parse::<u32>().unwrap();
+                                    let parts: Vec<&str> = location.split("/").collect();
+                                    let filename = parts.last().unwrap();
+                                    let parts: Vec<&str> = filename.split(".").collect();
+                                    let number_string: String = parts
+                                        .first() // the bit of the filename excluding the extension
+                                        .unwrap()
+                                        .chars()
+                                        .filter(|c| c.is_digit(10)) // extract all the numbers
+                                        .collect();
+                                    let segment = number_string.parse::<u32>().unwrap();
 
-                                        // let lock_clone = lock.clone();
-                                        // let join = thread::spawn(move || {
-                                        println!("New chunk: {} (segment: {})", node_id, segment);
+                                    // let lock_clone = lock.clone();
+                                    // let join = thread::spawn(move || {
+                                    println!("New chunk: {} (segment: {})", node_id, segment);
 
-                                        let mut parts: Vec<&str> = node_id.split("-").collect();
-                                        parts.drain(0..(parts.len() - 5));
-                                        let node_id = parts.join("-");
-                                        let mut file = File::open(location).unwrap();
+                                    let mut parts: Vec<&str> = node_id.split("-").collect();
+                                    parts.drain(0..(parts.len() - 5));
+                                    let node_id = parts.join("-");
+                                    let mut file = File::open(location).unwrap();
 
-                                        networking::send_message(
-                                            stream,
-                                            networking::Message::NewChunk,
-                                        )
+                                    networking::send_message(stream, networking::Message::NewChunk)
                                         .unwrap();
 
-                                        let uuid = Uuid::parse_str(&node_id).unwrap();
-                                        let node_id_bytes = uuid.as_bytes();
-                                        networking::send_data(stream, node_id_bytes).unwrap();
-                                        let mut segment_bytes = [0 as u8; 4];
-                                        segment_bytes.copy_from_slice(&segment.to_le_bytes());
-                                        networking::send_data(stream, &segment_bytes).unwrap();
-                                        networking::send_file(stream, &mut file);
-                                    }
+                                    let uuid = Uuid::parse_str(&node_id).unwrap();
+                                    let node_id_bytes = uuid.as_bytes();
+                                    networking::send_data(stream, node_id_bytes).unwrap();
+                                    let mut segment_bytes = [0 as u8; 4];
+                                    segment_bytes.copy_from_slice(&segment.to_ne_bytes());
+                                    networking::send_data(stream, &segment_bytes).unwrap();
+                                    networking::send_file(stream, &mut file);
                                 }
                             }
                         }
-
-                        _ => (),
                     }
+
+                    _ => (),
                 }
-
-                pipeline
-                    .set_state(gst::State::Null)
-                    .expect("Unable to set the pipeline to the `Null` state");
-                println!("Pipeline complete!");
-
-                println!("Composited clips done!");
             }
+
+            pipeline
+                .set_state(gst::State::Null)
+                .expect("Unable to set the pipeline to the `Null` state");
+            println!("Pipeline complete!");
+
+            println!("Composited clips done!");
         }
     }
     networking::send_message(stream, networking::Message::AllChunksGenerated).unwrap();
+}
+
+fn perform_store_checksum(stream: &mut TcpStream, store: &Store) {
+    let checksum = store.get_client_checksum();
+
+    let bytes = checksum.to_ne_bytes();
+    networking::send_message(stream, networking::Message::Checksum).unwrap();
+    networking::send_data(stream, &bytes).unwrap();
+    let message = networking::receive_message(stream).unwrap();
+
+    match message {
+        networking::Message::ChecksumError => {
+            let data = serde_json::to_vec(&store).unwrap();
+            networking::send_as_file(stream, &data);
+        }
+        _ => {}
+    };
 }

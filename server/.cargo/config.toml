@@ -1,2 +1,2 @@
 [env]
-# GST_DEBUG="2"
+GST_DEBUG="2"

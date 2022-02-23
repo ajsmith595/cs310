@@ -73,7 +73,7 @@ pub fn state_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                         let mut segment_number_bytes = [0 as u8; 4];
                         segment_number_bytes.copy_from_slice(&temp);
 
-                        let segment_number = u32::from_le_bytes(segment_number_bytes);
+                        let segment_number = u32::from_ne_bytes(segment_number_bytes);
                         println!("Segment number: {}", segment_number);
 
                         let clip = composited_clips.get(&node_id).unwrap();
@@ -190,7 +190,7 @@ pub fn state_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                         let bytes = networking::receive_data(&mut stream, 8).unwrap();
                         let mut buffer = [0 as u8; 8];
                         buffer.copy_from_slice(&bytes);
-                        let duration_ms = u64::from_le_bytes(buffer);
+                        let duration_ms = u64::from_ne_bytes(buffer);
 
                         let locked_state = shared_state.lock().unwrap();
                         locked_state
