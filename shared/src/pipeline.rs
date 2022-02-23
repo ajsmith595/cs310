@@ -44,7 +44,6 @@ impl Link {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Pipeline {
     pub links: Vec<Link>,
-    pub target_node_id: Option<ID>,
 }
 
 pub struct NodeData {
@@ -53,10 +52,7 @@ pub struct NodeData {
 
 impl Pipeline {
     pub fn new() -> Self {
-        Self {
-            links: Vec::new(),
-            target_node_id: None,
-        }
+        Self { links: Vec::new() }
     }
 
     pub fn gen_graph_new(

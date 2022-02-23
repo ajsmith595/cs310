@@ -10,8 +10,13 @@ use std::{
   thread,
 };
 
-use crate::state_uploader_thread::state_uploader_thread;
-use crate::{file_uploader_thread::file_uploader_thread, state_manager::ConnectionStatus};
+use crate::{
+  file_uploader_thread::file_uploader_thread, state_manager::ConnectionStatus,
+  task_manager::task_manager_thread,
+};
+use crate::{
+  network_task_manager::network_task_manager_thread, state_uploader_thread::state_uploader_thread,
+};
 use cs310_shared::{
   constants::{init, store_json_location},
   networking::{self, Message},
@@ -38,6 +43,7 @@ mod file_uploader_thread;
 mod network_task_manager;
 mod state_manager;
 mod state_uploader_thread;
+mod task_manager;
 mod tauri_commands;
 
 fn main() {
@@ -53,6 +59,7 @@ fn main() {
 
   let register = get_node_register();
   let (tx, rx) = mpsc::channel();
+
   let shared_state = SharedState {
     store: None,
     file_written: false,
@@ -60,6 +67,8 @@ fn main() {
     window: None,
     node_register: register.clone(),
     thread_stopper: rx,
+    task_manager_notifier: None,
+    tasks: Vec::new(),
     network_jobs: Vec::new(),
   };
 
@@ -71,17 +80,23 @@ fn main() {
 
   let threads = Arc::new(Mutex::new(Some(Vec::new())));
   let threads_clone = threads.clone();
+
   tauri::Builder::default()
     .manage(SharedStateWrapper(shared_state))
     .invoke_handler(tauri::generate_handler![
       tauri_commands::import_media,
       tauri_commands::get_initial_data,
       tauri_commands::get_node_outputs,
-      tauri_commands::store_update,
       tauri_commands::get_node_inputs,
       tauri_commands::get_output_directory,
       tauri_commands::get_clip_type,
-      tauri_commands::get_connection_status
+      tauri_commands::get_connection_status,
+      tauri_commands::create_composited_clip,
+      tauri_commands::add_link,
+      tauri_commands::update_node,
+      tauri_commands::add_node,
+      tauri_commands::delete_node,
+      tauri_commands::delete_links,
     ])
     .on_page_load(move |app, _ev| {
       let threads = threads_clone.clone();
@@ -99,39 +114,29 @@ fn main() {
       x.window = Some(window);
       drop(x);
 
-      {
+      let threads_to_spawn = [
+        store_fetcher_thread,
+        state_uploader_thread,
+        file_uploader_thread,
+        network_task_manager_thread,
+      ];
+
+      let mut threads_lock = threads.lock().unwrap();
+      let mutable_lock = threads_lock.as_mut().unwrap();
+      for thread in threads_to_spawn {
         let shared_state = shared_state_clone.clone();
-        threads
-          .lock()
-          .unwrap()
-          .as_mut()
-          .unwrap()
-          .push(thread::spawn(move || {
-            store_fetcher_thread(shared_state);
-          }));
+        mutable_lock.push(thread::spawn(move || {
+          thread(shared_state);
+        }))
       }
 
       {
         let shared_state = shared_state_clone.clone();
-        threads
-          .lock()
-          .unwrap()
-          .as_mut()
-          .unwrap()
-          .push(thread::spawn(move || {
-            state_uploader_thread(shared_state);
-          }));
-      }
-      {
-        let shared_state = shared_state_clone.clone();
-        threads
-          .lock()
-          .unwrap()
-          .as_mut()
-          .unwrap()
-          .push(thread::spawn(move || {
-            file_uploader_thread(shared_state);
-          }));
+        mutable_lock.push(thread::spawn(move || {
+          let (task_manager_notifier, task_manager_receiver) = mpsc::channel();
+          shared_state.lock().unwrap().task_manager_notifier = Some(task_manager_notifier);
+          task_manager_thread(shared_state, task_manager_receiver);
+        }))
       }
     })
     .run(tauri::generate_context!())

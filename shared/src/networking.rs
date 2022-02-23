@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 
-pub const SERVER_HOST: &str = "127.0.0.1";
+pub const SERVER_HOST: &str = "172.17.127.121";
 pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {
@@ -27,6 +27,11 @@ enum_from_primitive! {
         Checksum,
         ChecksumOk,
         ChecksumError,
+
+
+        CreateSourceClip,
+        CreateCompositedClip,
+        CreateNode
     }
 }
 

@@ -51,14 +51,12 @@ export class Link {
 
 export default class Pipeline {
     links: Array<Link>;
-    target_node_id: ID;
 
-    constructor(links: Array<Link>, target_node_id: ID) {
+    constructor(links: Array<Link>) {
         this.links = links;
-        this.target_node_id = target_node_id;
     }
     static deserialise(obj: any) {
-        if (Utils.propsUndefined(obj.links, obj.target_node_id)) {
+        if (Utils.propsUndefined(obj.links)) {
             throw new Error("Could not deserialise");
         }
         let links: Array<Link> = [];
@@ -66,7 +64,7 @@ export default class Pipeline {
             links.push(Link.deserialise(o));
         }
 
-        return new Pipeline(links, obj.target_node_id);
+        return new Pipeline(links);
     }
 
 

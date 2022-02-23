@@ -11,6 +11,7 @@ import { faExclamationCircle } from '@fortawesome/free-solid-svg-icons';
 import { Transition, animated } from 'react-spring'
 import { v4 } from 'uuid';
 import CustomEdgeComponent from './CustomEdgeComponent';
+import Communicator from '../../classes/Communicator';
 
 interface Props {
     initial_group?: string;
@@ -59,12 +60,10 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     addNode(node: EditorNode) {
-        node.save();
 
-        let store = Store.getCurrentStore();
-        store.nodes.set(node.id, node);
-        Store.setStore(store);
-
+        Communicator.invoke('add_node', {
+            node
+        });
         return true;
     }
 
@@ -129,9 +128,9 @@ class NodeEditor extends React.Component<Props, State> {
             this.addNotification('Link caused cycle in pipeline', 'error');
         }
         else {
-            this.deleteLinks(e.target, e.targetHandle, false);
-            store.pipeline.links.push(link);
-            Store.setStore(store);
+            Communicator.invoke('add_link', {
+                link
+            });
 
             let ids_left_inputs = [];
             let ids_left_outputs = [];
@@ -141,12 +140,12 @@ class NodeEditor extends React.Component<Props, State> {
                 node.getInputs(true).then(e => {
                     ids_left_inputs = ids_left_inputs.filter(e => e != id);
                     if (ids_left_inputs.length == 0 && ids_left_outputs.length == 0)
-                        Store.setStore();
+                        this.forceUpdate();
                 });
                 node.getOutputs(true).then(e => {
                     ids_left_outputs = ids_left_outputs.filter(e => e != id);
                     if (ids_left_inputs.length == 0 && ids_left_outputs.length == 0)
-                        Store.setStore();
+                        this.forceUpdate();
 
                 });
             }
@@ -163,33 +162,18 @@ class NodeEditor extends React.Component<Props, State> {
         // return true;
     }
 
-    deleteLinks(node_id, property = null, do_update = true) {
-        let links = [];
-        let store = Store.getCurrentStore();
-        for (let link of store.pipeline.links) {
-            if ((link.from.node_id === node_id && (link.from.property === property || property === null))
-                || (link.to.node_id === node_id && (link.to.property === property || property === null))) {
-                continue;
-            }
-            links.push(link);
-        }
-        store.pipeline.links = links;
-        if (do_update) {
-            Store.setStore(store);
-        }
+    deleteLinks(node_id, property = null) {
+        Communicator.invoke('delete_links', {
+            nodeId: node_id,
+            property
+        })
     }
 
 
     deleteNode(node_id) {
-        this.deleteLinks(node_id, null, false);
-
-        let store = Store.getCurrentStore();
-        let selection = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION);
-        if (selection instanceof EditorNode && selection.id === node_id) {
-            EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, null);
-        }
-        store.nodes.delete(node_id);
-        Store.setStore(store);
+        Communicator.invoke('delete_node', {
+            id: node_id
+        });
     }
 
     addImportNode(event: React.DragEvent) {

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Write};
+use std::collections::HashMap;
 
 use rfd::AsyncFileDialog;
 use uuid::Uuid;
@@ -6,14 +6,14 @@ use uuid::Uuid;
 use crate::{
   network_task_manager,
   state_manager::{ConnectionStatus, SharedStateWrapper},
+  task_manager::Task,
 };
 use cs310_shared::{
-  clip::{self, CompositedClip, SourceClip},
+  clip::{self, ClipType, CompositedClip, SourceClip},
   constants::media_output_location,
-  global::uniq_id,
-  networking::{self},
   node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
   nodes::NodeRegister,
+  pipeline::Link,
   store::Store,
   ID,
 };
@@ -24,6 +24,7 @@ pub async fn import_media(
   state: tauri::State<'_, SharedStateWrapper>,
   window: tauri::Window,
 ) -> Result<HashMap<ID, SourceClip>, String> {
+  println!("Importing media...");
   {
     let lock = state.0.lock().unwrap();
     if lock.store.is_none() {
@@ -42,10 +43,11 @@ pub async fn import_media(
     None => Err(String::from("No file selected")),
     Some(paths) => {
       let mut hm = HashMap::new();
-      let mut jobs = Vec::new();
+      // let mut jobs = Vec::new();
+
+      let mut tasks = Vec::new();
       for path in paths {
         let file_path = path.path().to_str().unwrap().to_string();
-
         let info = SourceClip::get_file_info(file_path.clone());
         if info.is_err() {
           return Err(format!(
@@ -68,18 +70,24 @@ pub async fn import_media(
         };
 
         hm.insert(clip.id.clone(), clip.clone());
-        jobs.push(network_task_manager::Task::GetSourceClipID(id.clone()))
+        let task = Task::CreateSourceClip(clip);
+        tasks.push(task);
       }
 
       let mut lock = state.0.lock().unwrap();
-      lock.network_jobs.append(&mut jobs);
-      lock.store.as_mut().unwrap().clips.source.extend(hm.clone());
-
+      lock.tasks.append(&mut tasks);
+      lock
+        .task_manager_notifier
+        .as_ref()
+        .unwrap()
+        .send(true)
+        .unwrap();
       Ok(hm)
     }
   }
 }
 
+/// Executed when the page loads and requests the initial state data for the React UI
 #[tauri::command]
 pub fn get_initial_data(
   state: tauri::State<SharedStateWrapper>,
@@ -92,6 +100,7 @@ pub fn get_initial_data(
   }
 }
 
+/// Gets a hashmap containing the different outputs of the targeted node
 #[tauri::command]
 pub fn get_node_outputs(
   state: tauri::State<SharedStateWrapper>,
@@ -125,6 +134,7 @@ pub fn get_node_outputs(
   return Ok(outputs.clone());
 }
 
+/// Gets a hashmap containing the different inputs of the targeted node
 #[tauri::command]
 pub fn get_node_inputs(
   state: tauri::State<SharedStateWrapper>,
@@ -159,31 +169,15 @@ pub fn get_node_inputs(
 }
 
 #[tauri::command]
-pub fn store_update(state: tauri::State<SharedStateWrapper>, store: Store) -> Result<(), String> {
-  {
-    let lock = state.0.lock().unwrap();
-    if lock.store.is_none() {
-      return Err(format!("Store is not yet set"));
-    }
-  }
-  println!("Updating store...");
-  let mut state = state.0.lock().unwrap();
-  state.store = Some(store.clone());
-  state.file_written = false;
-  println!("Store updated");
-
-  Ok(())
-}
-
-#[tauri::command]
 pub fn get_output_directory() -> String {
   media_output_location()
 }
 
+/// Returns the type of the targeted clip i.e. the different tracks
 #[tauri::command]
 pub fn get_clip_type(
   state: tauri::State<SharedStateWrapper>,
-  clip_type: String,
+  clip_type: ClipType,
   id: ID,
 ) -> Result<PipeableType, String> {
   {
@@ -194,12 +188,12 @@ pub fn get_clip_type(
   }
 
   let state = state.0.lock().unwrap();
-  match clip_type.as_str() {
-    "source" => {
+  match clip_type {
+    ClipType::Source => {
       let clip = state.store.as_ref().unwrap().clips.source.get(&id).unwrap();
       return Ok(clip.get_clip_type());
     }
-    "composited" => {
+    ClipType::Composited => {
       let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
         state.store.as_ref().unwrap(),
         &state.node_register,
@@ -225,4 +219,89 @@ pub fn get_clip_type(
 #[tauri::command]
 pub fn get_connection_status(state: tauri::State<SharedStateWrapper>) -> ConnectionStatus {
   state.0.lock().unwrap().connection_status.clone()
+}
+
+#[tauri::command]
+pub fn create_composited_clip(state: tauri::State<SharedStateWrapper>) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::CreateCompositedClip(CompositedClip {
+    id: Uuid::new_v4(),
+    name: String::from("New Composited Clip"),
+  }));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn add_link(state: tauri::State<SharedStateWrapper>, link: Link) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::AddLink(link));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn update_node(state: tauri::State<SharedStateWrapper>, node: Node) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::UpdateNode(node.id.clone(), node));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn add_node(state: tauri::State<SharedStateWrapper>, node: Node) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::AddNode(node));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn delete_node(state: tauri::State<SharedStateWrapper>, id: Uuid) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::DeleteNode(id));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn delete_links(
+  state: tauri::State<SharedStateWrapper>,
+  node_id: Uuid,
+  property: Option<String>,
+) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::DeleteLinks(node_id, property));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
 }

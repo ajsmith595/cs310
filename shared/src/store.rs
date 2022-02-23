@@ -3,6 +3,10 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use uuid::Uuid;
+
+use crate::clip::{ClipIdentifier, ClipType};
+
 use super::{
     clip::{CompositedClip, SourceClip},
     node::Node,
@@ -89,5 +93,71 @@ impl Store {
         let mut hash = DefaultHasher::new();
         bytes.hash(&mut hash);
         hash.finish()
+    }
+
+    pub fn move_clip(&mut self, original_clip_id: &Uuid, new_clip_id: &Uuid, clip_type: ClipType) {
+        let do_other_transforms = match clip_type {
+            ClipType::Source => {
+                let clip = self.clips.source.remove(original_clip_id);
+                if let Some(mut clip) = clip {
+                    clip.id = new_clip_id.clone();
+                    self.clips.source.insert(new_clip_id.clone(), clip);
+                    true
+                } else {
+                    false
+                }
+            }
+            ClipType::Composited => {
+                let clip = self.clips.composited.remove(original_clip_id);
+                if let Some(mut clip) = clip {
+                    clip.id = new_clip_id.clone();
+                    self.clips.composited.insert(new_clip_id.clone(), clip);
+                    true
+                } else {
+                    false
+                }
+            }
+        };
+
+        if do_other_transforms {
+            for (_, node) in &mut self.nodes {
+                for (_, value) in &mut node.properties {
+                    let decoded_value = serde_json::from_value::<ClipIdentifier>(value.clone());
+                    if let Ok(clip_identifier) = decoded_value {
+                        if clip_identifier.clip_type == clip_type.clone()
+                            && clip_identifier.id == *original_clip_id
+                        {
+                            *value = serde_json::to_value(&ClipIdentifier {
+                                id: new_clip_id.clone(),
+                                clip_type: clip_type.clone(),
+                            })
+                            .unwrap()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn move_node(&mut self, original_node_id: &Uuid, new_node_id: &Uuid) {
+        let node = self.nodes.remove(original_node_id);
+        let do_other_transforms = if let Some(mut node) = node {
+            node.id = new_node_id.clone();
+            self.nodes.insert(new_node_id.clone(), node);
+            true
+        } else {
+            false
+        };
+
+        if do_other_transforms {
+            for link in &mut self.pipeline.links {
+                if link.from.node_id == original_node_id.clone() {
+                    link.from.node_id = new_node_id.clone();
+                }
+                if link.to.node_id == original_node_id.clone() {
+                    link.to.node_id = new_node_id.clone();
+                }
+            }
+        }
     }
 }

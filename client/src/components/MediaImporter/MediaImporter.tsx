@@ -45,41 +45,17 @@ class MediaImporter extends React.Component<Props, State> {
 
 	onImportMediaButtonClick() {
 		this.setOpenTab('source');
-		Communicator.invoke('import_media', null, (data) => {
-
-			let store = Store.getCurrentStore();
-			for (let id in data) {
-				let source_clip = SourceClip.deserialise(data[id]);
-				store.clips.source.set(source_clip.id, source_clip);
-			}
-			EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE_UI, store);
-		});
+		Communicator.invoke('import_media');
 	}
 
 	onCreateCompositedClipButtonClick() {
 		this.setOpenTab('composited');
-		let new_composited_clip = new CompositedClip(v4(), "New Clip");
-		let store = Store.getCurrentStore();
-
-		let pos;
-		{
-			let state = EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_INTERNAL_STATE);
-			let x = (state.width / 2 - state.transform[0]) / state.transform[2];
-			let y = (state.height / 2 - state.transform[1]) / state.transform[2];
-
-			pos = new Position(x, y);
-		}
-
-		let node = EditorNode.createNode('output', v4(), pos);
-		node.properties.set('clip', new ClipIdentifier(new_composited_clip.id, 'Composited'));
-		store.nodes.set(node.id, node);
-		store.clips.composited.set(new_composited_clip.id, new_composited_clip);
-		Store.setStore(store);
-
-		requestAnimationFrame(() => {
-			this.references.composited[new_composited_clip.id].current.enableEditingMode();
-			EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
-		});
+		Communicator.invoke("create_composited_clip");
+		// TODO: redo this in the new format i.e. auto-select the composited clip in the node editor
+		// requestAnimationFrame(() => {
+		// 	this.references.composited[new_composited_clip.id].current.enableEditingMode();
+		// 	EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
+		// });
 	}
 
 

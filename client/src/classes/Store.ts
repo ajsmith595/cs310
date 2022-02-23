@@ -58,7 +58,7 @@ export default class Store {
         if (!nodes) {
             nodes = new Map();
             clips = new ClipStore(new Map(), new Map());
-            pipeline = new Pipeline([], null);
+            pipeline = new Pipeline([]);
         }
         this.nodes = nodes;
         this.clips = clips;
@@ -92,11 +92,5 @@ export default class Store {
 
     static getCurrentStore(): Store {
         return EventBus.getValue(EventBus.GETTERS.APP.STORE);
-    }
-    static setStore(newStore?: Store) {
-        if (!newStore) {
-            newStore = this.getCurrentStore();
-        }
-        EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE, newStore);
     }
 }

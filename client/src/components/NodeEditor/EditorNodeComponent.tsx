@@ -41,7 +41,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
     setNodeProperty(property: string, value: any) {
         this.props.data.node.properties.set(property, value);
-        Store.setStore();
+        this.props.data.node.save();
     }
 
     render() {

@@ -150,22 +150,6 @@ pub fn output_node() -> NodeType {
                 node_register,
             );
         },
-        // get_output: |_, properties: &HashMap<String, Value>, store: &Store, _| {
-        //   let media = properties.get(inputs::MEDIA).unwrap();
-        //   if let Value::String(media) = media {
-        //     let clip = get_clip(properties, store);
-        //     if clip.is_err() {
-        //       return Err(clip.unwrap_err());
-        //     }
-        //     let clip = clip.unwrap();
-        //     return Ok(format!(
-        //       "{}. ! videoconvert name={}",
-        //       media,
-        //       clip.get_gstreamer_id()
-        //     ));
-        //   }
-        //   return Err(format!("Media is invalid type"));
-        // },
     }
 }
 

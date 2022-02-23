@@ -126,13 +126,15 @@ export default class EditorNode {
         });
     }
 
-    async savePosition(newPosition) {
+    savePosition(newPosition) {
         this.position = Position.deserialise(newPosition);
         this.save();
     }
 
-    async save() {
-        Store.setStore();
+    save() {
+        Communicator.invoke('update_node', {
+            node: this.serialise()
+        })
     }
 
     static createNode(type: string, group: string, position: Position) {
@@ -158,7 +160,7 @@ export default class EditorNode {
         event.stopPropagation();
         let data = JSON.parse(event.dataTransfer.getData('application/json'));
         this.properties.set(property, data);
-        Store.setStore();
+        this.save();
     }
 
     changeProperty(property, newValue) {
@@ -198,6 +200,6 @@ export default class EditorNode {
         }
 
         if (hasChanged)
-            Store.setStore();
+            this.save();
     }
 }

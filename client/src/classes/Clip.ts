@@ -76,7 +76,7 @@ export class SourceClip {
     async fetchType() {
         return await new Promise((res, rej) => {
             Communicator.invoke('get_clip_type', {
-                clipType: 'source',
+                clipType: 'Source',
                 id: this.id
             }, (type) => {
                 this._type = type;
@@ -144,7 +144,7 @@ export class CompositedClip {
     async fetchType() {
         return await new Promise((res, rej) => {
             Communicator.invoke('get_clip_type', {
-                clipType: 'composited',
+                clipType: 'Composited',
                 id: this.id
             }, (type) => {
                 this._type = type;
