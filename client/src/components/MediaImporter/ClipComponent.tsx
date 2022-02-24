@@ -1,4 +1,4 @@
-import { faBox, faClosedCaptioning, faFileImport, faMusic, faVideo } from '@fortawesome/free-solid-svg-icons';
+import { faBox, faClosedCaptioning, faExternalLinkSquareAlt, faFileImport, faMusic, faVideo } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import Communicator from '../../classes/Communicator';
@@ -170,7 +170,7 @@ class ClipComponent extends React.Component<Props, State> {
         }
 
         let text = (
-            <div>
+            <div className="flex-1">
 
                 <span className="text-gray-200 text-xs inline" onDoubleClick={this.enableEditingMode}>{type_indicator}{this.props.clip.name.replaceAll(' ', '\u00a0')}</span>
                 <button className="inline ml-3 text-xs text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
@@ -178,7 +178,7 @@ class ClipComponent extends React.Component<Props, State> {
             </div>
         );
         if (this.state.editing) {
-            text = <div className="flex">{type_indicator}<input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xs focus:outline-none flex-1"
+            text = <div className="flex flex-1">{type_indicator}<input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xs focus:outline-none flex-1"
                 defaultValue={this.props.clip.name} onBlur={() => this.disableEditingMode()} onKeyDown={(e) => {
                     if (e.key == "Enter") {
                         this.disableEditingMode();
@@ -225,6 +225,11 @@ class ClipComponent extends React.Component<Props, State> {
         let border = `border border-gray-800`;
 
 
+        let open_in_editor_btn = null;
+
+        if (this.props.clip instanceof CompositedClip) {
+            open_in_editor_btn = <button className="mr-1" onClick={() => { console.log("Open in editor!"); this.openInEditor() }}><FontAwesomeIcon icon={faExternalLinkSquareAlt} /></button>
+        }
         return <tr className={`gap-2 cursor-pointer ${isSelected ? 'bg-pink-600' : 'hover:bg-white hover:bg-opacity-10'} transition-colors`}
             draggable="true"
             onDragStart={this.onDragStart}
@@ -232,7 +237,7 @@ class ClipComponent extends React.Component<Props, State> {
             {/* <div>
                 {img}
             </div> */}
-            <td className={border}>{text}</td>
+            <td className={`${border} flex`}>{open_in_editor_btn}{text}</td>
             <td className={border}>{durationString}</td>
             <td className={border}>Status</td>
             {/* <div className="flex items-center">

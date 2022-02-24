@@ -205,9 +205,6 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
       // do checksum
 
       let checksum = lock.store.as_ref().unwrap().get_client_checksum();
-      let checksum_json = lock.store.as_ref().unwrap().get_client_data();
-      let checksum_json = serde_json::to_string(&checksum_json).unwrap();
-      println!("Checksum JSON: {}", checksum_json);
       drop(lock);
       let mut stream = networking::connect_to_server().unwrap();
       networking::send_message(&mut stream, networking::Message::Checksum).unwrap();
@@ -222,6 +219,14 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
 
           let mut lock = shared_state.lock().unwrap();
           lock.store = Some(store);
+          println!("NOTE: checksum does not match so store has been updated!");
+
+          lock
+            .window
+            .as_ref()
+            .unwrap()
+            .emit("store-update", lock.store.as_ref().unwrap().clone())
+            .unwrap();
         }
         networking::Message::ChecksumOk => {}
         _ => panic!("Invalid response from server!"),

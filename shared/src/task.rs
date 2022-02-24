@@ -104,6 +104,7 @@ impl Task {
 
                     network_jobs.push(NetworkTask::GetCompositedClipID(clip.id.clone()));
                     store.clips.composited.insert(clip.id.clone(), clip);
+                    store.nodes.insert(output_node.id.clone(), output_node);
                 }
                 Task::UpdateClip(id, clip_type, clip) => {
                     match clip_type {

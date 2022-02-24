@@ -68,6 +68,7 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     changeGroup(group: string) {
+        console.log("Changing group to:" + group);
         this.setState({
             group
         });
