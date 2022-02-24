@@ -77,7 +77,7 @@ impl Store {
         self.clips = other.clips.clone();
     }
 
-    pub fn get_client_checksum(&self) -> u64 {
+    pub fn get_client_data(&self) -> Self {
         let mut self_clone = self.clone();
 
         // perform client transformations
@@ -87,6 +87,11 @@ impl Store {
             source_clip.original_file_location = None;
             source_clip.thumbnail_location = None;
         }
+        self_clone
+    }
+
+    pub fn get_client_checksum(&self) -> u64 {
+        let self_clone = self.get_client_data();
 
         // hash the result
         let bytes = serde_json::to_vec(&self_clone).unwrap();
