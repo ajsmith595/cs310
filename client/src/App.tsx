@@ -161,8 +161,6 @@ class App extends React.Component<Props, State> {
 
 		// Events
 		EventBus.on(EventBus.EVENTS.APP.SET_SELECTION, this.setSelectionHandler);
-		EventBus.on(EventBus.EVENTS.APP.SET_STORE, this.setStoreHandler);
-		EventBus.on(EventBus.EVENTS.APP.SET_STORE_UI, this.setStoreUIHandler);
 		EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroupHandler);
 	}
 
@@ -174,8 +172,6 @@ class App extends React.Component<Props, State> {
 		EventBus.unregisterGetter(EventBus.GETTERS.APP.CURRENT_SELECTION);
 
 		EventBus.remove(EventBus.EVENTS.APP.SET_SELECTION, this.setSelectionHandler);
-		EventBus.remove(EventBus.EVENTS.APP.SET_STORE, this.setStoreHandler);
-		EventBus.remove(EventBus.EVENTS.APP.SET_STORE_UI, this.setStoreUIHandler);
 		EventBus.remove(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroupHandler);
 	}
 

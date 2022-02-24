@@ -87,11 +87,12 @@ class ClipComponent extends React.Component<Props, State> {
 
 
     changeClipName(newName) {
-        let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
-
-        let map = store.clips[(this.props.clip instanceof SourceClip) ? 'source' : 'composited'];
-        map.get(this.props.clip.id).name = newName.trim();
-        EventBus.dispatch(EventBus.EVENTS.APP.SET_STORE, store);
+        this.props.clip.name = newName;
+        Communicator.invoke('update_clip', {
+            clipId: this.props.clip.id,
+            clipType: (this.props.clip instanceof SourceClip) ? 'Source' : 'Composited',
+            clip: this.props.clip.serialise()
+        });
     }
 
     enableEditingMode() {

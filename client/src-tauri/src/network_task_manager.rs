@@ -194,6 +194,8 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
             drop(lock);
             let bytes = serde_json::to_vec(&clip).unwrap();
             let mut stream = networking::connect_to_server().unwrap();
+            let clip_type_bytes = (clip_type as u8).to_ne_bytes();
+            networking::send_data(&mut stream, &clip_type_bytes).unwrap();
             networking::send_message(&mut stream, networking::Message::UpdateClip).unwrap();
             networking::send_as_file(&mut stream, &bytes);
           }

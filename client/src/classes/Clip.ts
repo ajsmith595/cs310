@@ -33,25 +33,46 @@ interface SourceClipInfo {
 export class SourceClip {
     public id: ID;
     public name: string;
-    public file_location: string;
-    public thumbnail_location: string;
-    public info?: SourceClipInfo; // TODO: implement proper (de)serialiser for this
     public status: any;
-    constructor(id: ID, name: string, file_location: string, thumbnail_location: string, info: SourceClipInfo, status: any) {
+    public info?: SourceClipInfo; // TODO: implement proper (de)serialiser for this
+
+    public original_file_location?: string;
+
+    public file_location: null;
+    public original_device_id: null;
+    public thumbnail_location: null;
+    constructor(id: ID, name: string, status: any, info?: SourceClipInfo, original_file_location?: string) {
         this.id = id;
         this.name = name;
-        this.file_location = file_location;
-        this.thumbnail_location = thumbnail_location;
         this.info = info;
         this.status = status;
+
+        this.original_file_location = original_file_location;
+
+        this.file_location = null;
+        this.original_device_id = null;
+        this.thumbnail_location = null;
     }
 
     static deserialise(obj: any) {
         if (obj == null) return null;
-        if (Utils.propsUndefined(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info, obj.status)) {
+        if (Utils.propsUndefined(obj.id, obj.name, obj.status, obj.info, obj.original_file_location, obj.file_location, obj.original_device_id, obj.thumbnail_location)) {
             throw new Error("Could not deserialise! Malformed object");
         }
-        return new SourceClip(obj.id, obj.name, obj.file_location, obj.thumbnail_location, obj.info, obj.status);
+        return new SourceClip(obj.id, obj.name, obj.status, obj.info, obj.original_file_location);
+    }
+
+    serialise() {
+        return {
+            id: this.id,
+            name: this.name,
+            status: this.status,
+            info: this.info,
+            original_file_location: this.original_file_location,
+            file_location: null,
+            original_device_id: null,
+            thumbnail_location: null,
+        }
     }
 
 
@@ -108,6 +129,15 @@ export class CompositedClip {
             throw new Error("Could not deserialise! Malformed object");
         }
         return new CompositedClip(obj.id, obj.name);
+    }
+
+
+
+    serialise() {
+        return {
+            id: this.id,
+            name: this.name,
+        }
     }
 
 

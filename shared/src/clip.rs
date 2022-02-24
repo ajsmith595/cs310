@@ -11,10 +11,12 @@ use crate::{
 
 use super::{node::PipeableStreamType, ID};
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-pub enum ClipType {
-    Source,
-    Composited,
+enum_from_primitive! {
+    #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+    pub enum ClipType {
+        Source,
+        Composited,
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -97,6 +97,7 @@ fn main() {
       tauri_commands::add_node,
       tauri_commands::delete_node,
       tauri_commands::delete_links,
+      tauri_commands::update_clip
     ])
     .on_page_load(move |app, _ev| {
       let threads = threads_clone.clone();
