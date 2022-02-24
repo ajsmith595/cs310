@@ -192,12 +192,11 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
             let clip = clip.unwrap();
 
             drop(lock);
-            let bytes = serde_json::to_vec(&clip).unwrap();
             let mut stream = networking::connect_to_server().unwrap();
             let clip_type_bytes = (clip_type as u8).to_ne_bytes();
-            networking::send_data(&mut stream, &clip_type_bytes).unwrap();
             networking::send_message(&mut stream, networking::Message::UpdateClip).unwrap();
-            networking::send_as_file(&mut stream, &bytes);
+            networking::send_data(&mut stream, &clip_type_bytes).unwrap();
+            networking::send_as_file(&mut stream, &clip);
           }
         }
       }
@@ -206,9 +205,13 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
       // do checksum
 
       let checksum = lock.store.as_ref().unwrap().get_client_checksum();
+      let checksum_json = lock.store.as_ref().unwrap().get_client_data();
+      let checksum_json = serde_json::to_string(&checksum_json).unwrap();
+      println!("Checksum JSON: {}", checksum_json);
       drop(lock);
       let mut stream = networking::connect_to_server().unwrap();
       networking::send_message(&mut stream, networking::Message::Checksum).unwrap();
+
       let bytes = checksum.to_ne_bytes();
       networking::send_data(&mut stream, &bytes).unwrap();
       let response = networking::receive_message(&mut stream).unwrap();

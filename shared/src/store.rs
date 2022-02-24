@@ -1,11 +1,23 @@
 use std::{
-    collections::{hash_map::DefaultHasher, HashMap},
+    collections::{hash_map::DefaultHasher, BTreeMap, HashMap},
     hash::{Hash, Hasher},
 };
 
+use serde::{Serialize, Serializer};
 use uuid::Uuid;
 
 use crate::clip::{ClipIdentifier, ClipType};
+
+fn ordered_map<S, T, X>(value: &HashMap<T, X>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Ord,
+    T: Serialize,
+    X: Serialize,
+{
+    let ordered: BTreeMap<_, _> = value.iter().collect();
+    ordered.serialize(serializer)
+}
 
 use super::{
     clip::{CompositedClip, SourceClip},
@@ -15,7 +27,9 @@ use super::{
 };
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClipStore {
+    #[serde(serialize_with = "ordered_map")]
     pub source: HashMap<ID, SourceClip>,
+    #[serde(serialize_with = "ordered_map")]
     pub composited: HashMap<ID, CompositedClip>,
 }
 impl ClipStore {
@@ -28,6 +42,7 @@ impl ClipStore {
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Store {
+    #[serde(serialize_with = "ordered_map")]
     pub nodes: HashMap<ID, Node>,
     pub clips: ClipStore,
     pub pipeline: Pipeline,
