@@ -23,3 +23,4 @@ pub mod pipeline;
 pub mod store;
 pub type ID = Uuid;
 pub mod constants;
+pub mod task;

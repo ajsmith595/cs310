@@ -9,23 +9,12 @@ use cs310_shared::{
   networking,
   pipeline::Link,
   store::Store,
+  task::NetworkTask,
   ID,
 };
 use uuid::Uuid;
 
 use crate::state_manager::SharedState;
-
-#[derive(Clone)]
-pub enum NetworkTask {
-  GetSourceClipID(ID),
-  GetCompositedClipID(ID),
-  GetNodeID(ID),
-  UpdateNode(ID),
-  AddLink(Link),
-  DeleteLinks(ID, Option<String>),
-  DeleteNode(ID),
-  UpdateClip(ID, ClipType),
-}
 
 pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
   let mut should_checksum = false;

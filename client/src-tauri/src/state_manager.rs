@@ -5,9 +5,11 @@ use std::sync::{
 
 use tauri::{Window, Wry};
 
-use cs310_shared::{nodes::NodeRegister, store::Store};
-
-use crate::{network_task_manager, task_manager::Task};
+use cs310_shared::{
+  nodes::NodeRegister,
+  store::Store,
+  task::{NetworkTask, Task},
+};
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);
 
@@ -20,7 +22,7 @@ pub struct SharedState {
   pub window: Option<Window<Wry>>,
   pub node_register: NodeRegister,
   pub tasks: Vec<Task>,
-  pub network_jobs: Vec<network_task_manager::NetworkTask>,
+  pub network_jobs: Vec<NetworkTask>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
