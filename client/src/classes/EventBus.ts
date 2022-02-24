@@ -46,8 +46,6 @@ const EventBus = {
             CHANGE_GROUP: NODE_EDITOR_BASE + "change_group"
         },
         APP: {
-            SET_STORE: APP_BASE + "set_store",
-            SET_STORE_UI: APP_BASE + "set_store_ui_only",
             SET_SELECTION: APP_BASE + "set_selection"
         }
     },

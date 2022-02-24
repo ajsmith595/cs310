@@ -56,6 +56,7 @@ pub fn state_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                 let stream = networking::connect_to_server();
 
                 if let Ok(mut stream) = stream {
+                  println!("Sending store!");
                   networking::send_message(&mut stream, networking::Message::SetStore).unwrap();
                   let mut file = File::open(store_json_location()).unwrap();
                   networking::send_file(&mut stream, &mut file);

@@ -7,6 +7,7 @@ use std::{
 use cs310_shared::{
   clip::{ClipType, SourceClipServerStatus},
   networking,
+  pipeline::Link,
   store::Store,
   ID,
 };
@@ -19,6 +20,11 @@ pub enum NetworkTask {
   GetSourceClipID(ID),
   GetCompositedClipID(ID),
   GetNodeID(ID),
+  UpdateNode(ID),
+  AddLink(Link),
+  DeleteLinks(ID, Option<String>),
+  DeleteNode(ID),
+  UpdateClip(ID, ClipType),
 }
 
 pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
@@ -46,6 +52,11 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
 
               let bytes = serde_json::to_vec(&clip).unwrap();
               let mut stream = networking::connect_to_server().unwrap();
+
+              println!(
+                "Sending 'CreateSourceClip' as: {}",
+                networking::Message::CreateSourceClip as u8
+              );
               networking::send_message(&mut stream, networking::Message::CreateSourceClip).unwrap();
               networking::send_as_file(&mut stream, &bytes);
 
@@ -124,6 +135,78 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
               let mut lock = shared_state.lock().unwrap();
               lock.store.as_mut().unwrap().move_node(&node_id, &uuid);
             }
+          }
+          NetworkTask::UpdateNode(node_id) => {
+            let lock = shared_state.lock().unwrap();
+            let node = lock.store.as_ref().unwrap().nodes.get(&node_id);
+            if let Some(node) = node {
+              let node = node.clone();
+              drop(lock);
+              let bytes = serde_json::to_vec(&node).unwrap();
+              let mut stream = networking::connect_to_server().unwrap();
+              networking::send_message(&mut stream, networking::Message::UpdateNode).unwrap();
+              networking::send_as_file(&mut stream, &bytes);
+            }
+          }
+          NetworkTask::AddLink(link) => {
+            let bytes = serde_json::to_vec(&link).unwrap();
+            let mut stream = networking::connect_to_server().unwrap();
+            networking::send_message(&mut stream, networking::Message::AddLink).unwrap();
+            networking::send_as_file(&mut stream, &bytes);
+          }
+          NetworkTask::DeleteLinks(node_id, property) => {
+            let bytes = node_id.as_bytes();
+            let mut stream = networking::connect_to_server().unwrap();
+            networking::send_message(&mut stream, networking::Message::DeleteLinks).unwrap();
+            networking::send_data(&mut stream, bytes).unwrap();
+            let property = match property {
+              Some(prop) => prop,
+              None => String::from(""),
+            };
+            let bytes = property.as_bytes();
+            networking::send_as_file(&mut stream, bytes);
+          }
+          NetworkTask::DeleteNode(node_id) => {
+            let bytes = node_id.as_bytes();
+            let mut stream = networking::connect_to_server().unwrap();
+            networking::send_message(&mut stream, networking::Message::DeleteNode).unwrap();
+            networking::send_data(&mut stream, bytes).unwrap();
+          }
+          NetworkTask::UpdateClip(clip_id, clip_type) => {
+            let lock = shared_state.lock().unwrap();
+
+            let clip = match clip_type {
+              ClipType::Source => {
+                let clip = lock.store.as_ref().unwrap().clips.source.get(&clip_id);
+                if let Some(clip) = clip {
+                  let clip = clip.clone();
+
+                  Some(serde_json::to_vec(&clip).unwrap())
+                } else {
+                  None
+                }
+              }
+              ClipType::Composited => {
+                let clip = lock.store.as_ref().unwrap().clips.composited.get(&clip_id);
+                if let Some(clip) = clip {
+                  let clip = clip.clone();
+
+                  Some(serde_json::to_vec(&clip).unwrap())
+                } else {
+                  None
+                }
+              }
+            };
+            if clip.is_none() {
+              return;
+            }
+            let clip = clip.unwrap();
+
+            drop(lock);
+            let bytes = serde_json::to_vec(&clip).unwrap();
+            let mut stream = networking::connect_to_server().unwrap();
+            networking::send_message(&mut stream, networking::Message::UpdateClip).unwrap();
+            networking::send_as_file(&mut stream, &bytes);
           }
         }
       }

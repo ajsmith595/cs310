@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 
-pub const SERVER_HOST: &str = "172.17.127.121";
+pub const SERVER_HOST: &str = "172.17.118.211";
 pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {
@@ -31,7 +31,12 @@ enum_from_primitive! {
 
         CreateSourceClip,
         CreateCompositedClip,
-        CreateNode
+        CreateNode,
+        UpdateNode,
+        AddLink,
+        DeleteLinks,
+        UpdateClip,
+        DeleteNode
     }
 }
 
@@ -107,6 +112,7 @@ pub fn send_message_with_data(
     message: Message,
     bytes: &[u8],
 ) -> Result<(), Error> {
+    println!("Sending message: {:?}", message);
     let mut base = Vec::new();
     base.push(message as u8);
     base.extend_from_slice(bytes);

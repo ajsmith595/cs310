@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rfd::AsyncFileDialog;
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
@@ -297,6 +298,24 @@ pub fn delete_links(
 ) {
   let mut lock = state.0.lock().unwrap();
   lock.tasks.push(Task::DeleteLinks(node_id, property));
+
+  lock
+    .task_manager_notifier
+    .as_ref()
+    .unwrap()
+    .send(true)
+    .unwrap();
+}
+
+#[tauri::command]
+pub fn update_clip(
+  state: tauri::State<SharedStateWrapper>,
+  clip_id: Uuid,
+  clip_type: ClipType,
+  clip: Value,
+) {
+  let mut lock = state.0.lock().unwrap();
+  lock.tasks.push(Task::UpdateClip(clip_id, clip_type, clip));
 
   lock
     .task_manager_notifier

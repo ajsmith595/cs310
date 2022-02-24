@@ -11,6 +11,7 @@ use cs310_shared::{
   pipeline::Link,
   ID,
 };
+use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{network_task_manager, state_manager::SharedState};
@@ -21,6 +22,7 @@ pub enum Task {
   AddLink(Link),
   DeleteLinks(ID, Option<String>),
   DeleteNode(ID),
+  UpdateClip(ID, ClipType, Value),
   CreateSourceClip(SourceClip),
   CreateCompositedClip(CompositedClip),
 }
@@ -42,6 +44,7 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
       match task {
         Task::UpdateNode(id, node) => {
           mutable_store.nodes.insert(id, node);
+          network_jobs.push(network_task_manager::NetworkTask::UpdateNode(id));
         }
         Task::AddNode(node) => {
           let id = node.id.clone();
@@ -55,6 +58,7 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
             .filter(|x| x.to.get_id() != link.to.get_id())
             .collect();
 
+          network_jobs.push(network_task_manager::NetworkTask::AddLink(link.clone()));
           new_links.push(link);
 
           mutable_store.pipeline.links = new_links;
@@ -62,7 +66,7 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
         Task::DeleteLinks(id, property) => {
           let mut new_links = mutable_store.pipeline.links.clone();
 
-          new_links = match property {
+          new_links = match property.clone() {
             None => new_links
               .into_iter()
               .filter(|x: &Link| x.to.node_id != id)
@@ -73,6 +77,7 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
               .collect(),
           };
           mutable_store.pipeline.links = new_links;
+          network_jobs.push(network_task_manager::NetworkTask::DeleteLinks(id, property));
         }
         Task::DeleteNode(id) => {
           let mut new_links = mutable_store.pipeline.links.clone();
@@ -83,6 +88,8 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
             .collect();
           mutable_store.pipeline.links = new_links;
           mutable_store.nodes.remove(&id);
+
+          network_jobs.push(network_task_manager::NetworkTask::DeleteNode(id));
         }
         Task::CreateSourceClip(clip) => {
           network_jobs.push(network_task_manager::NetworkTask::GetSourceClipID(
@@ -106,8 +113,52 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
           ));
           mutable_store.clips.composited.insert(clip.id.clone(), clip);
         }
+        Task::UpdateClip(id, clip_type, clip) => {
+          match clip_type {
+            ClipType::Source => {
+              let clip = serde_json::from_value::<SourceClip>(clip);
+              if clip.is_err() {
+                continue;
+              }
+              let mut clip = clip.unwrap();
+
+              clip.id = id.clone();
+              let existing_clip = mutable_store.clips.source.get_mut(&id);
+              if existing_clip.is_none() {
+                continue;
+              }
+              let existing_clip = existing_clip.unwrap();
+              *existing_clip = clip;
+            }
+            ClipType::Composited => {
+              let clip = serde_json::from_value::<CompositedClip>(clip);
+              if clip.is_err() {
+                continue;
+              }
+              let mut clip = clip.unwrap();
+
+              clip.id = id.clone();
+              let existing_clip = mutable_store.clips.composited.get_mut(&id);
+              if existing_clip.is_none() {
+                continue;
+              }
+              let existing_clip = existing_clip.unwrap();
+              *existing_clip = clip;
+            }
+          }
+          network_jobs.push(network_task_manager::NetworkTask::UpdateClip(id, clip_type));
+        }
       }
     }
     lock.network_jobs.append(&mut network_jobs);
+
+    if lock.window.is_some() && lock.store.is_some() {
+      lock
+        .window
+        .as_ref()
+        .unwrap()
+        .emit("store-update", lock.store.as_ref().unwrap().clone())
+        .unwrap();
+    }
   }
 }

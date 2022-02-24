@@ -148,6 +148,12 @@ class App extends React.Component<Props, State> {
 		Communicator.invoke('get_connection_status', null, this.connectionStatusUpdate);
 		Communicator.on('connection-status', this.connectionStatusUpdate);
 
+		Communicator.on('store-update', (store) => {
+			this.setState({
+				Store: Store.deserialise(store)
+			});
+		})
+
 
 		// Getters
 		EventBus.registerGetter(EventBus.GETTERS.APP.STORE, () => this.state.Store);
