@@ -149,8 +149,10 @@ class App extends React.Component<Props, State> {
 		Communicator.on('connection-status', this.connectionStatusUpdate);
 
 		Communicator.on('store-update', (store) => {
+			let _store = Store.deserialise(store);
+			console.log(_store);
 			this.setState({
-				Store: Store.deserialise(store)
+				Store: _store
 			});
 		})
 

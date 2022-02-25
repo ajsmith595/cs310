@@ -60,9 +60,8 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     addNode(node: EditorNode) {
-
         Communicator.invoke('add_node', {
-            node
+            node: node.serialise()
         });
         return true;
     }
@@ -204,7 +203,7 @@ class NodeEditor extends React.Component<Props, State> {
 
         let nodesInPreparation = [];
         for (let [id, node] of store.nodes.entries()) {
-            if (node.outputs === null || node.inputs == null) {
+            if (node.getOutputsSync() === null || node.getInputsSync() == null) {
                 nodesInPreparation.push(node);
                 continue;
             }
@@ -230,15 +229,15 @@ class NodeEditor extends React.Component<Props, State> {
 
             let from_node = store.nodes.get(link.from.node_id);
             let to_node = store.nodes.get(link.to.node_id);
-            if (!from_node.outputs || !to_node.inputs || from_node.group !== this.state.group || to_node.group !== this.state.group)
+            if (!from_node.getOutputsSync() || !to_node.getInputsSync() || from_node.group !== this.state.group || to_node.group !== this.state.group)
                 continue;
 
 
 
-            let input = to_node.inputs.get(link.to.property);
+            let input = to_node.getInputsSync().get(link.to.property);
             if (input) {
                 let to_node_type = input.property_type;
-                let output = from_node.outputs.get(link.from.property);
+                let output = from_node.getOutputsSync().get(link.from.property);
                 if (output) {
                     elements.push({
                         id: link.id,
@@ -268,8 +267,6 @@ class NodeEditor extends React.Component<Props, State> {
                     }} edgeTypes={{ custom_edge: CustomEdgeComponent }}
 
                         onNodeDragStop={(_, node) => store.nodes.get(node.id).savePosition(node.position)}
-                        onNodeDragStart={(e, n) => {
-                        }}
 
                         onConnect={(e) => this.addLink(e)}
                     />

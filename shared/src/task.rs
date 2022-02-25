@@ -39,8 +39,12 @@ impl Task {
         for task in tasks {
             match task {
                 Task::UpdateNode(id, node) => {
-                    store.nodes.insert(id, node);
-                    network_jobs.push(NetworkTask::UpdateNode(id));
+                    let res = store.nodes.insert(id, node);
+                    if res.is_none() {
+                        store.nodes.remove(&id);
+                    } else {
+                        network_jobs.push(NetworkTask::UpdateNode(id));
+                    }
                 }
                 Task::AddNode(node) => {
                     let id = node.id.clone();

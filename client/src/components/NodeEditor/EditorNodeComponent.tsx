@@ -54,7 +54,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             height = "100%";
         }
 
-        for (let [property, prop] of this.props.data.node.inputs.entries()) {
+        for (let [property, prop] of this.props.data.node.getInputsSync().entries()) {
             let accepted_type = prop.property_type;
 
             if (accepted_type.type === 'Pipeable') {
@@ -93,7 +93,7 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                 );
             }
         }
-        for (let [output_type, output] of this.props.data.node.outputs.entries()) {
+        for (let [output_type, output] of this.props.data.node.getOutputsSync().entries()) {
             properties.push(
                 <div className={`relative p-2 border-r border-white transition-colors ${this.state.hovered_property === output_type && this.state.expanded ? 'bg-white bg-opacity-10  border-opacity-70' : 'border-opacity-40'}`}
                     onMouseEnter={() => this.setState({ hovered_property: output_type })}

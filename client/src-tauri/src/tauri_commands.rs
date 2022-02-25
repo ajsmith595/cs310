@@ -188,7 +188,11 @@ pub fn get_clip_type(
   let state = state.0.lock().unwrap();
   match clip_type {
     ClipType::Source => {
-      let clip = state.store.as_ref().unwrap().clips.source.get(&id).unwrap();
+      let clip = state.store.as_ref().unwrap().clips.source.get(&id);
+      if clip.is_none() {
+        return Err(format!("Clip not found"));
+      }
+      let clip = clip.unwrap();
       return Ok(clip.get_clip_type());
     }
     ClipType::Composited => {

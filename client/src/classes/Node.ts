@@ -3,6 +3,7 @@ import Utils from "./Utils";
 import { v4 } from 'uuid';
 import Store from "./Store";
 import { NodeRegistration, NodeRegistrationOutput, NodeRegistrationInput } from "./NodeRegistration";
+import Cache from "./Cache";
 
 
 
@@ -96,32 +97,46 @@ export default class EditorNode {
         return obj;
     }
 
-    public inputs: Map<string, NodeRegistrationInput> = null;
+    private get cacheID() {
+        return "node_" + this.id + "_";
+    }
+
+    getInputsSync() {
+        let cacheID = this.cacheID + "inputs";
+        return Cache.get(cacheID);
+    }
+
     async getInputs(force = false) {
-        if (this.inputs != null && !force) {
-            return this.inputs;
+        let cacheID = this.cacheID + "inputs";
+        if (Cache.get(cacheID) != null && !force) {
+            return Cache.get(cacheID);
         }
         Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
             let inputs = new Map();
             for (let prop in data) {
                 inputs.set(prop, NodeRegistrationInput.deserialise(data[prop]));
             }
-            this.inputs = inputs;
+            Cache.put(cacheID, inputs);
             return inputs;
         });
     }
 
-    public outputs: Map<string, NodeRegistrationOutput> = null;
+    getOutputsSync() {
+        let cacheID = this.cacheID + "outputs";
+        return Cache.get(cacheID);
+    }
+
     async getOutputs(force = false) {
-        if (this.outputs != null && !force) {
-            return this.outputs;
+        let cacheID = this.cacheID + "outputs";
+        if (Cache.get(cacheID) != null && !force) {
+            return Cache.get(cacheID);
         }
         Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
             let outputs = new Map();
             for (let prop in data) {
                 outputs.set(prop, NodeRegistrationOutput.deserialise(data[prop]));
             }
-            this.outputs = outputs;
+            Cache.put(cacheID, outputs);
             return outputs;
         });
     }
@@ -165,7 +180,7 @@ export default class EditorNode {
 
     changeProperty(property, newValue) {
         //let register_entry = EditorNode.NodeRegister.get(this.node_type);
-        let property_entry = this.inputs.get(property);
+        let property_entry = this.getInputsSync().get(property);
 
         let hasChanged = false;
         if (property_entry.property_type.type == 'Number') {

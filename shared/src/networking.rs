@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 
-pub const SERVER_HOST: &str = "172.17.118.211";
+pub const SERVER_HOST: &str = "172.17.115.26";
 pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {

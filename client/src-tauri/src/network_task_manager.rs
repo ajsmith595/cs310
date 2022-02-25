@@ -215,7 +215,8 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
       match response {
         networking::Message::ChecksumError => {
           let new_store_bytes = networking::receive_file_as_bytes(&mut stream);
-          let store = serde_json::from_slice::<Store>(&new_store_bytes).unwrap();
+          let store_str = String::from_utf8(new_store_bytes).unwrap();
+          let store = serde_json::from_str::<Store>(&store_str).unwrap();
 
           let mut lock = shared_state.lock().unwrap();
           lock.store = Some(store);

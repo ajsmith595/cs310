@@ -24,7 +24,7 @@ pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<b
     if !response {
       return;
     }
-    thread::sleep(Duration::from_millis(10)); // wait a tiny bit so that if we're doing lots of things at once, we allow that to happen
+    //thread::sleep(Duration::from_millis(10)); // wait a tiny bit so that if we're doing lots of things at once, we allow that to happen
     let mut lock = shared_state.lock().unwrap();
     let tasks = lock.tasks.clone();
     lock.tasks.clear();

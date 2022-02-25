@@ -46,7 +46,7 @@ class PropertiesPanel extends React.Component<Props, State> {
         let registration = EditorNode.NodeRegister.get(selection.node_type);
         let props = [];
 
-        for (let [prop, prop_detail] of selection.inputs.entries()) {
+        for (let [prop, prop_detail] of selection.getInputsSync().entries()) {
             let is_piped = prop_detail.property_type.type == 'Pipeable';
             if (is_piped)
                 continue;
