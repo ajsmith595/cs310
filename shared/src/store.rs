@@ -99,7 +99,7 @@ impl Store {
         for (_, source_clip) in &mut self_clone.clips.source {
             source_clip.file_location = None;
             source_clip.original_device_id = None;
-            source_clip.original_file_location = None;
+            // source_clip.original_file_location = None; // TODO: get client's device ID, pass to this function
             source_clip.thumbnail_location = None;
         }
         self_clone

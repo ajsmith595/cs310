@@ -36,7 +36,8 @@ enum_from_primitive! {
         AddLink,
         DeleteLinks,
         UpdateClip,
-        DeleteNode
+        DeleteNode,
+        CouldNotGeneratePreview
     }
 }
 
@@ -45,7 +46,9 @@ pub fn connect_to_server() -> Result<TcpStream, Error> {
 }
 
 pub fn send_as_file(stream: &mut TcpStream, file_data: &[u8]) {
+    println!("Sending file (as bytes) of length: {}", file_data.len());
     let length = file_data.len().to_ne_bytes();
+
     send_data(stream, &length).unwrap(); // send the file length
     send_data(stream, file_data).unwrap();
 }

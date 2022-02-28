@@ -20,6 +20,13 @@ gst-pbutils = {package = "gstreamer-pbutils", version = "0.18.0"}
 ges  = {package = "gstreamer-editing-services",version = "0.18.0" }
 glib = "0.15.3"
 
+procspawn = "0.10.1"
+ipc-channel = "0.15.0"
+
+
+num-traits = "0.2"
+num-derive = "0.2"
+enum_primitive = "0.1.1"
 log = "0.4.14"
 simple_logger = "2.1.0"
 ctrlc = "3.2.1"
