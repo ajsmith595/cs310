@@ -71,6 +71,20 @@ export default class EditorNode {
     }
 
 
+    static moveCacheData(from_id: ID, to_id: ID) {
+        let cacheInputs1 = this.cacheID(from_id) + "inputs";
+        let cacheOutputs1 = this.cacheID(from_id) + "outputs";
+
+        let cacheInputs2 = this.cacheID(to_id) + "inputs";
+        let cacheOutputs2 = this.cacheID(to_id) + "outputs";
+
+        Cache.put(cacheInputs2, Cache.get(cacheInputs1));
+        Cache.put(cacheOutputs2, Cache.get(cacheOutputs1));
+        console.log("Copied " + cacheInputs1 + " => " + cacheInputs2);
+        console.log("Copied " + cacheOutputs1 + " => " + cacheOutputs2);
+    }
+
+
 
 
     static deserialise(obj: any) {
@@ -97,8 +111,12 @@ export default class EditorNode {
         return obj;
     }
 
+    private static cacheID(id: ID) {
+        return "node_" + id + "_";
+    }
+
     private get cacheID() {
-        return "node_" + this.id + "_";
+        return EditorNode.cacheID(this.id);
     }
 
     getInputsSync() {
@@ -111,6 +129,7 @@ export default class EditorNode {
         if (Cache.get(cacheID) != null && !force) {
             return Cache.get(cacheID);
         }
+        console.log("Cannot get inputs by cache - getting via get_node_inputs! (cache id: " + cacheID + ")");
         Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
             let inputs = new Map();
             for (let prop in data) {

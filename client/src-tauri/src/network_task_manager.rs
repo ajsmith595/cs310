@@ -14,7 +14,7 @@ use cs310_shared::{
 };
 use uuid::Uuid;
 
-use crate::state_manager::SharedState;
+use crate::state::SharedState;
 
 pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
   let mut should_checksum = false;
@@ -103,6 +103,13 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
                 &uuid,
                 ClipType::Composited,
               );
+
+              lock
+                .window
+                .as_ref()
+                .unwrap()
+                .emit("store-update", lock.store.as_ref().unwrap().clone())
+                .unwrap();
             }
           }
           NetworkTask::GetNodeID(node_id) => {
@@ -123,6 +130,16 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
 
               let mut lock = shared_state.lock().unwrap();
               lock.store.as_mut().unwrap().move_node(&node_id, &uuid);
+
+              let window = lock.window.as_ref().unwrap();
+
+              window
+                .emit("move-node", (node_id.clone(), uuid.clone()))
+                .unwrap();
+
+              window
+                .emit("store-update", lock.store.as_ref().unwrap().clone())
+                .unwrap();
             }
           }
           NetworkTask::UpdateNode(node_id) => {
@@ -216,6 +233,7 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
         networking::Message::ChecksumError => {
           let new_store_bytes = networking::receive_file_as_bytes(&mut stream);
           let store_str = String::from_utf8(new_store_bytes).unwrap();
+          println!("Decoding string: {}", store_str);
           let store = serde_json::from_str::<Store>(&store_str).unwrap();
 
           let mut lock = shared_state.lock().unwrap();

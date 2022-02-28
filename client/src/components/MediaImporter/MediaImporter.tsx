@@ -131,12 +131,12 @@ class MediaImporter extends React.Component<Props, State> {
 				><FontAwesomeIcon icon={faFileImport} /></button>
 			</div>
 			<div className="flex-grow relative overflow-y-scroll">
-				<table className='table-auto w-full text-xs absolute border-collapse text-white'>
+				<table className='table-fixed w-full text-xs absolute border-collapse text-white'>
 					<thead>
 						<tr className="bg-black bg-opacity-20">
-							<td className='text-left  border border-gray-800 small-caps'>file</td>
-							<td className='text-left  border border-gray-800 small-caps'>duration</td>
-							<td className='text-left  border border-gray-800 small-caps'>status</td>
+							<td className='w-2/3 text-left  border border-gray-800 small-caps'>file</td>
+							<td className='w-1/6 text-left  border border-gray-800 small-caps'>duration</td>
+							<td className='w-1/6 text-left  border border-gray-800 small-caps'>status</td>
 						</tr>
 					</thead>
 					<tbody>

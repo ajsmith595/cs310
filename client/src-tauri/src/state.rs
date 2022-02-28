@@ -1,6 +1,9 @@
-use std::sync::{
-  mpsc::{Receiver, Sender},
-  Arc, Mutex,
+use std::{
+  collections::HashMap,
+  sync::{
+    mpsc::{Receiver, Sender},
+    Arc, Mutex,
+  },
 };
 
 use tauri::{Window, Wry};
@@ -10,6 +13,21 @@ use cs310_shared::{
   store::Store,
   task::{NetworkTask, Task},
 };
+use uuid::Uuid;
+#[derive(Clone)]
+pub enum VideoPreviewChunkStatus {
+  NotRequested, // front end not asked for
+  Requested,    // requested by front end, backend not yet asked server
+  Requesting,   // asked from server, awaiting response
+  Downloaded,   // downloaded, ready to be used by front end
+}
+
+#[derive(Clone)]
+pub enum VideoPreviewStatus {
+  NotRequested,
+  LengthRequested,
+  Data(Vec<VideoPreviewChunkStatus>),
+}
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);
 
@@ -23,6 +41,7 @@ pub struct SharedState {
   pub node_register: NodeRegister,
   pub tasks: Vec<Task>,
   pub network_jobs: Vec<NetworkTask>,
+  pub video_preview_data: HashMap<Uuid, VideoPreviewStatus>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

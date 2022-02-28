@@ -30,7 +30,7 @@ class ClipComponent extends React.Component<Props, State> {
         this.state = {
             editing: false,
             thumbnailData: "",
-            uploadProgress: 50
+            uploadProgress: 0
         };
         this.changeClipName = this.changeClipName.bind(this);
         this.enableEditingMode = this.enableEditingMode.bind(this);
@@ -39,6 +39,7 @@ class ClipComponent extends React.Component<Props, State> {
         this.onDragStart = this.onDragStart.bind(this);
         this.selectClip = this.selectClip.bind(this);
     }
+
 
 
     componentDidMount() {
@@ -188,6 +189,7 @@ class ClipComponent extends React.Component<Props, State> {
         }
 
         let extraDisplay = null;
+        let status = null;
         if (this.props.clip instanceof SourceClip) {
             extraDisplay = <p className="text-gray-400 text-xs">{this.props.clip.file_location}</p>;
 
@@ -196,7 +198,13 @@ class ClipComponent extends React.Component<Props, State> {
             extraDisplay = <div className='relative h-2 border border-black rounded'>
                 <div className='bg-white left-0 absolute h-full rounded' style={{ width }}>
                 </div>
-            </div>
+            </div>;
+
+            status = this.props.clip.status;
+
+            if (status == 'Uploading') {
+                status += " " + Math.round(this.state.uploadProgress) + "%";
+            }
         }
         else {
             extraDisplay = <button className="text-xs p-1 bg-blue-600 text-white" onClick={this.openInEditor}>Open</button>;
@@ -237,9 +245,9 @@ class ClipComponent extends React.Component<Props, State> {
             {/* <div>
                 {img}
             </div> */}
-            <td className={`${border} flex`}>{open_in_editor_btn}{text}</td>
+            <td className={border}><div className='flex'>{open_in_editor_btn}{text}</div></td>
             <td className={border}>{durationString}</td>
-            <td className={border}>Status</td>
+            <td className={border}>{status}</td>
             {/* <div className="flex items-center">
                 <div>
                     {text}

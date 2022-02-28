@@ -16,7 +16,7 @@ use cs310_shared::{
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::state_manager::SharedState;
+use crate::state::SharedState;
 
 pub fn task_manager_thread(shared_state: Arc<Mutex<SharedState>>, rx: Receiver<bool>) {
   loop {
