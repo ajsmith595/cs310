@@ -4,7 +4,7 @@ use rfd::AsyncFileDialog;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::state_manager::{ConnectionStatus, SharedStateWrapper};
+use crate::state::{ConnectionStatus, SharedStateWrapper};
 use cs310_shared::{
   clip::{self, ClipType, CompositedClip, SourceClip},
   constants::media_output_location,

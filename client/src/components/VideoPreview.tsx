@@ -344,8 +344,6 @@ class VideoPreview extends React.Component<Props, State> {
         if (this.state.clip && this.duration != 0) {
             let chunksReady = this.clip_chunks_ready.get(this.state.clip);
             let durationReady = chunksReady * 10;
-            console.log(chunksReady);
-            console.log(this.duration);
             loadedPercentage = durationReady / this.duration * 100;
         }
 

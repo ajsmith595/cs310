@@ -8,11 +8,11 @@ use std::{
 use cs310_shared::{clip, networking};
 use uuid::Uuid;
 
-use crate::state_manager::{ConnectionStatus, SharedState};
+use crate::state::{ConnectionStatus, SharedState};
 
 pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
-    let x = shared_state.lock().unwrap();
+    let mut x = shared_state.lock().unwrap();
     let rx = &x.thread_stopper;
 
     match rx.try_recv() {
@@ -27,10 +27,10 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
             drop(x);
           }
           _ => {
-            let store = x.store.as_ref();
+            let store = x.store.as_mut();
 
             if let Some(store) = store {
-              let mut clips = store.clips.source.clone();
+              let clips = &mut store.clips.source;
               let mut clips: Vec<(&Uuid, &mut clip::SourceClip)> = clips
                 .iter_mut()
                 .filter(|(_, clip)| match clip.status {
@@ -45,6 +45,15 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
 
                 let id = id.clone();
                 let clip = clip.clone();
+
+                let store_clone = store.clone();
+                drop(x);
+                let mut x = shared_state.lock().unwrap();
+                x.window
+                  .as_mut()
+                  .unwrap()
+                  .emit("store-update", store_clone)
+                  .unwrap();
 
                 drop(x);
 
@@ -95,7 +104,7 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                     .window
                     .as_ref()
                     .unwrap()
-                    .emit("file-upload-progress", (id, 100))
+                    .emit("store-update", lock_shared_state.store.clone())
                     .unwrap();
                 } else {
                   // cannot connect to server

@@ -45,6 +45,9 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
     }
 
     render() {
+
+        if (this.props.data.node.getInputsSync() == null || this.props.data.node.getOutputsSync() == null) return <p>Invalid EditorNodeComponent!</p>;
+
         let node_registration = EditorNode.NodeRegister.get(this.props.data.node.node_type);
         let properties = [];
 

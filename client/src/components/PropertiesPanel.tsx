@@ -46,49 +46,51 @@ class PropertiesPanel extends React.Component<Props, State> {
         let registration = EditorNode.NodeRegister.get(selection.node_type);
         let props = [];
 
-        for (let [prop, prop_detail] of selection.getInputsSync().entries()) {
-            let is_piped = prop_detail.property_type.type == 'Pipeable';
-            if (is_piped)
-                continue;
+        if (selection.getInputsSync()) {
+            for (let [prop, prop_detail] of selection.getInputsSync().entries()) {
+                let is_piped = prop_detail.property_type.type == 'Pipeable';
+                if (is_piped)
+                    continue;
 
-            let value = selection.properties.get(prop);
-            let display = null;
+                let value = selection.properties.get(prop);
+                let display = null;
 
-            if (prop_detail.property_type.type === 'Clip') {
-                let clip_identifier = ClipIdentifier.deserialise(value);
-                display = <ClipDropComponent identifier={clip_identifier} onDropClip={(clip_identifier) => selection.changeProperty(prop, clip_identifier)} disable_drag={selection.node_type === 'output'} />;
-            }
-            else if (prop_detail.property_type.type === 'Number') {
-                let details = prop_detail.property_type.getNumberRestrictions();
-                value = Math.round(value / details.step) * details.step;
-                display = (
-                    <div>
-                        <input key={Date.now()} className="bg-gray-600 p-2 w-full outline-none" defaultValue={value} type="number" step={details.step} min={details.min} max={details.max} onBlur={(e) => selection.changeProperty(prop, e.target.value)} onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                e.preventDefault();
-                                let target: HTMLInputElement & EventTarget = (e.target as any);
-                                selection.changeProperty(prop, target.value);
-                            }
-                        }} />
+                if (prop_detail.property_type.type === 'Clip') {
+                    let clip_identifier = ClipIdentifier.deserialise(value);
+                    display = <ClipDropComponent identifier={clip_identifier} onDropClip={(clip_identifier) => selection.changeProperty(prop, clip_identifier)} disable_drag={selection.node_type === 'output'} />;
+                }
+                else if (prop_detail.property_type.type === 'Number') {
+                    let details = prop_detail.property_type.getNumberRestrictions();
+                    value = Math.round(value / details.step) * details.step;
+                    display = (
+                        <div>
+                            <input key={Date.now()} className="bg-gray-600 p-2 w-full outline-none" defaultValue={value} type="number" step={details.step} min={details.min} max={details.max} onBlur={(e) => selection.changeProperty(prop, e.target.value)} onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    let target: HTMLInputElement & EventTarget = (e.target as any);
+                                    selection.changeProperty(prop, target.value);
+                                }
+                            }} />
+                        </div>
+                    );
+                }
+                else {
+                    if (typeof value === 'object') {
+                        value = JSON.stringify(value);
+                    }
+                    if (!value) {
+                        value = 'Not set';
+                    }
+                    display = <p>{value}</p>;
+                }
+                props.push(
+                    <div className="border p-3 border-gray-600 mt-2">
+                        <p>{prop_detail.display_name}</p>
+                        {display}
+                        <p className="text-xs">{prop_detail.description}</p>
                     </div>
-                );
+                )
             }
-            else {
-                if (typeof value === 'object') {
-                    value = JSON.stringify(value);
-                }
-                if (!value) {
-                    value = 'Not set';
-                }
-                display = <p>{value}</p>;
-            }
-            props.push(
-                <div className="border p-3 border-gray-600 mt-2">
-                    <p>{prop_detail.display_name}</p>
-                    {display}
-                    <p className="text-xs">{prop_detail.description}</p>
-                </div>
-            )
         }
         return (<>
             <div className="mb-4">

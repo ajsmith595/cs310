@@ -154,6 +154,13 @@ class App extends React.Component<Props, State> {
 			this.setState({
 				Store: _store
 			});
+		});
+
+		Communicator.on('move-node', (data) => {
+			let from = data[0];
+			let to = data[1];
+
+			EditorNode.moveCacheData(from, to);
 		})
 
 
