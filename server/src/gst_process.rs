@@ -16,11 +16,12 @@ use procspawn::JoinHandle;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub enum IPCMessage {
     Sender(IpcSender<IPCMessage>),
     GeneratePreview(CompositedClip, PipedType, u32, u32),
-    CompositedClipLength(Uuid, u64),
+    GetLength(CompositedClip, PipedType),
+    CompositedClipLength(Uuid, u64, u32),
     ChunkCompleted(Uuid, u32),
     ChunksCompleted(Uuid, u32, u32),
     OperationFinished,
@@ -57,7 +58,11 @@ impl ProcessPool {
     }
 
     pub fn acquire_process(&mut self) -> Option<Process> {
-        self.processes.pop()
+        if self.processes.is_empty() {
+            None
+        } else {
+            Some(self.processes.remove(0))
+        }
     }
 
     pub fn add_process_to_pool(&mut self, process: Process) {
@@ -86,7 +91,15 @@ fn process_func(server_name: String) {
         match child_recv.recv() {
             Ok(msg) => match msg {
                 IPCMessage::GeneratePreview(clip, output_type, start_chunk, end_chunk) => {
-                    execute_pipeline(clip, output_type, start_chunk, end_chunk, &parent_send);
+                    execute_pipeline(
+                        clip,
+                        output_type,
+                        Some((start_chunk, end_chunk)),
+                        &parent_send,
+                    );
+                }
+                IPCMessage::GetLength(clip, output_type) => {
+                    execute_pipeline(clip, output_type, None, &parent_send);
                 }
                 IPCMessage::EndProcess => {
                     break;
@@ -99,7 +112,7 @@ fn process_func(server_name: String) {
                 println!("Error encountered by receiving?");
             }
         }
-        parent_send.send(IPCMessage::OperationFinished).unwrap();
+        //parent_send.send(IPCMessage::OperationFinished).unwrap();
     }
 
     // use parent_send to send messages to the parent process
@@ -109,8 +122,7 @@ fn process_func(server_name: String) {
 fn execute_pipeline(
     clip: CompositedClip,
     output_type: PipedType,
-    start_chunk: u32,
-    end_chunk: u32,
+    chunk_range: Option<(u32, u32)>,
     parent_send: &IpcSender<IPCMessage>,
 ) {
     let id = clip.id.clone();
@@ -133,6 +145,18 @@ fn execute_pipeline(
     let number_of_chunks =
         f64::ceil((total_duration as f64) / ((CHUNK_LENGTH as f64) * (1000 as f64)) as f64) as u32;
 
+    parent_send
+        .send(IPCMessage::CompositedClipLength(
+            clip.id.clone(),
+            total_duration,
+            number_of_chunks.into(),
+        ))
+        .unwrap();
+    if chunk_range.is_none() {
+        return;
+    }
+    let (start_chunk, end_chunk) = chunk_range.unwrap();
+
     let layer = timeline.append_layer();
 
     let inpoint = if start_chunk > 0 {
@@ -153,7 +177,7 @@ fn execute_pipeline(
         let duration = (num_full_chunks * (CHUNK_LENGTH as u32) * 1000) as u64
             + (total_duration % (CHUNK_LENGTH as u64));
 
-        Some(gst::ClockTime::from_seconds(duration as u64))
+        Some(gst::ClockTime::from_mseconds(duration as u64))
     };
 
     layer
@@ -164,15 +188,6 @@ fn execute_pipeline(
             duration,
             ges::TrackType::UNKNOWN,
         )
-        .unwrap();
-
-    let total_duration = timeline.duration().mseconds();
-
-    parent_send
-        .send(IPCMessage::CompositedClipLength(
-            clip.id.clone(),
-            total_duration,
-        ))
         .unwrap();
 
     pipeline.add(&timeline).unwrap();

@@ -15,7 +15,6 @@ use num_traits::cast::FromPrimitive;
 use serde_json::Value;
 use simple_logger::SimpleLogger;
 use state::State;
-use std::sync::{Arc, Mutex};
 use std::{
     borrow::BorrowMut,
     collections::hash_map::DefaultHasher,
@@ -27,14 +26,19 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use uuid::Uuid;
 
-use crate::gst_process::{IPCMessage, ProcessPool};
+use crate::{
+    gst_process::{IPCMessage, ProcessPool},
+    state::VideoChunkStatus,
+};
 
 mod gst_process;
 mod state;
-mod utility;
-
 fn main() {
     SimpleLogger::new().init().unwrap();
 
@@ -59,6 +63,7 @@ fn main() {
     let state = Arc::new(Mutex::new(State {
         store,
         gstreamer_processes: ProcessPool::new(8),
+        video_preview_generation: HashMap::new(),
     }));
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", SERVER_PORT)).unwrap();
@@ -161,7 +166,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 }
                 networking::Message::UploadFile => {
                     log::info!("[{}] Receiving file", operation_id);
-                    let uuid = utility::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream);
 
                     log::info!("[{}] File ID: {}", operation_id, uuid);
 
@@ -231,7 +236,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     Task::apply_tasks(store, vec![Task::CreateCompositedClip(clip)]);
                 }
                 networking::Message::Checksum => {
-                    let checksum = utility::receive_u64(&mut stream);
+                    let checksum = networking::receive_u64(&mut stream);
 
                     let store_checksum = state.lock().unwrap().store.get_client_checksum();
                     if store_checksum != checksum {
@@ -294,7 +299,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     Task::apply_tasks(store, vec![Task::AddLink(link)]);
                 }
                 networking::Message::DeleteLinks => {
-                    let uuid = utility::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream);
 
                     let property = networking::receive_file_as_bytes(&mut stream);
                     let property = String::from_utf8(property);
@@ -353,20 +358,48 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     Task::apply_tasks(store, vec![Task::UpdateClip(id, clip_type, clip)]);
                 }
                 networking::Message::DeleteNode => {
-                    let uuid = utility::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream);
 
                     let mut lock = state.lock().unwrap();
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::DeleteNode(uuid)]);
                 }
-                networking::Message::GetVideoPreview => {
-                    let composited_clip_id = utility::receive_uuid(&mut stream);
-                    let starting_segment = utility::receive_u64(&mut stream) as u32;
-                    let ending_segment = utility::receive_u64(&mut stream) as u32;
+                networking::Message::CompositedClipLength => {
+                    let composited_clip_id = networking::receive_uuid(&mut stream);
 
                     let mut lock = state.lock().unwrap();
-                    let process = lock.gstreamer_processes.acquire_process();
-                    if process.is_none() {
+
+                    let result =
+                        lock.store
+                            .pipeline
+                            .gen_graph_new(&lock.store, &get_node_register(), true);
+
+                    if result.is_err() {
+                        drop(lock);
+                        networking::send_message(
+                            &mut stream,
+                            networking::Message::CouldNotGetLength,
+                        )
+                        .unwrap();
+                        return;
+                    }
+
+                    let (node_type_data, composited_clip_data, output) = result.unwrap();
+
+                    if !output {
+                        drop(lock);
+                        networking::send_message(
+                            &mut stream,
+                            networking::Message::CouldNotGetLength,
+                        )
+                        .unwrap();
+                        return;
+                    }
+
+                    let clip = lock.store.clips.composited.get(&composited_clip_id);
+                    let output_type = composited_clip_data.get(&composited_clip_id);
+                    if clip.is_none() || output_type.is_none() {
+                        drop(lock);
                         networking::send_message(
                             &mut stream,
                             networking::Message::CouldNotGeneratePreview,
@@ -374,13 +407,86 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         .unwrap();
                         return;
                     }
+                    let clip = clip.unwrap().clone();
+                    let output_type = output_type.unwrap().clone();
+
+                    let existing = lock.video_preview_generation.get(&composited_clip_id);
+                    if let Some((Some(duration), codec, chunks)) = existing {
+                        let num_chunks = chunks.len() as u64;
+                        let duration = duration.clone();
+                        drop(lock);
+                        networking::send_message(
+                            &mut stream,
+                            networking::Message::CompositedClipLength,
+                        )
+                        .unwrap();
+                        networking::send_data(&mut stream, composited_clip_id.as_bytes()).unwrap();
+                        networking::send_data(&mut stream, &duration.to_ne_bytes()).unwrap();
+                        networking::send_data(&mut stream, &num_chunks.to_ne_bytes()).unwrap();
+                        return;
+                    }
+
+                    lock.video_preview_generation.remove(&composited_clip_id);
+
+                    lock.video_preview_generation
+                        .insert(composited_clip_id.clone(), (None, None, Vec::new()));
+
+                    let process = lock.gstreamer_processes.acquire_process();
+
+                    if process.is_none() {
+                        drop(lock);
+                        networking::send_message(
+                            &mut stream,
+                            networking::Message::CouldNotGetLength,
+                        )
+                        .unwrap();
+                        return;
+                    }
                     let (process, sender, recv) = process.unwrap();
 
+                    drop(lock);
+                    sender
+                        .send(IPCMessage::GetLength(clip, output_type))
+                        .unwrap();
+
+                    let message = recv.recv().unwrap();
+                    match message {
+                        IPCMessage::CompositedClipLength(id, duration, number_of_chunks) => {
+                            let mut lock = state.lock().unwrap();
+                            let statuses =
+                                vec![VideoChunkStatus::NotGenerated; number_of_chunks as usize];
+                            lock.video_preview_generation.insert(
+                                composited_clip_id.clone(),
+                                (Some(duration), None, statuses),
+                            );
+                            drop(lock);
+                            networking::send_message(
+                                &mut stream,
+                                networking::Message::CompositedClipLength,
+                            )
+                            .unwrap();
+                            networking::send_data(&mut stream, id.as_bytes()).unwrap();
+                            networking::send_data(&mut stream, &duration.to_ne_bytes()).unwrap();
+                            networking::send_data(&mut stream, &number_of_chunks.to_ne_bytes())
+                                .unwrap();
+                        }
+                        _ => {
+                            todo!();
+                        }
+                    }
+                }
+                networking::Message::GetVideoPreview => {
+                    let composited_clip_id = networking::receive_uuid(&mut stream);
+                    let starting_segment = networking::receive_u64(&mut stream) as u32;
+                    let ending_segment = networking::receive_u64(&mut stream) as u32;
+
+                    let mut lock = state.lock().unwrap();
                     let result =
                         lock.store
                             .pipeline
                             .gen_graph_new(&lock.store, &get_node_register(), true);
                     if result.is_err() {
+                        drop(lock);
                         networking::send_message(
                             &mut stream,
                             networking::Message::CouldNotGeneratePreview,
@@ -392,6 +498,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let (node_type_data, composited_clip_data, output) = result.unwrap();
 
                     if !output {
+                        drop(lock);
                         networking::send_message(
                             &mut stream,
                             networking::Message::CouldNotGeneratePreview,
@@ -402,6 +509,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let clip = lock.store.clips.composited.get(&composited_clip_id);
                     let output_type = composited_clip_data.get(&composited_clip_id);
                     if clip.is_none() || output_type.is_none() {
+                        drop(lock);
                         networking::send_message(
                             &mut stream,
                             networking::Message::CouldNotGeneratePreview,
@@ -411,6 +519,56 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                     let clip = clip.unwrap().clone();
                     let output_type = output_type.unwrap().clone();
+
+                    let existing = lock.video_preview_generation.get(&composited_clip_id);
+                    if let Some((Some(duration), codec, chunks)) = existing {
+                        let chunks = chunks.clone();
+                        drop(lock);
+                        let mut ok = true;
+                        for i in starting_segment..(ending_segment + 1) {
+                            let status = chunks.get(i as usize);
+                            if let Some(status) = status {
+                                match status {
+                                    VideoChunkStatus::Generated => {}
+                                    _ => {
+                                        ok = false;
+                                    }
+                                }
+                            } else {
+                                ok = false;
+                            }
+                        }
+
+                        if ok {
+                            for i in starting_segment..(ending_segment + 1) {
+                                networking::send_message(
+                                    &mut stream,
+                                    networking::Message::NewChunk,
+                                )
+                                .unwrap();
+
+                                networking::send_data(&mut stream, &i.to_ne_bytes()).unwrap();
+                            }
+                        }
+                        return;
+                    }
+
+                    lock.video_preview_generation.remove(&composited_clip_id);
+
+                    lock.video_preview_generation
+                        .insert(composited_clip_id.clone(), (None, None, Vec::new()));
+
+                    let process = lock.gstreamer_processes.acquire_process();
+                    if process.is_none() {
+                        drop(lock);
+                        networking::send_message(
+                            &mut stream,
+                            networking::Message::CouldNotGeneratePreview,
+                        )
+                        .unwrap();
+                        return;
+                    }
+                    let (process, sender, recv) = process.unwrap();
 
                     drop(lock);
 
@@ -423,8 +581,66 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         ))
                         .unwrap();
 
-                    // receive messages for generated chunks
-                    // readd the process back to the pool
+                    let message = recv.recv().unwrap();
+                    match message {
+                        IPCMessage::CompositedClipLength(id, duration, number_of_chunks) => {
+                            let mut lock = state.lock().unwrap();
+                            let mut statuses =
+                                vec![VideoChunkStatus::NotGenerated; number_of_chunks as usize];
+
+                            for i in starting_segment..(ending_segment + 1) {
+                                statuses[i as usize] =
+                                    VideoChunkStatus::Generating(process.pid().unwrap())
+                            }
+
+                            lock.video_preview_generation.insert(
+                                composited_clip_id.clone(),
+                                (Some(duration), None, statuses),
+                            );
+                        }
+                        _ => {
+                            todo!();
+                        }
+                    }
+
+                    loop {
+                        let message = recv.recv();
+                        match message {
+                            Ok(IPCMessage::ChunkCompleted(id, chunk)) => {
+                                let mut lock = state.lock().unwrap();
+                                let (duration, codec, statuses) =
+                                    lock.video_preview_generation.get_mut(&id).unwrap();
+                                statuses[chunk as usize] = VideoChunkStatus::Generated;
+
+                                drop(lock);
+
+                                networking::send_message(
+                                    &mut stream,
+                                    networking::Message::NewChunk,
+                                )
+                                .unwrap();
+
+                                networking::send_data(&mut stream, &chunk.to_ne_bytes()).unwrap();
+                            }
+                            Ok(IPCMessage::ChunksCompleted(id, start_chunk, end_chunk)) => {
+                                networking::send_message(
+                                    &mut stream,
+                                    networking::Message::AllChunksGenerated,
+                                )
+                                .unwrap();
+                                break;
+                            }
+                            _ => {
+                                println!("Invalid message received: ({:?})", message);
+                            }
+                        }
+                    }
+
+                    let mut lock = state.lock().unwrap();
+
+                    lock.gstreamer_processes
+                        .add_process_to_pool((process, sender, recv));
+
                     // possibly keep track of clips being generated so we don't create the same one twice or whatever
                 }
                 _ => {

@@ -38,7 +38,8 @@ enum_from_primitive! {
         DeleteLinks,
         UpdateClip,
         DeleteNode,
-        CouldNotGeneratePreview
+        CouldNotGeneratePreview,
+        CouldNotGetLength
     }
 }
 
