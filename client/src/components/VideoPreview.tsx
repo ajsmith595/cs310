@@ -22,18 +22,51 @@ interface State {
     buffering: boolean,
 }
 
-
-enum LoadedStatus {
-    Unloaded,
-    Loading,
-    Loaded
-}
-
 interface ClipInfo {
     codec: string;
     no_video_streams: number;
     no_audio_streams: number;
 }
+namespace VideoPreviewInputData {
+    type VideoPreviewClipStatus = "NotRequested" | "LengthRequested" | {
+        "Data": [
+            number,
+            Array<VideoPreviewChunkStatus>
+        ]
+    }
+    export enum VideoPreviewChunkStatus {
+        NotRequested = "NotRequested",
+        Requested = "Requested",
+        Generating = "Generating",
+        Generated = "Generated",
+        Downloading = "Downloading",
+        Downloaded = "Downloaded"
+    }
+
+    export interface VideoPreviewData {
+        [k: string]: VideoPreviewClipStatus
+    }
+}
+
+
+namespace VideoPreviewClipStatus {
+    export enum ChunkStatus {
+        NotRequested = "NotRequested",
+        Requested = "Requested",
+        Generating = "Generating",
+        Generated = "Generated",
+        Downloading = "Downloading",
+        Downloaded = "Downloaded",
+        Loaded = "Loaded" // unique to front end - to signify that the chunk is loaded into MSE.
+    }
+    export interface Data {
+        duration: number;
+        chunkData: Array<ChunkStatus>;
+    }
+
+}
+
+type VideoPreviewClipStatus = "NotRequested" | "LengthRequested" | VideoPreviewClipStatus.Data;
 
 class VideoPreview extends React.Component<Props, State> {
 
@@ -43,13 +76,10 @@ class VideoPreview extends React.Component<Props, State> {
     /**
      * Contains an array of `LoadedStatus` which can be used to determine what chunks have been loaded into the `media_source`
      */
-    chunk_loading_statuses: Array<LoadedStatus>;
-    /**
-     * A map from clip IDs to the number of chunks that have been generated for that clip
-     */
-    clip_chunks_ready: Map<string, number>;
+    video_preview_data: Map<string, VideoPreviewClipStatus>;
 
-    clip_codecs: Map<string, ClipInfo>;
+
+
 
 
     change_lock: Mutex;
@@ -59,9 +89,8 @@ class VideoPreview extends React.Component<Props, State> {
         super(props);
         this.media_source = new MediaSource();
         this.video_element_ref = React.createRef();
-        this.clip_chunks_ready = new Map();
         this.change_lock = new Mutex();
-        this.clip_codecs = new Map();
+        this.video_preview_data = new Map();
 
         this.state = {
             currentTime: 0,
@@ -92,56 +121,59 @@ class VideoPreview extends React.Component<Props, State> {
     }
 
     componentDidMount() {
-        Communicator.on('generated-preview', async (data: { output_directory_path: string, segment_duration: number }) => {
+        Communicator.on('video-preview-data-update', async (data) => {
+            await this.videoPreviewDataUpdate(data);
+        })
+    }
 
-        });
-        Communicator.on('video-chunk-ready', async (data) => {
-            let node_id: string = data[0];
-            let segment_id: number = data[1];
-            let clip_id = node_id;
+    async videoPreviewDataUpdate(data: VideoPreviewInputData.VideoPreviewData) {
 
-            console.log(`Segment ${segment_id} of clip ${clip_id} is now ready - awaiting lock`);
-            const release = await this.change_lock.acquire();
-            this.clip_chunks_ready.set(clip_id, segment_id);
-            release();
-
-            console.log(`Segment ${segment_id} of clip ${clip_id} is now ready`);
-
-            await this.videoUpdate();
-        });
-
-        Communicator.on('new-clip-codec', async (data) => {
-            console.log("New clip codec!: ");
-            console.log(data);
-
-            let node_id: string = data[0];
-            let codec: string = data[1];
-
-            let no_video_streams = data[2];
-            let no_audio_streams = data[3];
-
-            let release = await this.change_lock.acquire();
-
-            this.clip_codecs.set(node_id, {
-                codec,
-                no_audio_streams,
-                no_video_streams
-            });
-            let do_codec_update = false;
-            if (node_id == this.state.clip) {
-                do_codec_update = true;
+        console.log("New data received");
+        console.log(data);
+        let release = await this.change_lock.acquire();
+        for (let k of this.video_preview_data.keys()) {
+            if (data[k] === undefined) {
+                this.video_preview_data.delete(k);
             }
-            release();
+        }
 
-
-            if (do_codec_update) {
-                await this.changeClipCodec();
+        for (let k in data) {
+            let value = data[k];
+            if (typeof value == "string") {
+                this.video_preview_data.set(k, value);
             }
-        });
+            else {
+                let duration = value.Data[0];
+                let data = value.Data[1];
+
+                let existing = this.video_preview_data.get(k);
+                if (existing == null || typeof existing == "string" || existing.chunkData.length != data.length) {
+                    this.video_preview_data.set(k, {
+                        duration,
+                        chunkData: (data as Array<any>)
+                    })
+                }
+                else {
+                    for (let i = 0; i < existing.chunkData.length; i++) {
+                        let existingChunkData = existing.chunkData[i];
+                        let newChunkData = data[i];
+
+                        if (!(existingChunkData == VideoPreviewClipStatus.ChunkStatus.Loaded && newChunkData == VideoPreviewInputData.VideoPreviewChunkStatus.Downloaded)) {
+                            existing.chunkData[i] = newChunkData as any;
+                        }
+                    }
+                }
+            }
+        }
+        release();
+        console.log("Map:");
+        console.log(this.video_preview_data);
+
+        await this.videoUpdate();
     }
 
     componentWillUnmount() {
-        Communicator.clear('video-chunk-ready');
+        Communicator.clear('video-preview-data-update');
     }
 
 
@@ -156,11 +188,7 @@ class VideoPreview extends React.Component<Props, State> {
         let contents = await Communicator.readFile(file);
         let buffer = new Uint8Array(contents);
 
-        while (this.chunk_loading_statuses.length <= segment_id) {
-            this.chunk_loading_statuses.push(LoadedStatus.Unloaded);
-        }
-        this.chunk_loading_statuses[segment_id] = LoadedStatus.Loading;
-        console.log("Loading chunk + adding callback!");
+        this.video_preview_data.get(this.state.clip)[segment_id] = VideoPreviewClipStatus.ChunkStatus.Loaded;
         let res = null;
         await new Promise((resolve, reject) => {
             res = () => { resolve(null) };
@@ -169,7 +197,14 @@ class VideoPreview extends React.Component<Props, State> {
         });
         this.update_end_callbacks = this.update_end_callbacks.filter(e => e != res); // remove the callback
         console.log("Loading chunk done!");
-        this.chunk_loading_statuses[segment_id] = LoadedStatus.Loaded;
+    }
+
+    async requestSegments(clip, start_segment, end_segment) {
+        Communicator.invoke('request_video_preview', {
+            clipId: clip,
+            startChunk: start_segment,
+            endChunk: end_segment,
+        });
     }
 
 
@@ -184,6 +219,11 @@ class VideoPreview extends React.Component<Props, State> {
         const release = await this.change_lock.acquire();
         console.log("Lock aquired for videoUpdate");
 
+
+        if (!this.video_preview_data.get(this.state.clip)) {
+            release();
+            return;
+        }
 
 
 
@@ -200,9 +240,31 @@ class VideoPreview extends React.Component<Props, State> {
         let next_segment = current_segment + 1;
 
         console.log("Loading up to chunk " + next_segment);
+
         for (let segment = 0; segment <= next_segment; segment++) {
-            if (!this.chunk_loading_statuses[segment] || this.chunk_loading_statuses[segment] != LoadedStatus.Loaded) {
-                if (this.clip_chunks_ready.get(this.state.clip) === undefined || this.clip_chunks_ready.get(this.state.clip) < segment) {
+            if (this.video_preview_data.get(this.state.clip)[segment] != VideoPreviewClipStatus.ChunkStatus.Loaded) {
+                if (this.video_preview_data.get(this.state.clip)[segment] != VideoPreviewClipStatus.ChunkStatus.Downloaded) {
+                    console.log("Lock releasing for videoUpdate");
+                    let clip = this.state.clip;
+                    release();
+                    await this.requestSegments(clip, segment, next_segment);
+                    console.log("Lock released for videoUpdate");
+                    return;
+                }
+                // if this chunk has not been generated, stop!                
+
+                await this.loadChunk(output_directory, segment);
+                console.log("Lock releasing for videoUpdate");
+                release();
+                console.log("Lock released for videoUpdate");
+                return;
+            }
+        }
+
+        for (let segment = 0; segment <= next_segment; segment++) {
+            if (this.video_preview_data.get(this.state.clip)[segment] != VideoPreviewClipStatus.ChunkStatus.Loaded) {
+                if (this.video_preview_data.get(this.state.clip)[segment] != VideoPreviewClipStatus.ChunkStatus.Downloaded) {
+
                     console.log("Lock releasing for videoUpdate");
                     release();
                     console.log("Lock released for videoUpdate");
@@ -263,10 +325,14 @@ class VideoPreview extends React.Component<Props, State> {
     source_buffer: SourceBuffer;
     async onClipChanged(clip: string) {
 
+
+        Communicator.invoke('request_video_length', {
+            clipId: clip
+        });
+
         console.log("Aquiring lock for onClipChanged");
         const release = await this.change_lock.acquire();
         console.log("Lock acquired for onClipChanged");
-        this.chunk_loading_statuses = [];
 
         if (this.source_buffer) {
             this.source_buffer.removeEventListener('updateend', this.onSourceBufferUpdateEnd);
@@ -289,16 +355,16 @@ class VideoPreview extends React.Component<Props, State> {
 
 
         let mime_type = 'video/mp4; codecs="avc1.4D402A, mp4a.40.2, mp4a.40.2"';
-        if (this.clip_codecs.get(clip)) {
-            mime_type = this.clip_codecs.get(clip).codec;
-        }
-        else {
-            release();
-            console.log("WARNING: no codec found!");
-            console.log(this.clip_codecs);
-            console.log(clip);
-            return;
-        }
+        // if (this.clip_codecs.get(clip)) {
+        //     mime_type = this.clip_codecs.get(clip).codec;
+        // }
+        // else {
+        //     release();
+        //     console.log("WARNING: no codec found!");
+        //     console.log(this.clip_codecs);
+        //     console.log(clip);
+        //     return;
+        // }
 
 
 
@@ -332,9 +398,9 @@ class VideoPreview extends React.Component<Props, State> {
             </option>)
         }
         let musicDisplay = null;
-        if (this.clip_codecs.get(this.state.clip) && this.clip_codecs.get(this.state.clip).no_video_streams == 0) {
-            musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
-        }
+        // if (this.clip_codecs.get(this.state.clip) && this.clip_codecs.get(this.state.clip).no_video_streams == 0) {
+        //     musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
+        // }
         let bufferingDisplay = null;
         if (this.state.buffering) {
             bufferingDisplay = <FontAwesomeIcon icon={faCircleNotch} className={`text-white animate-spin text-6xl`} />;
@@ -342,7 +408,8 @@ class VideoPreview extends React.Component<Props, State> {
 
         let loadedPercentage = 0;
         if (this.state.clip && this.duration != 0) {
-            let chunksReady = this.clip_chunks_ready.get(this.state.clip);
+            // let chunksReady = this.clip_chunks_ready.get(this.state.clip);
+            let chunksReady = 1;
             let durationReady = chunksReady * 10;
             loadedPercentage = durationReady / this.duration * 100;
         }

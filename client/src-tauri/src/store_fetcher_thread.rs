@@ -1,5 +1,6 @@
 use core::time;
 use std::{
+  collections::HashMap,
   fs::File,
   sync::{Arc, Mutex},
   thread,
@@ -11,7 +12,7 @@ use cs310_shared::{
   store::Store,
 };
 
-use crate::state::{ConnectionStatus, SharedState};
+use crate::state::{ConnectionStatus, SharedState, VideoPreviewStatus};
 
 pub fn store_fetcher_thread(state: Arc<Mutex<SharedState>>) {
   loop {
@@ -29,7 +30,12 @@ pub fn store_fetcher_thread(state: Arc<Mutex<SharedState>>) {
       if let Ok(store) = store {
         set_connection_status(&state, ConnectionStatus::Connected);
         let mut state = state.lock().unwrap();
+        let mut video_preview_data = HashMap::new();
+        for (id, clip) in &store.clips.composited {
+          video_preview_data.insert(id.clone(), VideoPreviewStatus::NotRequested);
+        }
         state.store = Some(store);
+        state.video_preview_data = video_preview_data;
 
         break;
       } else {

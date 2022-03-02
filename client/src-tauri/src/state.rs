@@ -14,19 +14,21 @@ use cs310_shared::{
   task::{NetworkTask, Task},
 };
 use uuid::Uuid;
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VideoPreviewChunkStatus {
   NotRequested, // front end not asked for
   Requested,    // requested by front end, backend not yet asked server
-  Requesting,   // asked from server, awaiting response
+  Generating,   // asked from server, awaiting response
+  Generated,    // server has generated the content
+  Downloading,  // currently downloading the content from the server
   Downloaded,   // downloaded, ready to be used by front end
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VideoPreviewStatus {
   NotRequested,
   LengthRequested,
-  Data(Vec<VideoPreviewChunkStatus>),
+  Data(u64, Vec<VideoPreviewChunkStatus>),
 }
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);

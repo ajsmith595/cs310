@@ -13,7 +13,8 @@ use std::{
 
 use crate::{
   file_uploader_thread::file_uploader_thread, state::ConnectionStatus,
-  task_manager::task_manager_thread,
+  task_manager::task_manager_thread, video_preview_handler_thread::video_preview_handler_thread,
+  video_preview_handler_thread::video_previewer_downloader_thread,
 };
 use crate::{
   network_task_manager::network_task_manager_thread, store_fetcher_thread::store_fetcher_thread,
@@ -100,7 +101,9 @@ fn main() {
       tauri_commands::add_node,
       tauri_commands::delete_node,
       tauri_commands::delete_links,
-      tauri_commands::update_clip
+      tauri_commands::update_clip,
+      tauri_commands::request_video_length,
+      tauri_commands::request_video_preview
     ])
     .on_page_load(move |app, _ev| {
       let threads = threads_clone.clone();
@@ -121,6 +124,8 @@ fn main() {
         store_fetcher_thread,
         file_uploader_thread,
         network_task_manager_thread,
+        video_preview_handler_thread,
+        video_previewer_downloader_thread,
       ];
 
       let mut threads_lock = threads.lock().unwrap();

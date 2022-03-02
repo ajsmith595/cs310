@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 use uuid::Uuid;
 
-pub const SERVER_HOST: &str = "172.17.115.26";
+pub const SERVER_HOST: &str = "172.17.116.100";
 pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {
@@ -39,7 +39,8 @@ enum_from_primitive! {
         UpdateClip,
         DeleteNode,
         CouldNotGeneratePreview,
-        CouldNotGetLength
+        CouldNotGetLength,
+        DownloadChunk
     }
 }
 

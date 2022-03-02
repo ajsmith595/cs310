@@ -4,7 +4,9 @@ use rfd::AsyncFileDialog;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::state::{ConnectionStatus, SharedStateWrapper};
+use crate::state::{
+  ConnectionStatus, SharedStateWrapper, VideoPreviewChunkStatus, VideoPreviewStatus,
+};
 use cs310_shared::{
   clip::{self, ClipType, CompositedClip, SourceClip},
   constants::media_output_location,
@@ -324,4 +326,44 @@ pub fn update_clip(
     .unwrap()
     .send(true)
     .unwrap();
+}
+
+#[tauri::command]
+pub fn request_video_length(state: tauri::State<SharedStateWrapper>, clip_id: Uuid) {
+  let mut lock = state.0.lock().unwrap();
+  let current_data = lock.video_preview_data.get_mut(&clip_id);
+  if let Some(current_data) = current_data {
+    if *current_data != VideoPreviewStatus::NotRequested {
+      return;
+    }
+  }
+  lock
+    .video_preview_data
+    .insert(clip_id.clone(), VideoPreviewStatus::LengthRequested);
+}
+
+#[tauri::command]
+pub fn request_video_preview(
+  state: tauri::State<SharedStateWrapper>,
+  clip_id: Uuid,
+  start_chunk: u32,
+  end_chunk: u32,
+) {
+  let mut lock = state.0.lock().unwrap();
+  let current_data = lock.video_preview_data.get_mut(&clip_id);
+  if current_data.is_none() {
+    return;
+  }
+  let current_data = current_data.unwrap();
+
+  if let VideoPreviewStatus::Data(duration, data) = current_data {
+    if start_chunk > end_chunk || end_chunk >= data.len() as u32 {
+      return;
+    }
+    for i in start_chunk..(end_chunk + 1) {
+      if data[i as usize] == VideoPreviewChunkStatus::NotRequested {
+        data[i as usize] = VideoPreviewChunkStatus::Requested;
+      }
+    }
+  }
 }

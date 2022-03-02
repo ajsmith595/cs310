@@ -14,7 +14,7 @@ use cs310_shared::{
 };
 use uuid::Uuid;
 
-use crate::state::SharedState;
+use crate::state::{SharedState, VideoPreviewStatus};
 
 pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
   let mut should_checksum = false;
@@ -103,6 +103,10 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
                 &uuid,
                 ClipType::Composited,
               );
+
+              lock
+                .video_preview_data
+                .insert(uuid.clone(), VideoPreviewStatus::NotRequested);
 
               lock
                 .window
@@ -232,9 +236,7 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
       match response {
         networking::Message::ChecksumError => {
           let new_store_bytes = networking::receive_file_as_bytes(&mut stream);
-          let store_str = String::from_utf8(new_store_bytes).unwrap();
-          println!("Decoding string: {}", store_str);
-          let store = serde_json::from_str::<Store>(&store_str).unwrap();
+          let store = serde_json::from_slice::<Store>(&new_store_bytes).unwrap();
 
           let mut lock = shared_state.lock().unwrap();
           lock.store = Some(store);
