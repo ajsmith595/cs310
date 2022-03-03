@@ -13,12 +13,12 @@ serde = { version = "1.0", features = ["derive"] }
 cs310_shared = {path = "../shared"}
 uuid = "0.8"
 
-gst = {package = "gstreamer", version = "0.18.0"}
-gst-audio = {package = "gstreamer-audio", version = "0.18.0" }
-gst-video = {package = "gstreamer-video", version = "0.18.0" }
+gst = {package = "gstreamer", version = "0.18.5"}
+gst-audio = {package = "gstreamer-audio", version = "0.18.5" }
+gst-video = {package = "gstreamer-video", version = "0.18.5" }
 gst-pbutils = {package = "gstreamer-pbutils", version = "0.18.0"}
-ges  = {package = "gstreamer-editing-services",version = "0.18.0" }
-glib = "0.15.3"
+ges  = {package = "gstreamer-editing-services",version = "0.18.3" }
+glib = "0.15.6"
 
 procspawn = "0.10.1"
 ipc-channel = "0.15.0"

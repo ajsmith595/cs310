@@ -54,9 +54,9 @@ dependencies = [
  "bimap",
  "cs310_shared",
  "dirs 3.0.2",
- "glib 0.15.3",
+ "glib 0.15.6",
  "gstreamer 0.17.4",
- "gstreamer 0.18.2",
+ "gstreamer 0.18.5",
  "gstreamer-audio",
  "gstreamer-editing-services",
  "gstreamer-pbutils",
@@ -670,8 +670,8 @@ dependencies = [
  "bimap",
  "dirs 3.0.2",
  "enum_primitive",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-audio",
  "gstreamer-editing-services",
  "gstreamer-pbutils",
@@ -1030,12 +1030,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fragile"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da1b8f89c5b5a5b7e59405cfcf0bb9588e5ed19f0b57a4cd542bbba3f164a6d"
-
-[[package]]
 name = "fuchsia-zircon"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1311,7 +1305,7 @@ dependencies = [
  "futures-core",
  "futures-io",
  "gio-sys 0.15.1",
- "glib 0.15.3",
+ "glib 0.15.6",
  "libc",
  "once_cell",
  "thiserror",
@@ -1377,9 +1371,9 @@ dependencies = [
 
 [[package]]
 name = "glib"
-version = "0.15.3"
+version = "0.15.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a703581e2538fe699c5476cf26b456d694c5272b6e999d3ab47711c5eaa2dd2"
+checksum = "aa570813c504bdf7539a9400180c2dd4b789a819556fb86da7226d7d1b037b49"
 dependencies = [
  "bitflags",
  "futures-channel",
@@ -1526,17 +1520,16 @@ dependencies = [
 
 [[package]]
 name = "gstreamer"
-version = "0.18.2"
+version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bc8364f9129c73e214ac1128fcff0e9a25cbc69f06d3ede9f7b07c8b6338680"
+checksum = "8564e2f284af8050f02252c5bb563ef8cbd4363403013ad4755852f743ca8c43"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
- "fragile",
  "futures-channel",
  "futures-core",
  "futures-util",
- "glib 0.15.3",
+ "glib 0.15.6",
  "gstreamer-sys 0.18.0",
  "libc",
  "muldiv",
@@ -1551,15 +1544,15 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-audio"
-version = "0.18.0"
+version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "75cc407516c2f36576060767491f1134728af6d335a59937f09a61aab7abb72c"
+checksum = "e83835a095907868b9da476d3748c639feb8d1dcba44b840e5299f9726afce93"
 dependencies = [
  "array-init",
  "bitflags",
  "cfg-if 1.0.0",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-audio-sys",
  "gstreamer-base",
  "libc",
@@ -1588,8 +1581,8 @@ checksum = "224f35f36582407caf58ded74854526beeecc23d0cf64b8d1c3e00584ed6863f"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-base-sys",
  "libc",
 ]
@@ -1609,14 +1602,14 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-editing-services"
-version = "0.18.0"
+version = "0.18.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfedc2db424a962c65faf8e83f1667fb646173cc8375a626c265abeb2c1ceb20"
+checksum = "709b56b2f990db0965df26c740b84105670b1820e8f4722b5409396f157a1714"
 dependencies = [
  "bitflags",
  "gio 0.15.3",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-base",
  "gstreamer-editing-services-sys",
  "gstreamer-pbutils",
@@ -1645,8 +1638,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e6d82e35619e558e286d4859e45230b5757685d2002c403becc75277c674c85"
 dependencies = [
  "bitflags",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-pbutils-sys",
  "libc",
  "thiserror",
@@ -1693,16 +1686,15 @@ dependencies = [
 
 [[package]]
 name = "gstreamer-video"
-version = "0.18.1"
+version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "410c72d885a67aeb7dbfa49c347e6c85d60f54e1cdaf6aadf8b5364892451261"
+checksum = "bfbeef259fe286d6271402160daf7692b6bc56d52b2a9437dead797f3f60c222"
 dependencies = [
  "bitflags",
  "cfg-if 1.0.0",
- "fragile",
  "futures-channel",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-base",
  "gstreamer-video-sys",
  "libc",
@@ -3381,8 +3373,8 @@ dependencies = [
  "cs310_shared",
  "ctrlc",
  "enum_primitive",
- "glib 0.15.3",
- "gstreamer 0.18.2",
+ "glib 0.15.6",
+ "gstreamer 0.18.5",
  "gstreamer-audio",
  "gstreamer-editing-services",
  "gstreamer-pbutils",

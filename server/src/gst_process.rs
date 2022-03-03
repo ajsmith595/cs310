@@ -110,6 +110,7 @@ fn process_func(server_name: String) {
             },
             Err(error) => {
                 println!("Error encountered by receiving?");
+                break;
             }
         }
         //parent_send.send(IPCMessage::OperationFinished).unwrap();
@@ -199,17 +200,24 @@ fn execute_pipeline(
     .unwrap();
     muxer.set_property("location", clip.get_output_location_template());
     muxer.set_property("muxer-factory", "mp4mux");
-    muxer.set_property("start-index", start_chunk);
+    let start_index: i32 = start_chunk as i32;
+    muxer.set_property("start-index", start_index);
 
     std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
     let structure = gst::Structure::new(
         "properties",
-        &[("streamable", &true), ("fragment-duration", &1000)],
+        &[("streamable", &true), ("fragment-duration", &10)],
     );
     muxer.set_property("muxer-properties", structure);
     muxer.set_property("async-finalize", true);
     let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
+
+    let nanoseconds = if start_chunk == end_chunk {
+        nanoseconds * 10
+    } else {
+        nanoseconds
+    };
     muxer.set_property("max-size-time", nanoseconds);
     muxer.set_property("send-keyframe-requests", true);
     pipeline.add(&muxer).unwrap();
