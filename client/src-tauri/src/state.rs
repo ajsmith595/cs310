@@ -14,7 +14,7 @@ use cs310_shared::{
   task::{NetworkTask, Task},
 };
 use uuid::Uuid;
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum VideoPreviewChunkStatus {
   NotRequested, // front end not asked for
   Requested,    // requested by front end, backend not yet asked server
@@ -24,7 +24,7 @@ pub enum VideoPreviewChunkStatus {
   Downloaded,   // downloaded, ready to be used by front end
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum VideoPreviewStatus {
   NotRequested,
   LengthRequested,

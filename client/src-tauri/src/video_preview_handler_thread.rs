@@ -103,9 +103,7 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
                 if start_chunk.is_none() {
                   start_chunk = Some(i);
                 }
-                if end_chunk.is_none() {
-                  end_chunk = Some(i);
-                }
+                end_chunk = Some(i);
               }
               _ => {
                 if start_chunk.is_some() {
@@ -117,6 +115,11 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
 
           if let (Some(start_chunk), Some(end_chunk)) = (start_chunk, end_chunk) {
             let mut stream = networking::connect_to_server().unwrap();
+
+            println!(
+              "Getting video preview for {} between chunks {} and {}",
+              id, start_chunk, end_chunk
+            );
             networking::send_message(&mut stream, networking::Message::GetVideoPreview).unwrap();
             networking::send_data(&mut stream, id.as_bytes()).unwrap();
             networking::send_data(&mut stream, &start_chunk.to_ne_bytes()).unwrap();
@@ -131,6 +134,7 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
                   }
                   networking::Message::NewChunk => {
                     let chunk_id = networking::receive_u32(&mut stream);
+                    println!("Got new chunk: {}", chunk_id);
 
                     let mut lock = shared_state.lock().unwrap();
                     let entry = lock.video_preview_data.get_mut(&id).unwrap();
@@ -155,12 +159,14 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
                     }
                   }
                   networking::Message::AllChunksGenerated => {
+                    println!("All chunks generated");
                     break;
                   }
                   _ => {}
                 },
                 Err(x) => {
                   println!("Error occurred (vid preview)! {:?}", x);
+                  break;
                 }
               }
             }
@@ -240,29 +246,39 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
                 let output_location = format!(
                   "{}/segment{:0>width$}.mp4",
                   clip.get_output_location(),
+                  chunk_id,
                   width = CHUNK_FILENAME_NUMBER_LENGTH as usize
                 );
 
                 std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
-                let mut file = File::create(output_location).unwrap();
-                networking::receive_file(&mut stream, &mut file);
+                let msg = networking::receive_message(&mut stream).unwrap();
+                match msg {
+                  networking::Message::Response => {
+                    let mut file = File::create(output_location).unwrap();
+                    networking::receive_file(&mut stream, &mut file);
 
-                let mut lock = shared_state.lock().unwrap();
+                    let mut lock = shared_state.lock().unwrap();
 
-                let existing_data = lock.video_preview_data.get_mut(&id).unwrap();
-                match existing_data {
-                  VideoPreviewStatus::Data(duration, data) => {
-                    data[i] = VideoPreviewChunkStatus::Downloaded;
+                    let existing_data = lock.video_preview_data.get_mut(&id).unwrap();
+                    match existing_data {
+                      VideoPreviewStatus::Data(duration, data) => {
+                        data[i] = VideoPreviewChunkStatus::Downloaded;
 
-                    lock
-                      .window
-                      .as_ref()
-                      .unwrap()
-                      .emit("video-preview-data-update", lock.video_preview_data.clone())
-                      .unwrap();
+                        lock
+                          .window
+                          .as_ref()
+                          .unwrap()
+                          .emit("video-preview-data-update", lock.video_preview_data.clone())
+                          .unwrap();
+                      }
+                      _ => {}
+                    }
                   }
-                  _ => {}
+                  _ => {
+                    println!("Chunk could not be downloaded!");
+                    return;
+                  }
                 }
               }
               _ => {}

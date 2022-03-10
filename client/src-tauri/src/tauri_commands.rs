@@ -367,3 +367,10 @@ pub fn request_video_preview(
     }
   }
 }
+
+#[tauri::command]
+pub fn get_video_preview_data(
+  state: tauri::State<SharedStateWrapper>,
+) -> HashMap<Uuid, VideoPreviewStatus> {
+  state.0.lock().unwrap().video_preview_data.clone()
+}

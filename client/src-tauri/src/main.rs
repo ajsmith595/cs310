@@ -103,7 +103,8 @@ fn main() {
       tauri_commands::delete_links,
       tauri_commands::update_clip,
       tauri_commands::request_video_length,
-      tauri_commands::request_video_preview
+      tauri_commands::request_video_preview,
+      tauri_commands::get_video_preview_data
     ])
     .on_page_load(move |app, _ev| {
       let threads = threads_clone.clone();
