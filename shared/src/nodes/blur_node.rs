@@ -144,6 +144,7 @@ fn get_output(
             node_id,
             property_name: String::from(outputs::OUTPUT),
             io: InputOrOutput::Output,
+            cache_id: None,
         };
 
         let effect = ges::Effect::new(
@@ -153,7 +154,7 @@ fn get_output(
         let timeline = output.stream_type.create_timeline();
 
         let layer = timeline.append_layer();
-        let clip = ges::UriClip::new(media.get_location().as_str()).unwrap();
+        let clip = ges::UriClip::new(media.get_gst_save_location_with_cache().as_str()).unwrap();
 
         clip.add(&effect).unwrap();
         layer.add_clip(&clip).unwrap();

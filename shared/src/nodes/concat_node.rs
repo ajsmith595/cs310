@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ges::{
-    traits::{LayerExt, TimelineExt},
+    traits::{LayerExt, TimelineElementExt, TimelineExt, UriClipAssetExt},
     TrackType,
 };
 use serde_json::Value;
@@ -154,13 +154,16 @@ fn get_output(
         node_id,
         property_name: String::from(outputs::OUTPUT),
         io: InputOrOutput::Output,
+        cache_id: None,
     };
 
     let timeline = output.stream_type.create_timeline();
 
     let layer = timeline.append_layer();
-    let clip1 = ges::UriClipAsset::request_sync(media1.get_location().as_str()).unwrap();
-    let clip2 = ges::UriClipAsset::request_sync(media2.get_location().as_str()).unwrap();
+    let clip1 = ges::UriClipAsset::request_sync(media1.get_gst_save_location_with_cache().as_str())
+        .unwrap();
+    let clip2 = ges::UriClipAsset::request_sync(media2.get_gst_save_location_with_cache().as_str())
+        .unwrap();
 
     layer
         .add_asset(&clip1, None, None, None, TrackType::UNKNOWN)

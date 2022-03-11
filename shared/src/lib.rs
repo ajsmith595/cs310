@@ -22,5 +22,6 @@ pub mod nodes;
 pub mod pipeline;
 pub mod store;
 pub type ID = Uuid;
+pub mod cache;
 pub mod constants;
 pub mod task;

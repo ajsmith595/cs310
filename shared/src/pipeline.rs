@@ -2,12 +2,14 @@ use std::{collections::HashMap, fs, sync::mpsc, thread};
 
 use ges::traits::TimelineExt;
 use gst::{glib, prelude::*};
+use petgraph::graph::NodeIndex;
 use petgraph::visit::EdgeRef;
 use petgraph::{graph::DiGraph, EdgeDirection};
 
 use bimap::BiMap;
 use uuid::Uuid;
 
+use crate::cache::Cache;
 use crate::{
     clip::{ClipIdentifier, ClipType},
     node::{InputOrOutput, PipedType},
@@ -55,23 +57,13 @@ impl Pipeline {
         Self { links: Vec::new() }
     }
 
-    pub fn gen_graph_new(
+    pub fn get_graph(
         &self,
         store: &Store,
-        node_register: &NodeRegister,
-        get_output: bool,
     ) -> Result<
         (
-            HashMap<
-                Uuid,
-                (
-                    HashMap<String, PipedType>,
-                    HashMap<String, NodeTypeInput>,
-                    HashMap<String, NodeTypeOutput>,
-                ),
-            >,
-            HashMap<Uuid, PipedType>,
-            bool,
+            DiGraph<HashMap<String, PipedType>, Option<(String, String)>>,
+            BiMap<Uuid, NodeIndex>,
         ),
         String,
     > {
@@ -155,6 +147,32 @@ impl Pipeline {
             );
         }
 
+        Ok((graph, node_id_to_index))
+    }
+
+    pub fn generate_pipeline(
+        &self,
+        store: &Store,
+        node_register: &NodeRegister,
+        get_output: bool,
+        cache: &Cache,
+    ) -> Result<
+        (
+            HashMap<
+                Uuid,
+                (
+                    HashMap<String, PipedType>,
+                    HashMap<String, NodeTypeInput>,
+                    HashMap<String, NodeTypeOutput>,
+                ),
+            >,
+            HashMap<Uuid, PipedType>,
+            bool,
+        ),
+        String,
+    > {
+        let (mut graph, node_id_to_index) = self.get_graph(store)?;
+
         // topologically sort graph
         let sorted = petgraph::algo::toposort(&graph, None);
         // if there's a cycle, it's an invalid pipeline anyway
@@ -228,9 +246,10 @@ impl Pipeline {
                         node_id: node.id.clone(),
                         property_name: k.clone(),
                         io: InputOrOutput::Output,
+                        cache_id: None,
                     };
 
-                    let output_location = from_piped_type.get_location();
+                    let output_location = from_piped_type.get_gst_save_location();
 
                     v.save_to_uri(output_location.as_str(), None as Option<&ges::Asset>, true)
                         .unwrap();
@@ -273,11 +292,19 @@ impl Pipeline {
 
                     let next_node_inputs = graph.node_weight_mut(target).unwrap();
 
+                    let cache_id = if let Some(node_outputs) = cache.get(&node.id) {
+                        let output = node_outputs.get(from_property).unwrap();
+                        Some(output.clone())
+                    } else {
+                        None
+                    };
+
                     let from_piped_type = PipedType {
                         stream_type: out_type.property_type,
                         node_id: node.id.clone(),
                         property_name: from_property.clone(),
                         io: InputOrOutput::Output,
+                        cache_id,
                     };
 
                     let to_piped_type = PipedType {
@@ -285,14 +312,15 @@ impl Pipeline {
                         node_id: to_node.clone(),
                         property_name: to_property.clone(),
                         io: InputOrOutput::Input,
+                        cache_id,
                     };
 
                     if do_return {
-                        let from_location = from_piped_type.get_location_real();
-                        let to_location = to_piped_type.get_location_real();
+                        let from_location = from_piped_type.get_save_location();
+                        let to_location = to_piped_type.get_save_location();
                         fs::copy(from_location, to_location).unwrap();
 
-                        let to_location = to_piped_type.get_location();
+                        let to_location = to_piped_type.get_gst_save_location();
                         ges::Asset::needs_reload(
                             ges::UriClip::static_type(),
                             Some(to_location.as_str()),

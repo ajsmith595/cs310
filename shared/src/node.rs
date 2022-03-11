@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use serde_json::Value;
 
-use crate::constants::intermediate_files_location;
+use crate::constants::{cache_files_location, intermediate_files_location};
 
 use super::{global::uniq_id, nodes::NodeRegister, store::Store, ID};
 
@@ -138,6 +138,7 @@ pub struct PipedType {
     pub node_id: ID,
     pub property_name: String,
     pub io: InputOrOutput,
+    pub cache_id: Option<ID>,
 }
 
 impl PipedType {
@@ -149,10 +150,10 @@ impl PipedType {
         }
     }
 
-    pub fn get_location(&self) -> String {
-        format!("file:///{}", self.get_location_real())
+    pub fn get_gst_save_location(&self) -> String {
+        format!("file:///{}", self.get_save_location())
     }
-    pub fn get_location_real(&self) -> String {
+    pub fn get_save_location(&self) -> String {
         format!(
             "{}/{}_{}_{}.xges",
             intermediate_files_location(),
@@ -161,6 +162,17 @@ impl PipedType {
             self.io
         )
         .replace("\\", "/")
+    }
+
+    pub fn get_gst_save_location_with_cache(&self) -> String {
+        format!("file:///{}", self.get_save_location_with_cache())
+    }
+    pub fn get_save_location_with_cache(&self) -> String {
+        if let Some(cache_id) = self.cache_id {
+            format!("{}/{}", cache_files_location(), cache_id).replace("\\", "/")
+        } else {
+            self.get_save_location_with_cache()
+        }
     }
 }
 #[derive(PartialEq, Eq, Hash)]

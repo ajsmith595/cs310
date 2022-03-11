@@ -31,6 +31,9 @@ pub fn projects_location() -> String {
 pub fn intermediate_files_location() -> String {
     format!("{}/intermediate", temp_location())
 }
+pub fn cache_files_location() -> String {
+    format!("{}/cache", temp_location())
+}
 pub fn composited_clips_projects_location() -> String {
     format!("{}/composited-clips", intermediate_files_location())
 }
@@ -56,5 +59,6 @@ pub fn init(data_location: String, is_server: bool) {
     fs::create_dir_all(temp_location()).unwrap();
     fs::create_dir_all(projects_location()).unwrap();
     fs::create_dir_all(intermediate_files_location()).unwrap();
+    fs::create_dir_all(cache_files_location()).unwrap();
     fs::create_dir_all(composited_clips_projects_location()).unwrap();
 }

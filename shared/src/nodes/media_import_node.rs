@@ -142,6 +142,7 @@ fn get_output(
         io: node::InputOrOutput::Output,
         stream_type: output.property_type,
         property_name: outputs::OUTPUT.to_string(),
+        cache_id: None,
     };
 
     let timeline = match clip_identifier.clip_type {

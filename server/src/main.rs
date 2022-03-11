@@ -1,5 +1,6 @@
 use core::time;
 use cs310_shared::{
+    cache::Cache,
     clip::{ClipType, CompositedClip, SourceClip, SourceClipServerStatus},
     constants::{
         source_files_location, store_json_location, CHUNK_FILENAME_NUMBER_LENGTH, CHUNK_LENGTH,
@@ -68,6 +69,7 @@ fn main() {
         store,
         gstreamer_processes: ProcessPool::new(8),
         video_preview_generation: HashMap::new(),
+        cache: Cache::new(),
     }));
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", SERVER_PORT)).unwrap();
@@ -285,6 +287,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                     let node = node.unwrap();
                     let mut lock = state.lock().unwrap();
+                    lock.cache_node_modified(&node.id);
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::UpdateNode(node.id.clone(), node)]);
                 }
@@ -297,6 +300,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                     let link = link.unwrap();
                     let mut lock = state.lock().unwrap();
+                    lock.cache_node_modified(&link.to.node_id);
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::AddLink(link)]);
                 }
@@ -314,6 +318,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         s => Some(String::from(s)),
                     };
                     let mut lock = state.lock().unwrap();
+                    lock.cache_node_modified(&uuid);
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::DeleteLinks(uuid, property)]);
                 }
@@ -356,6 +361,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         }
                     };
                     let mut lock = state.lock().unwrap();
+
+                    lock.cache_clip_modified(&id, clip_type.clone());
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::UpdateClip(id, clip_type, clip)]);
                 }
@@ -363,6 +370,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let uuid = networking::receive_uuid(&mut stream);
 
                     let mut lock = state.lock().unwrap();
+
+                    lock.cache_node_modified(&uuid);
                     let store = lock.store.borrow_mut();
                     Task::apply_tasks(store, vec![Task::DeleteNode(uuid)]);
                 }
@@ -371,10 +380,12 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                     let mut lock = state.lock().unwrap();
 
-                    let result =
-                        lock.store
-                            .pipeline
-                            .gen_graph_new(&lock.store, &get_node_register(), true);
+                    let result = lock.store.pipeline.generate_pipeline(
+                        &lock.store,
+                        &get_node_register(),
+                        true,
+                        &lock.cache,
+                    );
 
                     if result.is_err() {
                         drop(lock);
@@ -486,10 +497,12 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let ending_segment = networking::receive_u64(&mut stream) as u32;
 
                     let mut lock = state.lock().unwrap();
-                    let result =
-                        lock.store
-                            .pipeline
-                            .gen_graph_new(&lock.store, &get_node_register(), true);
+                    let result = lock.store.pipeline.generate_pipeline(
+                        &lock.store,
+                        &get_node_register(),
+                        true,
+                        &lock.cache,
+                    );
                     if result.is_err() {
                         drop(lock);
                         networking::send_message(

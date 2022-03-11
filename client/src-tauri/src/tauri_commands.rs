@@ -8,6 +8,7 @@ use crate::state::{
   ConnectionStatus, SharedStateWrapper, VideoPreviewChunkStatus, VideoPreviewStatus,
 };
 use cs310_shared::{
+  cache::Cache,
   clip::{self, ClipType, CompositedClip, SourceClip},
   constants::media_output_location,
   node::{Node, NodeTypeInput, NodeTypeOutput, PipeableType},
@@ -114,10 +115,11 @@ pub fn get_node_outputs(
   }
 
   let state = state.0.lock().unwrap();
-  let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+  let res = state.store.as_ref().unwrap().pipeline.generate_pipeline(
     state.store.as_ref().unwrap(),
     &state.node_register,
     false,
+    &Cache::new(),
   );
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
@@ -148,10 +150,11 @@ pub fn get_node_inputs(
   }
 
   let state = state.0.lock().unwrap();
-  let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+  let res = state.store.as_ref().unwrap().pipeline.generate_pipeline(
     &state.store.as_ref().unwrap(),
     &state.node_register,
     false,
+    &Cache::new(),
   );
   if res.is_err() {
     return Err(format!("Could not get result!: {}", res.unwrap_err()));
@@ -198,10 +201,11 @@ pub fn get_clip_type(
       return Ok(clip.get_clip_type());
     }
     ClipType::Composited => {
-      let res = state.store.as_ref().unwrap().pipeline.gen_graph_new(
+      let res = state.store.as_ref().unwrap().pipeline.generate_pipeline(
         state.store.as_ref().unwrap(),
         &state.node_register,
         false,
+        &Cache::new(),
       );
 
       if let Ok((_, clip_data, _)) = res {

@@ -8,7 +8,7 @@ use cs310_shared::{
     clip::CompositedClip, constants::CHUNK_LENGTH, networking, node::PipedType,
     nodes::NodeRegister, store::Store,
 };
-use ges::traits::{LayerExt, TimelineExt, UriClipAssetExt};
+use ges::traits::{LayerExt, TimelineElementExt, TimelineExt, UriClipAssetExt};
 use glib::{ObjectExt, StaticType};
 use gst::prelude::{ElementExt, ElementExtManual, GstBinExt, GstObjectExt};
 use ipc_channel::ipc::{self, IpcOneShotServer, IpcReceiver, IpcSender};
