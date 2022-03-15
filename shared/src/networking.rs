@@ -1,5 +1,6 @@
 use num_traits::FromPrimitive;
 use progress_streams::ProgressReader;
+use std::env;
 use std::fs::File;
 use std::io::{Error, ErrorKind, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -7,7 +8,6 @@ use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 use uuid::Uuid;
 
-pub const SERVER_HOST: &str = "172.17.116.100";
 pub const SERVER_PORT: u16 = 3001;
 
 enum_from_primitive! {
@@ -45,7 +45,11 @@ enum_from_primitive! {
 }
 
 pub fn connect_to_server() -> Result<TcpStream, Error> {
-    TcpStream::connect(format!("{}:{}", SERVER_HOST, SERVER_PORT))
+    let host = match env::var("SERVER_HOST") {
+        Ok(host) => host,
+        Err(_) => String::from("127.0.0.1"),
+    };
+    TcpStream::connect(format!("{}:{}", host, SERVER_PORT))
 }
 
 pub fn send_as_file(stream: &mut TcpStream, file_data: &[u8]) {
@@ -62,7 +66,11 @@ pub fn send_file(stream: &mut TcpStream, file: &mut File) {
     send_data(stream, &bytes).unwrap(); // send the file length
     std::io::copy(file, stream).unwrap();
 }
-pub fn send_file_with_progress<F>(stream: &mut TcpStream, file: &mut File, callback: F)
+pub fn send_file_with_progress<F>(
+    stream: &mut TcpStream,
+    file: &mut File,
+    callback: F,
+) -> Result<(), std::io::Error>
 where
     F: Fn(f64, usize),
 {
@@ -78,8 +86,9 @@ where
     });
 
     let bytes = file_length.to_ne_bytes();
-    send_data(stream, &bytes).unwrap(); // send the file length
-    std::io::copy(&mut reader, stream).unwrap();
+    send_data(stream, &bytes)?; // send the file length
+    std::io::copy(&mut reader, stream)?;
+    Ok(())
 }
 
 pub fn receive_file_as_bytes(stream: &mut TcpStream) -> Vec<u8> {
