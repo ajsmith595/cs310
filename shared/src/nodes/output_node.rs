@@ -99,6 +99,11 @@ fn get_output(
     let output_location = clip.get_location();
 
     let timeline = media.stream_type.create_timeline();
+
+    ges::Asset::needs_reload(
+        ges::UriClip::static_type(),
+        Some(media.get_gst_save_location_with_cache().as_str()),
+    );
     let clip =
         ges::UriClipAsset::request_sync(media.get_gst_save_location_with_cache().as_str()).unwrap();
 
