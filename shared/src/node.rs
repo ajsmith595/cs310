@@ -171,7 +171,7 @@ impl PipedType {
         if let Some(cache_id) = self.cache_id {
             format!("{}/{}", cache_files_location(), cache_id).replace("\\", "/")
         } else {
-            self.get_save_location_with_cache()
+            self.get_save_location()
         }
     }
 }
