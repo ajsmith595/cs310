@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use petgraph::{visit::EdgeRef, EdgeDirection};
+use serde::Deserialize;
 
 use crate::{
     clip::{ClipIdentifier, ClipType},
@@ -8,7 +9,7 @@ use crate::{
     store::Store,
     ID,
 };
-
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Cache {
     pub cache_data: HashMap<ID, HashMap<String, ID>>,
 }

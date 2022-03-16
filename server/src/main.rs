@@ -6,7 +6,7 @@ use cs310_shared::{
         source_files_location, store_json_location, CHUNK_FILENAME_NUMBER_LENGTH, CHUNK_LENGTH,
     },
     networking::{self, SERVER_PORT},
-    node::Node,
+    node::{Node, NodeTypeInput, NodeTypeOutput, PipedType},
     nodes::{get_node_register, NodeRegister},
     pipeline::Link,
     store::Store,
@@ -14,6 +14,7 @@ use cs310_shared::{
 };
 use ges::traits::{GESPipelineExt, LayerExt, TimelineExt};
 use gst::prelude::*;
+use ipc_channel::ipc::{self, IpcOneShotServer, IpcSender};
 use num_traits::cast::FromPrimitive;
 use serde_json::Value;
 use simple_logger::SimpleLogger;
@@ -145,7 +146,7 @@ fn main() {
     drop(listener);
 }
 
-fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), std::io::Error> {
     log::info!("Handling client: {}", stream.peer_addr().unwrap());
 
     while match networking::receive_message(&mut stream) {
@@ -175,7 +176,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 }
                 networking::Message::UploadFile => {
                     log::info!("[{}] Receiving file", operation_id);
-                    let uuid = networking::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream)?;
 
                     log::info!("[{}] File ID: {}", operation_id, uuid);
 
@@ -187,7 +188,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     if clip.is_none() {
                         log::warn!("[{}] Client tried to upload file for a source clip which did not exist", operation_id);
                         stream.shutdown(Shutdown::Both).unwrap();
-                        return;
+                        return Ok(());
                     }
                     let clip = clip.unwrap();
 
@@ -196,7 +197,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         _ => {
                             log::warn!("[{}] Client tried to upload file for a source clip which is not marked as LocalOnly", operation_id);
                             stream.shutdown(Shutdown::Both).unwrap();
-                            return;
+
+                            return Ok(());
                         }
                     }
                     clip.status = SourceClipServerStatus::Uploading;
@@ -218,7 +220,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let clip = serde_json::from_slice::<SourceClip>(&clip_data);
                     if clip.is_err() {
                         log::warn!("[{}] Client sent invalid JSON data!", operation_id);
-                        return;
+
+                        return Ok(());
                     }
                     let mut clip = clip.unwrap();
                     let uuid = Uuid::new_v4();
@@ -233,7 +236,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let clip = serde_json::from_slice::<CompositedClip>(&clip_data);
                     if clip.is_err() {
                         log::warn!("[{}] Client sent invalid JSON data!", operation_id);
-                        return;
+
+                        return Ok(());
                     }
                     let mut clip = clip.unwrap();
                     let uuid = Uuid::new_v4();
@@ -245,7 +249,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     Task::apply_tasks(store, vec![Task::CreateCompositedClip(clip)]);
                 }
                 networking::Message::Checksum => {
-                    let checksum = networking::receive_u64(&mut stream);
+                    let checksum = networking::receive_u64(&mut stream)?;
 
                     let store_checksum = state.lock().unwrap().store.get_client_checksum();
                     if store_checksum != checksum {
@@ -253,7 +257,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         // update client
 
                         networking::send_message(&mut stream, networking::Message::ChecksumError)
-                            .unwrap(); // TODO: change to error type
+                            .unwrap();
 
                         let data = &state.lock().unwrap().store.get_client_data();
                         let bytes = serde_json::to_vec(data).unwrap();
@@ -270,7 +274,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let node = serde_json::from_slice::<Node>(&bytes);
                     if node.is_err() {
                         log::warn!("Client sent invalid JSON!");
-                        return;
+                        return Ok(());
                     }
                     let mut node = node.unwrap();
                     let uuid = Uuid::new_v4();
@@ -286,7 +290,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let node = serde_json::from_slice::<Node>(&bytes);
                     if node.is_err() {
                         log::warn!("Client sent invalid JSON!");
-                        return;
+                        return Ok(());
                     }
                     let node = node.unwrap();
                     let mut lock = state.lock().unwrap();
@@ -301,7 +305,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     let link = serde_json::from_slice::<Link>(&bytes);
                     if link.is_err() {
                         log::warn!("Client sent invalid JSON!");
-                        return;
+                        return Ok(());
                     }
                     let link = link.unwrap();
                     let mut lock = state.lock().unwrap();
@@ -313,7 +317,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                 }
                 networking::Message::DeleteLinks => {
-                    let uuid = networking::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream)?;
 
                     let property = networking::receive_file_as_bytes(&mut stream);
                     let property = String::from_utf8(property);
@@ -334,11 +338,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                 }
                 networking::Message::UpdateClip => {
-                    let clip_type_bytes = networking::receive_data(&mut stream, 1).unwrap();
+                    let clip_type_bytes = networking::receive_data(&mut stream, 1)?;
                     let clip_type = ClipType::from_u8(clip_type_bytes[0]);
                     if clip_type.is_none() {
                         log::warn!("Client sent invalid clip type!");
-                        return;
+                        return Ok(());
                     }
                     let clip_type = clip_type.unwrap();
 
@@ -354,7 +358,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                                 );
                                 let value = serde_json::from_slice::<Value>(&bytes);
                                 println!("Value: {:?}", value);
-                                return;
+                                return Ok(());
                             }
                             let clip = clip.unwrap();
                             let id = clip.id.clone();
@@ -364,7 +368,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             let clip = serde_json::from_slice::<CompositedClip>(&bytes);
                             if clip.is_err() {
                                 log::warn!("Client sent invalid JSON!");
-                                return;
+                                return Ok(());
                             }
                             let clip = clip.unwrap();
                             let id = clip.id.clone();
@@ -378,7 +382,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     Task::apply_tasks(store, vec![Task::UpdateClip(id, clip_type, clip)]);
                 }
                 networking::Message::DeleteNode => {
-                    let uuid = networking::receive_uuid(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream)?;
 
                     let mut lock = state.lock().unwrap();
 
@@ -389,16 +393,12 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                 }
                 networking::Message::CompositedClipLength => {
-                    let composited_clip_id = networking::receive_uuid(&mut stream);
+                    let composited_clip_id = networking::receive_uuid(&mut stream)?;
 
                     let mut lock = state.lock().unwrap();
 
-                    let result = lock.store.pipeline.generate_pipeline(
-                        &lock.store,
-                        &get_node_register(),
-                        true,
-                        &lock.cache,
-                    );
+                    let result =
+                        generate_pipeline_in_process(lock.store.clone(), lock.cache.clone());
 
                     if result.is_err() {
                         drop(lock);
@@ -407,7 +407,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGetLength,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
 
                     let (node_type_data, composited_clip_data, output) = result.unwrap();
@@ -419,7 +419,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGetLength,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
 
                     let clip = lock.store.clips.composited.get(&composited_clip_id);
@@ -431,7 +431,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGetLength,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
                     let clip = clip.unwrap().clone();
                     let output_type = output_type.unwrap().clone();
@@ -451,7 +451,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         networking::send_data(&mut stream, composited_clip_id.as_bytes()).unwrap();
                         networking::send_data(&mut stream, &duration.to_ne_bytes()).unwrap();
                         networking::send_data(&mut stream, &num_chunks.to_ne_bytes()).unwrap();
-                        return;
+                        return Ok(());
                     }
 
                     lock.video_preview_generation.remove(&composited_clip_id);
@@ -468,7 +468,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGetLength,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
                     let (process, sender, recv) = process.unwrap();
 
@@ -505,17 +505,13 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                 }
                 networking::Message::GetVideoPreview => {
-                    let composited_clip_id = networking::receive_uuid(&mut stream);
-                    let starting_segment = networking::receive_u64(&mut stream) as u32;
-                    let ending_segment = networking::receive_u64(&mut stream) as u32;
+                    let composited_clip_id = networking::receive_uuid(&mut stream)?;
+                    let starting_segment = networking::receive_u64(&mut stream)? as u32;
+                    let ending_segment = networking::receive_u64(&mut stream)? as u32;
 
                     let mut lock = state.lock().unwrap();
-                    let result = lock.store.pipeline.generate_pipeline(
-                        &lock.store,
-                        &get_node_register(),
-                        true,
-                        &lock.cache,
-                    );
+                    let result =
+                        generate_pipeline_in_process(lock.store.clone(), lock.cache.clone());
                     if result.is_err() {
                         drop(lock);
                         networking::send_message(
@@ -523,7 +519,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGeneratePreview,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
 
                     let (node_type_data, composited_clip_data, output) = result.unwrap();
@@ -535,7 +531,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGeneratePreview,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
                     let clip = lock.store.clips.composited.get(&composited_clip_id);
                     let output_type = composited_clip_data.get(&composited_clip_id);
@@ -546,7 +542,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGeneratePreview,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
                     let clip = clip.unwrap().clone();
                     let output_type = output_type.unwrap().clone();
@@ -586,7 +582,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                                 networking::Message::AllChunksGenerated,
                             )
                             .unwrap();
-                            return;
+                            return Ok(());
                         }
                     }
 
@@ -603,11 +599,14 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             networking::Message::CouldNotGeneratePreview,
                         )
                         .unwrap();
-                        return;
+                        return Ok(());
                     }
                     let (process, sender, recv) = process.unwrap();
 
                     drop(lock);
+
+                    //                     thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Bincode(DeserializeAnyNotSupported)', /home/ajsmith/.cargo/registry/src/github.com-1ecc6299db9ec823/procspawn-0.10.1/src/core.rs:332:55
+                    // note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
                     sender
                         .send(IPCMessage::GeneratePreview(
@@ -675,7 +674,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                             }
                             _ => {
                                 println!("Invalid message received: ({:?})", message);
-                                return;
+                                return Ok(());
                             }
                         }
                     }
@@ -689,8 +688,8 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                 }
 
                 networking::Message::DownloadChunk => {
-                    let uuid = networking::receive_uuid(&mut stream);
-                    let chunk_id = networking::receive_u32(&mut stream);
+                    let uuid = networking::receive_uuid(&mut stream)?;
+                    let chunk_id = networking::receive_u32(&mut stream)?;
 
                     let mut lock = state.lock().unwrap();
                     let clip = lock.store.clips.composited.get(&uuid);
@@ -720,7 +719,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                                         )
                                         .unwrap();
                                         networking::send_file(&mut stream, &mut file);
-                                        return;
+                                        return Ok(());
                                     }
                                 }
                                 _ => {}
@@ -737,7 +736,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         operation_id
                     );
                     stream.shutdown(Shutdown::Both).unwrap();
-                    return;
+                    return Ok(());
                 }
             }
 
@@ -767,5 +766,51 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
         }
     } {
         thread::sleep(time::Duration::from_millis(10));
+    }
+
+    Ok(())
+}
+
+fn generate_pipeline_in_process(
+    store: Store,
+    cache: Cache,
+) -> Result<
+    (
+        HashMap<
+            Uuid,
+            (
+                HashMap<String, PipedType>,
+                HashMap<String, NodeTypeInput>,
+                HashMap<String, NodeTypeOutput>,
+            ),
+        >,
+        HashMap<Uuid, PipedType>,
+        bool,
+    ),
+    String,
+> {
+    loop {
+        println!("Before spawning...");
+
+        let serialised_store = serde_json::to_string(&store).unwrap();
+        let serialised_cache = serde_json::to_string(&cache).unwrap();
+
+        let handle = procspawn::spawn((serialised_store, serialised_cache), |(store, cache)| {
+            let store = serde_json::from_str::<Store>(&store).unwrap();
+            let cache = serde_json::from_str::<Cache>(&cache).unwrap();
+
+            let node_register = get_node_register();
+            let res = store
+                .pipeline
+                .generate_pipeline(&store, &node_register, true, &cache);
+
+            res
+        });
+
+        let res = handle.join();
+
+        if let Ok(res) = res {
+            return res;
+        }
     }
 }

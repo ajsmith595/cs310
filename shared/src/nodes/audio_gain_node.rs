@@ -146,7 +146,11 @@ pub fn get_output(
         };
 
         let effect = ges::Effect::new(
-            format!("volume volume={}", gain.as_f64().unwrap().to_string()).as_str(),
+            format!(
+                "audioamplify amplification={}",
+                gain.as_f64().unwrap().to_string()
+            )
+            .as_str(),
         )
         .unwrap();
         let timeline = output.stream_type.create_timeline();
