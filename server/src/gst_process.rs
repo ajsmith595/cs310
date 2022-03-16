@@ -68,8 +68,14 @@ impl ProcessPool {
     pub fn add_process_to_pool(&mut self, process: Process) {
         self.processes.push(process);
     }
-}
 
+    pub fn clear(&mut self) {
+        while let Some((handle, send, _)) = self.processes.pop() {
+            send.send(IPCMessage::EndProcess);
+            handle.join().unwrap();
+        }
+    }
+}
 fn process_func(server_name: String) {
     gst::init().unwrap();
     ges::init().unwrap();
@@ -77,7 +83,7 @@ fn process_func(server_name: String) {
     let (child_send, child_recv): (IpcSender<IPCMessage>, IpcReceiver<IPCMessage>) =
         ipc::channel().unwrap();
     let server1_send = IpcSender::connect(server_name).unwrap();
-    server1_send.send(child_send).unwrap();
+    server1_send.send(child_send.clone()).unwrap();
 
     let message = child_recv.recv().unwrap();
     let parent_send = match message {
@@ -86,6 +92,10 @@ fn process_func(server_name: String) {
             panic!("Invalid message!")
         }
     };
+    ctrlc::set_handler(move || {
+        child_send.send(IPCMessage::EndProcess).unwrap();
+    })
+    .unwrap();
 
     loop {
         match child_recv.recv() {

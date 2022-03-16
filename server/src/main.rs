@@ -137,7 +137,10 @@ fn main() {
         }
     }
 
+    println!("Waiting for store saver to stop...");
     store_saver_thread.join().unwrap();
+    println!("Store saver stopped");
+    state.lock().unwrap().gstreamer_processes.clear();
 
     drop(listener);
 }
@@ -287,9 +290,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                     let node = node.unwrap();
                     let mut lock = state.lock().unwrap();
-                    lock.cache_node_modified(&node.id);
-                    let store = lock.store.borrow_mut();
-                    Task::apply_tasks(store, vec![Task::UpdateNode(node.id.clone(), node)]);
+                    if lock.store.nodes.contains_key(&node.id) {
+                        lock.cache_node_modified(&node.id);
+                        let store = lock.store.borrow_mut();
+                        Task::apply_tasks(store, vec![Task::UpdateNode(node.id.clone(), node)]);
+                    }
                 }
                 networking::Message::AddLink => {
                     let bytes = networking::receive_file_as_bytes(&mut stream);
@@ -300,9 +305,12 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                     }
                     let link = link.unwrap();
                     let mut lock = state.lock().unwrap();
-                    lock.cache_node_modified(&link.to.node_id);
-                    let store = lock.store.borrow_mut();
-                    Task::apply_tasks(store, vec![Task::AddLink(link)]);
+
+                    if lock.store.nodes.contains_key(&link.to.node_id) {
+                        lock.cache_node_modified(&link.to.node_id);
+                        let store = lock.store.borrow_mut();
+                        Task::apply_tasks(store, vec![Task::AddLink(link)]);
+                    }
                 }
                 networking::Message::DeleteLinks => {
                     let uuid = networking::receive_uuid(&mut stream);
@@ -318,9 +326,12 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         s => Some(String::from(s)),
                     };
                     let mut lock = state.lock().unwrap();
-                    lock.cache_node_modified(&uuid);
-                    let store = lock.store.borrow_mut();
-                    Task::apply_tasks(store, vec![Task::DeleteLinks(uuid, property)]);
+
+                    if lock.store.nodes.contains_key(&uuid) {
+                        lock.cache_node_modified(&uuid);
+                        let store = lock.store.borrow_mut();
+                        Task::apply_tasks(store, vec![Task::DeleteLinks(uuid, property)]);
+                    }
                 }
                 networking::Message::UpdateClip => {
                     let clip_type_bytes = networking::receive_data(&mut stream, 1).unwrap();
@@ -371,9 +382,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
 
                     let mut lock = state.lock().unwrap();
 
-                    lock.cache_node_modified(&uuid);
-                    let store = lock.store.borrow_mut();
-                    Task::apply_tasks(store, vec![Task::DeleteNode(uuid)]);
+                    if lock.store.nodes.contains_key(&uuid) {
+                        lock.cache_node_modified(&uuid);
+                        let store = lock.store.borrow_mut();
+                        Task::apply_tasks(store, vec![Task::DeleteNode(uuid)]);
+                    }
                 }
                 networking::Message::CompositedClipLength => {
                     let composited_clip_id = networking::receive_uuid(&mut stream);
@@ -415,7 +428,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) {
                         drop(lock);
                         networking::send_message(
                             &mut stream,
-                            networking::Message::CouldNotGeneratePreview,
+                            networking::Message::CouldNotGetLength,
                         )
                         .unwrap();
                         return;
