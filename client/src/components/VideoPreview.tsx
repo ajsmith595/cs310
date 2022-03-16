@@ -32,6 +32,8 @@ namespace VideoPreviewInputData {
     type VideoPreviewClipStatus = "NotRequested" | "LengthRequested" | {
         "Data": [
             number,
+            string,
+            boolean,
             Array<VideoPreviewChunkStatus>
         ]
     }
@@ -62,6 +64,8 @@ namespace VideoPreviewClipStatus {
     }
     export interface Data {
         duration: number;
+        codec: string;
+        is_video: boolean;
         chunkData: Array<ChunkStatus>;
     }
 
@@ -142,6 +146,8 @@ class VideoPreview extends React.Component<Props, State> {
             }
         }
 
+        let do_clip_refresh = false;
+
         for (let k in data) {
             let value = data[k];
             if (typeof value == "string") {
@@ -149,15 +155,23 @@ class VideoPreview extends React.Component<Props, State> {
             }
             else {
                 let duration = value.Data[0];
+                let codec = value.Data[1];
+                let is_video = value.Data[2];
                 EventBus.dispatch('composited-clip-length', [k, duration]);
-                let data = value.Data[1];
+                let data = value.Data[3];
 
                 let existing = this.video_preview_data.get(k);
-                if (existing == null || typeof existing == "string" || existing.chunkData.length != data.length) {
+                if (existing == null || typeof existing == "string" || existing.chunkData.length != data.length || existing.codec != codec || existing.is_video != is_video) {
                     this.video_preview_data.set(k, {
                         duration,
+                        codec,
+                        is_video,
                         chunkData: (data as Array<any>)
                     })
+
+                    if (k == this.state.clip) {
+                        do_clip_refresh = true;
+                    }
                 }
                 else {
                     for (let i = 0; i < existing.chunkData.length; i++) {
@@ -172,6 +186,9 @@ class VideoPreview extends React.Component<Props, State> {
             }
         }
         release();
+        if (do_clip_refresh) {
+            await this.onClipChanged(this.state.clip);
+        }
         await this.videoUpdate();
     }
 
@@ -196,15 +213,23 @@ class VideoPreview extends React.Component<Props, State> {
             clipData.chunkData[segment_id] = VideoPreviewClipStatus.ChunkStatus.Loaded;
         }
         let res = null;
-        await new Promise((resolve, reject) => {
-            res = () => { resolve(null) };
-            this.update_end_callbacks.push(res);
-            this.source_buffer.timestampOffset = segment_id * 10;
-            this.source_buffer.appendWindowStart = 0;
-            this.source_buffer.appendBuffer(buffer);
-        });
-        this.update_end_callbacks = this.update_end_callbacks.filter(e => e != res); // remove the callback
-        console.log("Loading chunk done!");
+        try {
+            await new Promise((resolve, reject) => {
+                res = () => { resolve(null) };
+                this.update_end_callbacks.push(res);
+                try {
+                    this.source_buffer.timestampOffset = segment_id * 10;
+                    this.source_buffer.appendWindowStart = 0;
+                    this.source_buffer.appendBuffer(buffer);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+            this.update_end_callbacks = this.update_end_callbacks.filter(e => e != res); // remove the callback
+            console.log("Loading chunk done!");
+        } catch {
+            console.log("Error caught in loading chunk!");
+        }
     }
 
     async requestSegments(clip, start_segment, end_segment) {
@@ -250,14 +275,18 @@ class VideoPreview extends React.Component<Props, State> {
 
         let current_segment = Math.floor(this.currentTimestamp / 10); // TODO: SEGMENT LENGTH
         let next_segment = current_segment + 1;
+        console.log(this.currentTimestamp);
+        console.log(clipData.chunkData.length);
 
         if (clipData.chunkData.length <= next_segment) {
             next_segment = clipData.chunkData.length - 1;
 
             if (current_segment > next_segment) {
+                release();
                 return;
             }
         }
+
 
         console.log("Loading up to chunk " + next_segment);
 
@@ -269,6 +298,11 @@ class VideoPreview extends React.Component<Props, State> {
                     release();
                     await this.requestSegments(clip, segment, next_segment);
                     console.log("Lock released for videoUpdate");
+                    return;
+                }
+
+                if (!this.source_buffer) {
+                    release();
                     return;
                 }
                 // if this chunk has not been generated, stop!                
@@ -356,6 +390,8 @@ class VideoPreview extends React.Component<Props, State> {
             clip,
             videoURL: URL.createObjectURL(this.media_source)
         });
+
+
         let res = null;
         await new Promise((resolve, reject) => {
             res = resolve;
@@ -364,8 +400,20 @@ class VideoPreview extends React.Component<Props, State> {
         this.media_source.removeEventListener('sourceopen', res);
 
 
+        current_data = this.video_preview_data.get(this.state.clip);
+        if (!(current_data != null && typeof current_data != "string")) {
+            release();
+            return;
+        }
+        let codec = current_data.codec;
 
-        let mime_type = 'video/mp4; codecs="avc1.64001F, mp4a.40.2"';
+        console.log(current_data);
+        console.log(codec);
+        if (!codec || codec.startsWith("ERROR")) {
+            release();
+            return;
+        };
+        let mime_type = codec;
         // if (this.clip_codecs.get(clip)) {
         //     mime_type = this.clip_codecs.get(clip).codec;
         // }
@@ -410,6 +458,12 @@ class VideoPreview extends React.Component<Props, State> {
             </option>)
         }
         let musicDisplay = null;
+
+        let current_data = this.video_preview_data.get(this.state.clip);
+        console.log(this.video_element_ref);
+        if (current_data && typeof current_data != "string" && !current_data.is_video) {
+            musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
+        }
         // if (this.clip_codecs.get(this.state.clip) && this.clip_codecs.get(this.state.clip).no_video_streams == 0) {
         //     musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
         // }
@@ -428,7 +482,7 @@ class VideoPreview extends React.Component<Props, State> {
 
         return <div className="flex flex-col h-full">
             <div className="flex-grow overflow-auto flex justify-center items-center p-3 bg-black relative">
-                <video onPlaying={() => this.setState({ buffering: false })} onWaiting={() => this.setState({ buffering: true })} className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)}></video>
+                <video onPlaying={() => this.setState({ buffering: false })} onWaiting={() => this.setState({ buffering: true })} className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)} controls></video>
                 <div className='absolute flex items-center justify-center h-full'>
                     {musicDisplay}
                 </div>

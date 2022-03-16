@@ -28,7 +28,7 @@ pub enum VideoPreviewChunkStatus {
 pub enum VideoPreviewStatus {
   NotRequested,
   LengthRequested,
-  Data(u64, Vec<VideoPreviewChunkStatus>),
+  Data(u64, Option<String>, bool, Vec<VideoPreviewChunkStatus>),
 }
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);

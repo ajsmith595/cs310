@@ -16,6 +16,9 @@ use cs310_shared::{
   task::Task,
   ID,
 };
+use ges::prelude::DiscovererStreamInfoExt;
+use glib::Cast;
+use gst_pbutils::DiscovererVideoInfo;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -29,7 +32,7 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
     let video_preview_status = &mut lock.video_preview_data;
     for (id, status) in video_preview_status.iter_mut() {
       match status {
-        VideoPreviewStatus::Data(_, data) => {
+        VideoPreviewStatus::Data(_, _, _, data) => {
           for status in data {
             match status {
               VideoPreviewChunkStatus::Requested => {
@@ -51,10 +54,11 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
       match status {
         VideoPreviewStatus::NotRequested => {
           // don't do anything if nothing's been requested
+        }
+        VideoPreviewStatus::LengthRequested => {
           video_preview_length_requested(id.clone(), shared_state.clone());
         }
-        VideoPreviewStatus::LengthRequested => {}
-        VideoPreviewStatus::Data(length, data) => {
+        VideoPreviewStatus::Data(length, _, _, data) => {
           video_preview_data(id.clone(), data, shared_state.clone());
         }
       }
@@ -75,7 +79,7 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
     let mut clip_ids = Vec::new();
     for (id, status) in video_preview_status.iter_mut() {
       match status {
-        VideoPreviewStatus::Data(_, data) => {
+        VideoPreviewStatus::Data(_, _, _, data) => {
           for status in data {
             match status {
               VideoPreviewChunkStatus::Generated => {
@@ -114,7 +118,7 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
 
     for (id, status) in video_preview_status {
       match status {
-        VideoPreviewStatus::Data(_, data) => {
+        VideoPreviewStatus::Data(_, codec, _, data) => {
           for i in 0..(data.len()) {
             let status = &data[i];
             match status {
@@ -140,16 +144,30 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
                 let msg = networking::receive_message(&mut stream).unwrap();
                 match msg {
                   networking::Message::Response => {
-                    let mut file = File::create(output_location).unwrap();
+                    let mut file = File::create(output_location.clone()).unwrap();
                     networking::receive_file(&mut stream, &mut file);
 
                     let mut lock = shared_state.lock().unwrap();
-
                     let existing_data = lock.video_preview_data.get_mut(&id).unwrap();
-                    match existing_data {
-                      VideoPreviewStatus::Data(duration, data) => {
-                        data[i] = VideoPreviewChunkStatus::Downloaded;
 
+                    match existing_data {
+                      VideoPreviewStatus::Data(duration, codec, is_vid, data) => {
+                        data[i] = VideoPreviewChunkStatus::Downloaded;
+                        println!("File {} received", output_location.clone());
+                        if codec.is_none() {
+                          println!("Getting codec...");
+                          if let Ok((codec_string, is_video)) =
+                            get_codec_string(output_location.clone())
+                          {
+                            *codec = Some(codec_string.clone());
+                            *is_vid = is_video;
+
+                            println!("Got codec: {}", codec_string);
+                            println!("New data: {:?}", lock.video_preview_data);
+                          } else {
+                            println!("Could not get codec!");
+                          }
+                        }
                         lock
                           .window
                           .as_ref()
@@ -200,7 +218,7 @@ pub fn video_preview_length_requested(
       let number_of_chunks = networking::receive_u32(&mut stream)?;
 
       let data_statuses = vec![VideoPreviewChunkStatus::NotRequested; number_of_chunks as usize];
-      let status = VideoPreviewStatus::Data(duration, data_statuses);
+      let status = VideoPreviewStatus::Data(duration, None, false, data_statuses);
 
       let mut lock = shared_state.lock().unwrap();
       lock.video_preview_data.insert(id.clone(), status);
@@ -271,9 +289,9 @@ pub fn video_preview_data(
           let entry = lock.video_preview_data.get_mut(&id).unwrap();
 
           match entry {
-            VideoPreviewStatus::Data(duration, data) => {
+            VideoPreviewStatus::Data(duration, _, _, data) => {
               if data.get(chunk_id as usize).is_none() {
-                panic!("Something fucked up!");
+                println!("Received chunk out of range");
               }
               data[chunk_id as usize] = VideoPreviewChunkStatus::Generated;
 
@@ -285,7 +303,7 @@ pub fn video_preview_data(
                 .unwrap();
             }
             _ => {
-              panic!("Something fucked up!");
+              println!("Received chunk for a section which no longer has data");
             }
           }
         }
@@ -299,4 +317,70 @@ pub fn video_preview_data(
   }
 
   Ok(())
+}
+
+fn get_codec_string(filename: String) -> Result<(String, bool), glib::Error> {
+  let discoverer = gst_pbutils::Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
+
+  println!("Looking for: {}", filename);
+  let info = discoverer.discover_uri(format!("file:///{}", filename).as_str())?;
+
+  let video_streams = info.video_streams();
+
+  let mut codec_string = String::from("");
+  for video_stream in video_streams.clone() {
+    let structure = video_stream.caps().unwrap();
+    let structure = structure.structure(0).unwrap();
+
+    let codec_data: gst::Buffer = structure.get("codec_data").unwrap();
+    let codec_data = codec_data.map_readable().unwrap();
+    let codec_data = codec_data.as_slice();
+
+    let mut byte_number = 0;
+    let mut string = String::from("");
+    for byte in codec_data {
+      if byte_number >= 1 {
+        string = format!("{}{:02x}", string, byte);
+      }
+
+      byte_number += 1;
+      if byte_number > 3 {
+        break;
+      }
+    }
+
+    println!("Video stream codec string: {}", string);
+    if codec_string.len() > 0 {
+      codec_string = format!("{},", codec_string);
+    }
+    codec_string = format!("{}avc1.{}", codec_string, string);
+
+    let video_info = video_stream.clone().downcast::<DiscovererVideoInfo>();
+    if let Ok(video_info) = video_info {
+      let mut caps = video_stream.caps().unwrap();
+      for x in caps.iter() {
+        println!("Caps stuff (iter): {:#?}", x);
+
+        println!("Name: {}", x.name());
+        for field in x.fields() {
+          println!("Field: {}", field);
+        }
+      }
+
+      println!("CAPS: {:#?}", caps);
+      caps.simplify();
+      println!("CAPS (simplified): {:#?}", caps);
+    }
+  }
+  for audio_stream in info.audio_streams() {
+    if codec_string.len() > 0 {
+      codec_string = format!("{},", codec_string);
+    }
+    codec_string = format!("{}mp4a.40.2", codec_string);
+  }
+
+  Ok((
+    format!("video/mp4; codecs=\"{}\"", codec_string),
+    video_streams.len() > 0,
+  ))
 }

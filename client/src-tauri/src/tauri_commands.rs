@@ -362,7 +362,7 @@ pub fn request_video_preview(
   }
   let current_data = current_data.unwrap();
 
-  if let VideoPreviewStatus::Data(duration, data) = current_data {
+  if let VideoPreviewStatus::Data(duration, _, _, data) = current_data {
     if start_chunk > end_chunk || end_chunk >= data.len() as u32 {
       return;
     }

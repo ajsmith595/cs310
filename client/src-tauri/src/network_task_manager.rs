@@ -143,6 +143,7 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
                 .get_clip_from_group(node.group.clone());
 
               if let Some(composited_clip_id) = composited_clip_id {
+                println!("Composited clip reset: {}", composited_clip_id);
                 lock
                   .video_preview_data
                   .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
@@ -187,6 +188,13 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
                 lock
                   .video_preview_data
                   .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
+
+                let window = lock.window.as_ref().unwrap();
+                window
+                  .emit("video-preview-data-update", lock.video_preview_data.clone())
+                  .unwrap();
+
+                println!("Composited clip {} reset", composited_clip_id);
               } else {
                 println!("No composited clip!");
               }
