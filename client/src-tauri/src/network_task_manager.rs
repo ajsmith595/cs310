@@ -5,8 +5,9 @@ use std::{
 };
 
 use cs310_shared::{
-  clip::{ClipType, SourceClipServerStatus},
+  clip::{ClipIdentifier, ClipType, SourceClipServerStatus},
   networking,
+  nodes::output_node,
   pipeline::Link,
   store::Store,
   task::NetworkTask,
@@ -135,6 +136,18 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
               let mut lock = shared_state.lock().unwrap();
               lock.store.as_mut().unwrap().move_node(&node_id, &uuid);
 
+              let composited_clip_id = lock
+                .store
+                .as_ref()
+                .unwrap()
+                .get_clip_from_group(node.group.clone());
+
+              if let Some(composited_clip_id) = composited_clip_id {
+                lock
+                  .video_preview_data
+                  .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
+              }
+
               let window = lock.window.as_ref().unwrap();
 
               window
@@ -144,6 +157,12 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
               window
                 .emit("store-update", lock.store.as_ref().unwrap().clone())
                 .unwrap();
+
+              if composited_clip_id.is_some() {
+                window
+                  .emit("video-preview-data-update", lock.video_preview_data.clone())
+                  .unwrap();
+              }
             }
           }
           NetworkTask::UpdateNode(node_id) => {
@@ -156,6 +175,21 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
               let mut stream = networking::connect_to_server().unwrap();
               networking::send_message(&mut stream, networking::Message::UpdateNode).unwrap();
               networking::send_as_file(&mut stream, &bytes);
+
+              let mut lock = shared_state.lock().unwrap();
+              let composited_clip_id = lock
+                .store
+                .as_ref()
+                .unwrap()
+                .get_clip_from_group(node.group.clone());
+
+              if let Some(composited_clip_id) = composited_clip_id {
+                lock
+                  .video_preview_data
+                  .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
+              } else {
+                println!("No composited clip!");
+              }
             }
           }
           NetworkTask::AddLink(link) => {
@@ -163,6 +197,26 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
             let mut stream = networking::connect_to_server().unwrap();
             networking::send_message(&mut stream, networking::Message::AddLink).unwrap();
             networking::send_as_file(&mut stream, &bytes);
+
+            let mut lock = shared_state.lock().unwrap();
+
+            let group = lock
+              .store
+              .as_ref()
+              .unwrap()
+              .nodes
+              .get(&link.to.node_id)
+              .unwrap()
+              .group
+              .clone();
+
+            let composited_clip_id = lock.store.as_ref().unwrap().get_clip_from_group(group);
+
+            if let Some(composited_clip_id) = composited_clip_id {
+              lock
+                .video_preview_data
+                .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
+            }
           }
           NetworkTask::DeleteLinks(node_id, property) => {
             let bytes = node_id.as_bytes();
@@ -175,6 +229,26 @@ pub fn network_task_manager_thread(shared_state: Arc<Mutex<SharedState>>) {
             };
             let bytes = property.as_bytes();
             networking::send_as_file(&mut stream, bytes);
+
+            let mut lock = shared_state.lock().unwrap();
+
+            let group = lock
+              .store
+              .as_ref()
+              .unwrap()
+              .nodes
+              .get(&node_id)
+              .unwrap()
+              .group
+              .clone();
+
+            let composited_clip_id = lock.store.as_ref().unwrap().get_clip_from_group(group);
+
+            if let Some(composited_clip_id) = composited_clip_id {
+              lock
+                .video_preview_data
+                .insert(composited_clip_id, VideoPreviewStatus::LengthRequested);
+            }
           }
           NetworkTask::DeleteNode(node_id) => {
             let bytes = node_id.as_bytes();

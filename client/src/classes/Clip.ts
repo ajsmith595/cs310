@@ -114,7 +114,7 @@ export class CompositedClip {
         this.id = id;
         this.name = name;
 
-        Communicator.on('composited-clip-length', (data) => {
+        EventBus.on('composited-clip-length', (data) => {
             let id = data[0];
             let duration_ms = data[1];
 

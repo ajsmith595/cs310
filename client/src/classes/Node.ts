@@ -4,6 +4,7 @@ import { v4 } from 'uuid';
 import Store from "./Store";
 import { NodeRegistration, NodeRegistrationOutput, NodeRegistrationInput } from "./NodeRegistration";
 import Cache from "./Cache";
+import EventBus from "./EventBus";
 
 
 
@@ -129,14 +130,16 @@ export default class EditorNode {
         if (Cache.get(cacheID) != null && !force) {
             return Cache.get(cacheID);
         }
-        console.log("Cannot get inputs by cache - getting via get_node_inputs! (cache id: " + cacheID + ")");
-        Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
-            let inputs = new Map();
-            for (let prop in data) {
-                inputs.set(prop, NodeRegistrationInput.deserialise(data[prop]));
-            }
-            Cache.put(cacheID, inputs);
-            return inputs;
+
+        await new Promise((res, rej) => {
+            Communicator.invoke('get_node_inputs', { node: this.serialise() }, (data) => {
+                let inputs = new Map();
+                for (let prop in data) {
+                    inputs.set(prop, NodeRegistrationInput.deserialise(data[prop]));
+                }
+                Cache.put(cacheID, inputs);
+                res(inputs);
+            });
         });
     }
 
@@ -150,13 +153,17 @@ export default class EditorNode {
         if (Cache.get(cacheID) != null && !force) {
             return Cache.get(cacheID);
         }
-        Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
-            let outputs = new Map();
-            for (let prop in data) {
-                outputs.set(prop, NodeRegistrationOutput.deserialise(data[prop]));
-            }
-            Cache.put(cacheID, outputs);
-            return outputs;
+        await new Promise((res, rej) => {
+            Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
+
+                console.log(data);
+                let outputs = new Map();
+                for (let prop in data) {
+                    outputs.set(prop, NodeRegistrationOutput.deserialise(data[prop]));
+                }
+                Cache.put(cacheID, outputs);
+                res(outputs);
+            })
         });
     }
 
@@ -165,10 +172,18 @@ export default class EditorNode {
         this.save();
     }
 
-    save() {
+    async save() {
         Communicator.invoke('update_node', {
             node: this.serialise()
-        })
+        });
+        await new Promise((res, rej) => {
+            setTimeout(res, 50);
+        });
+
+        await this.getInputs(true);
+        await this.getOutputs(true);
+
+        EventBus.dispatch('node_editor_force_reload', null);
     }
 
     static createNode(type: string, group: string, position: Position) {

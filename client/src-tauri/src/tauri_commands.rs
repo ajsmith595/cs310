@@ -128,6 +128,8 @@ pub fn get_node_outputs(
 
   let data = node_type_data.get(&node.id);
 
+  println!("Got data for node: {:?}", data);
+
   if data.is_none() {
     return Err(format!("Data for node not found"));
   }

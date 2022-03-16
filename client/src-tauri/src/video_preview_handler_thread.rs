@@ -51,126 +51,11 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
       match status {
         VideoPreviewStatus::NotRequested => {
           // don't do anything if nothing's been requested
+          video_preview_length_requested(id.clone(), shared_state.clone());
         }
-        VideoPreviewStatus::LengthRequested => {
-          let mut stream = networking::connect_to_server().unwrap();
-
-          networking::send_message(&mut stream, networking::Message::CompositedClipLength).unwrap();
-          let uuid_bytes = id.as_bytes();
-          networking::send_data(&mut stream, uuid_bytes).unwrap();
-
-          println!("Sent data for {}", id);
-
-          let msg = networking::receive_message(&mut stream).unwrap();
-
-          println!("Message received: {:?}", msg);
-
-          match msg {
-            networking::Message::CompositedClipLength => {
-              let uuid = networking::receive_uuid(&mut stream);
-              let duration = networking::receive_u64(&mut stream);
-              let number_of_chunks = networking::receive_u32(&mut stream);
-
-              let data_statuses =
-                vec![VideoPreviewChunkStatus::NotRequested; number_of_chunks as usize];
-              let status = VideoPreviewStatus::Data(duration, data_statuses);
-
-              let mut lock = shared_state.lock().unwrap();
-              lock.video_preview_data.insert(id.clone(), status);
-
-              lock
-                .window
-                .as_ref()
-                .unwrap()
-                .emit("video-preview-data-update", lock.video_preview_data.clone())
-                .unwrap();
-            }
-            networking::Message::CouldNotGetLength => {
-              println!("Could not generate preview :/");
-            }
-            _ => {
-              panic!("Unknown message!: {:?}", msg);
-            }
-          }
-        }
+        VideoPreviewStatus::LengthRequested => {}
         VideoPreviewStatus::Data(length, data) => {
-          let mut start_chunk = None;
-          let mut end_chunk = None;
-          for i in 0..data.len() {
-            let status = &data[i];
-            match status {
-              VideoPreviewChunkStatus::Generating => {
-                if start_chunk.is_none() {
-                  start_chunk = Some(i);
-                }
-                end_chunk = Some(i);
-              }
-              _ => {
-                if start_chunk.is_some() {
-                  break;
-                }
-              }
-            }
-          }
-
-          if let (Some(start_chunk), Some(end_chunk)) = (start_chunk, end_chunk) {
-            let mut stream = networking::connect_to_server().unwrap();
-
-            println!(
-              "Getting video preview for {} between chunks {} and {}",
-              id, start_chunk, end_chunk
-            );
-            networking::send_message(&mut stream, networking::Message::GetVideoPreview).unwrap();
-            networking::send_data(&mut stream, id.as_bytes()).unwrap();
-            networking::send_data(&mut stream, &start_chunk.to_ne_bytes()).unwrap();
-            networking::send_data(&mut stream, &end_chunk.to_ne_bytes()).unwrap();
-
-            loop {
-              let message = networking::receive_message(&mut stream);
-              match message {
-                Ok(msg) => match msg {
-                  networking::Message::CouldNotGeneratePreview => {
-                    panic!("Could not generate preview!");
-                  }
-                  networking::Message::NewChunk => {
-                    let chunk_id = networking::receive_u32(&mut stream);
-                    println!("Got new chunk: {}", chunk_id);
-
-                    let mut lock = shared_state.lock().unwrap();
-                    let entry = lock.video_preview_data.get_mut(&id).unwrap();
-
-                    match entry {
-                      VideoPreviewStatus::Data(duration, data) => {
-                        if data.get(chunk_id as usize).is_none() {
-                          panic!("Something fucked up!");
-                        }
-                        data[chunk_id as usize] = VideoPreviewChunkStatus::Generated;
-
-                        lock
-                          .window
-                          .as_ref()
-                          .unwrap()
-                          .emit("video-preview-data-update", lock.video_preview_data.clone())
-                          .unwrap();
-                      }
-                      _ => {
-                        panic!("Something fucked up!");
-                      }
-                    }
-                  }
-                  networking::Message::AllChunksGenerated => {
-                    println!("All chunks generated");
-                    break;
-                  }
-                  _ => {}
-                },
-                Err(x) => {
-                  println!("Error occurred (vid preview)! {:?}", x);
-                  break;
-                }
-              }
-            }
-          }
+          video_preview_data(id.clone(), data, shared_state.clone());
         }
       }
     }
@@ -290,4 +175,128 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
     }
     thread::sleep(Duration::from_secs(1));
   }
+}
+
+pub fn video_preview_length_requested(
+  id: Uuid,
+  shared_state: Arc<Mutex<SharedState>>,
+) -> Result<(), std::io::Error> {
+  let mut stream = networking::connect_to_server()?;
+
+  networking::send_message(&mut stream, networking::Message::CompositedClipLength)?;
+  let uuid_bytes = id.as_bytes();
+  networking::send_data(&mut stream, uuid_bytes)?;
+
+  println!("Sent data for {}", id);
+
+  let msg = networking::receive_message(&mut stream)?;
+
+  println!("Message received: {:?}", msg);
+
+  match msg {
+    networking::Message::CompositedClipLength => {
+      let uuid = networking::receive_uuid(&mut stream)?;
+      let duration = networking::receive_u64(&mut stream)?;
+      let number_of_chunks = networking::receive_u32(&mut stream)?;
+
+      let data_statuses = vec![VideoPreviewChunkStatus::NotRequested; number_of_chunks as usize];
+      let status = VideoPreviewStatus::Data(duration, data_statuses);
+
+      let mut lock = shared_state.lock().unwrap();
+      lock.video_preview_data.insert(id.clone(), status);
+
+      lock
+        .window
+        .as_ref()
+        .unwrap()
+        .emit("video-preview-data-update", lock.video_preview_data.clone())
+        .unwrap();
+    }
+    networking::Message::CouldNotGetLength => {}
+    _ => {
+      panic!("Unknown message!: {:?}", msg);
+    }
+  }
+
+  Ok(())
+}
+
+pub fn video_preview_data(
+  id: Uuid,
+  data: Vec<VideoPreviewChunkStatus>,
+  shared_state: Arc<Mutex<SharedState>>,
+) -> Result<(), std::io::Error> {
+  let mut start_chunk = None;
+  let mut end_chunk = None;
+  for i in 0..data.len() {
+    let status = &data[i];
+    match status {
+      VideoPreviewChunkStatus::Generating => {
+        if start_chunk.is_none() {
+          start_chunk = Some(i);
+        }
+        end_chunk = Some(i);
+      }
+      _ => {
+        if start_chunk.is_some() {
+          break;
+        }
+      }
+    }
+  }
+
+  if let (Some(start_chunk), Some(end_chunk)) = (start_chunk, end_chunk) {
+    let mut stream = networking::connect_to_server()?;
+
+    println!(
+      "Getting video preview for {} between chunks {} and {}",
+      id, start_chunk, end_chunk
+    );
+    networking::send_message(&mut stream, networking::Message::GetVideoPreview)?;
+    networking::send_data(&mut stream, id.as_bytes())?;
+    networking::send_data(&mut stream, &start_chunk.to_ne_bytes())?;
+    networking::send_data(&mut stream, &end_chunk.to_ne_bytes())?;
+
+    loop {
+      let message = networking::receive_message(&mut stream)?;
+      match message {
+        networking::Message::CouldNotGeneratePreview => {
+          return Err(std::io::Error::from_raw_os_error(22));
+        }
+        networking::Message::NewChunk => {
+          let chunk_id = networking::receive_u32(&mut stream)?;
+          println!("Got new chunk: {}", chunk_id);
+
+          let mut lock = shared_state.lock().unwrap();
+          let entry = lock.video_preview_data.get_mut(&id).unwrap();
+
+          match entry {
+            VideoPreviewStatus::Data(duration, data) => {
+              if data.get(chunk_id as usize).is_none() {
+                panic!("Something fucked up!");
+              }
+              data[chunk_id as usize] = VideoPreviewChunkStatus::Generated;
+
+              lock
+                .window
+                .as_ref()
+                .unwrap()
+                .emit("video-preview-data-update", lock.video_preview_data.clone())
+                .unwrap();
+            }
+            _ => {
+              panic!("Something fucked up!");
+            }
+          }
+        }
+        networking::Message::AllChunksGenerated => {
+          println!("All chunks generated");
+          break;
+        }
+        _ => {}
+      }
+    }
+  }
+
+  Ok(())
 }

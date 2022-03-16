@@ -182,36 +182,36 @@ pub fn receive_data(stream: &mut TcpStream, buffer_size: u64) -> Result<Vec<u8>,
     Ok(buffer)
 }
 
-pub fn receive_uuid(stream: &mut TcpStream) -> Uuid {
-    let temp = receive_data(stream, 16).unwrap();
+pub fn receive_uuid(stream: &mut TcpStream) -> Result<Uuid, Error> {
+    let temp = receive_data(stream, 16)?;
     let mut uuid_bytes = [0 as u8; 16];
     uuid_bytes.copy_from_slice(&temp);
-    Uuid::from_bytes(uuid_bytes)
+    Ok(Uuid::from_bytes(uuid_bytes))
 }
 
-pub fn receive_u64(stream: &mut TcpStream) -> u64 {
+pub fn receive_u64(stream: &mut TcpStream) -> Result<u64, Error> {
     let bytes = receive_data(stream, 8).unwrap();
     let mut buffer = [0 as u8; 8];
     buffer.copy_from_slice(&bytes);
-    u64::from_ne_bytes(buffer)
+    Ok(u64::from_ne_bytes(buffer))
 }
-pub fn receive_u32(stream: &mut TcpStream) -> u32 {
+pub fn receive_u32(stream: &mut TcpStream) -> Result<u32, Error> {
     let bytes = receive_data(stream, 4).unwrap();
     let mut buffer = [0 as u8; 4];
     buffer.copy_from_slice(&bytes);
-    u32::from_ne_bytes(buffer)
+    Ok(u32::from_ne_bytes(buffer))
 }
 
-pub fn receive_u16(stream: &mut TcpStream) -> u16 {
+pub fn receive_u16(stream: &mut TcpStream) -> Result<u16, Error> {
     let bytes = receive_data(stream, 2).unwrap();
     let mut buffer = [0 as u8; 2];
     buffer.copy_from_slice(&bytes);
-    u16::from_ne_bytes(buffer)
+    Ok(u16::from_ne_bytes(buffer))
 }
 
-pub fn receive_u8(stream: &mut TcpStream) -> u8 {
+pub fn receive_u8(stream: &mut TcpStream) -> Result<u8, Error> {
     let bytes = receive_data(stream, 1).unwrap();
     let mut buffer = [0 as u8; 1];
     buffer.copy_from_slice(&bytes);
-    u8::from_ne_bytes(buffer)
+    Ok(u8::from_ne_bytes(buffer))
 }

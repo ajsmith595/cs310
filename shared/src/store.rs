@@ -6,7 +6,10 @@ use std::{
 use serde::{Serialize, Serializer};
 use uuid::Uuid;
 
-use crate::clip::{ClipIdentifier, ClipType};
+use crate::{
+    clip::{ClipIdentifier, ClipType},
+    nodes::output_node,
+};
 
 fn ordered_map<S, T, X>(value: &HashMap<T, X>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -179,5 +182,21 @@ impl Store {
                 }
             }
         }
+    }
+
+    pub fn get_clip_from_group(&self, group: Uuid) -> Option<ID> {
+        for (id, n) in &self.nodes {
+            if group == n.group && n.node_type == output_node::IDENTIFIER {
+                let prop = n.properties.get(output_node::inputs::CLIP);
+                if let Some(prop) = prop {
+                    let clip_identifier = serde_json::from_value::<ClipIdentifier>(prop.clone());
+                    if let Ok(clip_identifier) = clip_identifier {
+                        return Some(clip_identifier.id);
+                    }
+                }
+            }
+        }
+
+        None
     }
 }

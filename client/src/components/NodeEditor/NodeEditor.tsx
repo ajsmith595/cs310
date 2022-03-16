@@ -51,6 +51,11 @@ class NodeEditor extends React.Component<Props, State> {
         EventBus.on(EventBus.EVENTS.NODE_EDITOR.ADD_NODE, this.addNode);
         EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroup);
         EventBus.registerGetter(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP, () => this.state.group);
+
+        EventBus.on('node_editor_force_reload', () => {
+            this.forceUpdate();
+            console.log("force update invoked")
+        });
     }
 
     componentWillUnmount() {

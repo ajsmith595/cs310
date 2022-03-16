@@ -7,6 +7,7 @@ import Communicator from '../classes/Communicator';
 import Store from '../classes/Store';
 import { Mutex } from 'async-mutex';
 import Utils from '../classes/Utils';
+import EventBus from '../classes/EventBus';
 
 
 interface Props {
@@ -148,6 +149,7 @@ class VideoPreview extends React.Component<Props, State> {
             }
             else {
                 let duration = value.Data[0];
+                EventBus.dispatch('composited-clip-length', [k, duration]);
                 let data = value.Data[1];
 
                 let existing = this.video_preview_data.get(k);
@@ -295,7 +297,6 @@ class VideoPreview extends React.Component<Props, State> {
         });
 
         let vid = this.video_element_ref.current;
-        console.log(this.source_buffer.buffered);
         this.state.playing ? vid.pause() : vid.play();
     }
 
@@ -458,7 +459,9 @@ class VideoPreview extends React.Component<Props, State> {
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepBackward} /></button>
                     <button onClick={() => this.playPause()} className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={this.state.playing ? faPause : faPlay} /></button>
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepForward} /></button>
-                    <div className="flex-1"></div>
+                    <button className="flex-1" onClick={() => {
+                        console.log(this.video_preview_data);
+                    }}>Debug</button>
                 </div>
             </div>
         </div>;
