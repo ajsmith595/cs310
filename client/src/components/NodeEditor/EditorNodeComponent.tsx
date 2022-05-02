@@ -13,7 +13,6 @@ interface Props {
         node: EditorNode,
         deleteLinks: (property: string) => void;
         deleteNode: () => void;
-        isValidConnection: (property: string, connection: Connection) => boolean;
     }
 }
 
@@ -35,9 +34,6 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
         }
     }
 
-    componentDidMount() {
-
-    }
 
     setNodeProperty(property: string, value: any) {
         this.props.data.node.properties.set(property, value);
@@ -61,10 +57,17 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
             let accepted_type = prop.property_type;
 
             if (accepted_type.type === 'Pipeable') {
+                // For each pipeable input, we create a target handle so that other nodes can connect to it
+
+
+
                 let btn = null;
                 if (this.state.hovered_property === property && Store.getCurrentStore().pipeline.containsLinkForNodeProperty(this.props.data.node.id, property)) {
                     btn = <button onClick={() => this.props.data.deleteLinks(property)} className="absolute" style={{ left: -6, top: -8 }}><FontAwesomeIcon className="text-red-600 rounded-full bg-white" icon={faTimesCircle} /></button>;
                 }
+                // If it has a property connected to it, and it's being hovered, show a cross icon to remove the edge
+
+
 
 
                 properties.push(
@@ -74,7 +77,6 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
                         <Handle type='target' position={Position.Left} id={property}
                             style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
-                            isValidConnection={(connection) => this.props.data.isValidConnection(property, connection)}
                         >
                             {btn}
                         </Handle>
@@ -86,6 +88,8 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                 )
             }
             else if (accepted_type.type === 'Clip') {
+
+                // If it's a clip property, this is special - we place those on the node in the node editor itself, rather than just in the properties panel like any other property.
                 properties.push(
                     <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                         <div className="px-2">
@@ -103,7 +107,6 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
                     onMouseLeave={() => this.setState({ hovered_property: null })}>
                     <Handle type="source" position={Position.Right} id={output_type}
                         style={{ width: width, height: height, borderRadius: 0, backgroundColor: 'transparent', border: 0 }}
-                        isValidConnection={(connection) => this.props.data.isValidConnection(output_type, connection)}
                     />
                     <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
                         <p className="text-right">{output.display_name}</p>
@@ -140,13 +143,8 @@ export default class EditorNodeComponent extends React.Component<Props, State> {
 
                         {delete_btn}
                     </span>
-                    {/* <AnimateHeight height={this.state.expanded ? 'auto' : 1} duration={EditorNodeComponent.EXPAND_DURATION}>
-                        <small className={`block overflow-hidden`}>{node_registration.description}</small>
-                    </AnimateHeight> */}
                 </div>
                 {properties}
-                {/* <Handle type="source" position={Position.Right} />
-                <Handle type="target" position={Position.Left} /> */}
             </div>
         );
     }

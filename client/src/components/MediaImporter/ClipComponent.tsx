@@ -2,7 +2,7 @@ import { faBox, faClosedCaptioning, faExternalLinkSquareAlt, faFileImport, faMus
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import Communicator from '../../classes/Communicator';
-import Store from '../../classes/Store';
+import Cache from '../../classes/Cache';
 import { CompositedClip, SourceClip } from '../../classes/Clip';
 import { faEdit, faFile } from '@fortawesome/free-regular-svg-icons';
 import EventBus from '../../classes/EventBus';
@@ -12,18 +12,19 @@ import { fs } from '@tauri-apps/api';
 
 
 interface Props {
-    cache?: Map<string, any>;
     clip: CompositedClip | SourceClip
 }
 
 interface State {
     editing: boolean,
-    thumbnailData: string,
-    uploadProgress: number
+    thumbnailData: string, // allows thumbnails to be shown in the media importer (old)
+    uploadProgress: number // contains the current upload progress of this clip (if a source clip)
 }
 
 class ClipComponent extends React.Component<Props, State> {
-    private inputRef = React.createRef<HTMLInputElement>();
+    private inputRef = React.createRef<HTMLInputElement>(); // Allows us to control the focus of the input to allow us to change the name of the clip
+
+
     constructor(props: Props) {
         super(props);
 
@@ -43,9 +44,20 @@ class ClipComponent extends React.Component<Props, State> {
 
 
     componentDidMount() {
-        if (this.props.clip instanceof CompositedClip) return;
+        if (this.props.clip instanceof CompositedClip) {
+
+            EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, () => {
+                setTimeout(() => this.forceUpdate(), 30);
+            }); // If the group is changed, we need to force an update to ensure the `Open in Editor` buttons are correctly displaying
+
+            return;
+        }
+
+        // If it's a source clip
+
 
         Communicator.on('file-upload-progress', (data) => {
+            // Received when new file percentages are emitted by the Rust client
             let [id, percentage] = data;
             if (id == this.props.clip.id) {
                 this.setState({
@@ -54,22 +66,16 @@ class ClipComponent extends React.Component<Props, State> {
             }
         });
 
-        if (!this.props.cache.get("clips")) {
-            this.props.cache.set("clips", {});
-        }
-        if (!this.props.cache.get("clips").source) {
-            this.props.cache.get("clips").source = {};
-        }
-        if (!this.props.cache.get("clips").source[this.props.clip.id]) {
-            this.props.cache.get("clips").source[this.props.clip.id] = {
-                thumbnail_data: null
-            };
-        }
-        if (!this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data) {
+
+        let cacheID = this.props.clip.getThumbnailCacheID();
+
+        // allows the thumbnail of the clip to be obtained in the background, if it is not available in the cache
+
+        if (!Cache.get(cacheID)) {
             if (this.props.clip.thumbnail_location) {
                 fs.readBinaryFile(this.props.clip.thumbnail_location).then(data => {
                     let new_data = Utils.bytesToBase64(data);
-                    this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data = new_data;
+                    Cache.put(cacheID, new_data);
                     this.setState({
                         thumbnailData: new_data
                     });
@@ -81,12 +87,15 @@ class ClipComponent extends React.Component<Props, State> {
         }
         else {
             this.setState({
-                thumbnailData: this.props.cache.get("clips").source[this.props.clip.id].thumbnail_data
+                thumbnailData: Cache.get(cacheID)
             });
         }
     }
 
 
+    /**
+     * Changes the appropriate clip's name, and saves the change to the Rust backend.
+     */
     changeClipName(newName) {
         this.props.clip.name = newName;
         Communicator.invoke('update_clip', {
@@ -96,15 +105,23 @@ class ClipComponent extends React.Component<Props, State> {
         });
     }
 
+    /**
+     * Enables the clip's name to be edited
+     */
     enableEditingMode() {
         this.setState({
             editing: true
         });
 
+        // Need to wait a frame for the input to be shown, then we can focus into the input
         requestAnimationFrame(() => {
             this.inputRef.current.focus();
         });
     }
+
+    /**
+     * Disables the editing mode, and saves the new clip name
+     */
     disableEditingMode() {
         if (this.inputRef.current) {
             this.changeClipName(this.inputRef.current.value);
@@ -114,10 +131,16 @@ class ClipComponent extends React.Component<Props, State> {
         })
     }
 
+    /**
+     * Selects the clip in the global context, so it can be used by the properties panel
+     */
     selectClip() {
         EventBus.dispatch(EventBus.EVENTS.APP.SET_SELECTION, this.props.clip);
     }
 
+    /**
+     * Opens the relevant clip in the node editor, using the composited clip's group
+     */
     openInEditor() {
         if (this.props.clip instanceof SourceClip) return;
 
@@ -127,16 +150,18 @@ class ClipComponent extends React.Component<Props, State> {
     }
 
 
+    /**
+     * Called when a particular clip starts being dragged; encodes the relevant clip data into the drag event so it can be picked up if the user drops it on a compatible target
+     */
     onDragStart(e: React.DragEvent) {
-        e.dataTransfer.setData('application/json', JSON.stringify(this.props.clip.getIdentifier()));
+        e.dataTransfer.setData('application/json', JSON.stringify(this.props.clip.getIdentifier().serialise()));
         e.dataTransfer.dropEffect = 'link';
     }
 
     render() {
 
 
-        let type_indicator = null;
-
+        let type_indicator = null; // The icon displaying what type the clip is
         let type = this.props.clip.getType();
         if (type) {
             let colour = Utils.Colours.Unknown;
@@ -160,25 +185,19 @@ class ClipComponent extends React.Component<Props, State> {
             type_indicator = <FontAwesomeIcon icon={icon} className={`text-${colour} mr-2`} />;
         }
         else {
-            this.props.clip.fetchType().then(e => this.forceUpdate());
-        }
-
-
-        let source_clip_location = null;
-
-        if (this.props.clip instanceof SourceClip) {
-            // source_clip_location = <span className="ml-2 text-gray-400 text-xs">({this.props.clip.file_location})</span>;
+            this.props.clip.fetchType().then(e => this.forceUpdate()); // If the type is not available, get the type, then refresh once it is available
         }
 
         let text = (
             <div className="flex-1">
-
                 <span className="text-gray-200 text-xs inline" onDoubleClick={this.enableEditingMode}>{type_indicator}{this.props.clip.name.replaceAll(' ', '\u00a0')}</span>
                 <button className="inline ml-3 text-xs text-blue-600" onClick={this.enableEditingMode}><FontAwesomeIcon icon={faEdit} /></button>
-                {source_clip_location}
             </div>
-        );
+        ); // the name of the clip, with the type indicator
         if (this.state.editing) {
+            // if we're editing, instead show an input box to allow the user to modify the name of the clip
+
+
             text = <div className="flex flex-1">{type_indicator}<input ref={this.inputRef} type="text" className="text-gray-200 bg-transparent border-0 text-xs focus:outline-none flex-1"
                 defaultValue={this.props.clip.name} onBlur={() => this.disableEditingMode()} onKeyDown={(e) => {
                     if (e.key == "Enter") {
@@ -188,35 +207,27 @@ class ClipComponent extends React.Component<Props, State> {
             </div>;
         }
 
-        let extraDisplay = null;
-        let status = null;
+
+        let status = null; // The upload status of a source clip OR the button to open a composited clip in the editor
         if (this.props.clip instanceof SourceClip) {
-            extraDisplay = <p className="text-gray-400 text-xs">{this.props.clip.file_location}</p>;
-
-
-            let width = this.state.uploadProgress + "%";
-            extraDisplay = <div className='relative h-2 border border-black rounded'>
-                <div className='bg-white left-0 absolute h-full rounded' style={{ width }}>
-                </div>
-            </div>;
-
             status = this.props.clip.status;
-
             if (status == 'Uploading') {
                 status += " " + Math.round(this.state.uploadProgress) + "%";
             }
         }
         else {
-            extraDisplay = <button className="text-xs p-1 bg-blue-600 text-white" onClick={this.openInEditor}>Open</button>;
+
+            if (EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP) == this.props.clip.getClipGroup()) {
+                status = <button className="text-xs disabled bg-green-600 text-white">In Editor</button>;
+            }
+            else {
+                status = <button className="text-xs hover:bg-blue-500 bg-blue-600 text-white" onClick={this.openInEditor}>Open in Editor</button>;
+            }
+
         }
 
 
-        let img = <img src="https://via.placeholder.com/1920x1080" className="max-h-16" />;
-        if (this.props.clip instanceof SourceClip && this.state.thumbnailData) {
-            img = <img src={"data:image/jpeg;base64," + this.state.thumbnailData} className="max-h-16" />;
-        }
 
-        let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip;
 
         let durationString = '-';
         if (this.props.clip.getDuration()) {
@@ -232,32 +243,15 @@ class ClipComponent extends React.Component<Props, State> {
 
         let border = `border border-gray-800`;
 
+        let isSelected = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION) == this.props.clip; // if it's selected, we highlight it
 
-        let open_in_editor_btn = null;
-
-        if (this.props.clip instanceof CompositedClip) {
-            open_in_editor_btn = <button className="mr-1" onClick={() => { console.log("Open in editor!"); this.openInEditor() }}><FontAwesomeIcon icon={faExternalLinkSquareAlt} /></button>
-        }
         return <tr className={`gap-2 cursor-pointer ${isSelected ? 'bg-pink-600' : 'hover:bg-white hover:bg-opacity-10'} transition-colors`}
             draggable="true"
             onDragStart={this.onDragStart}
             onClick={this.selectClip}>
-            {/* <div>
-                {img}
-            </div> */}
-            <td className={border}><div className='flex'>{open_in_editor_btn}{text}</div></td>
+            <td className={border}><div className='flex'>{text}</div></td>
             <td className={border}>{durationString}</td>
             <td className={border}>{status}</td>
-            {/* <div className="flex items-center">
-                <div>
-                    {text}
-                    {extraDisplay}
-                    {type_indicator}
-                </div>
-
-
-
-            </div> */}
         </tr>
 
     }

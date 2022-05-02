@@ -1,8 +1,9 @@
-import React from 'react';
 import { getMarkerEnd } from 'react-flow-renderer';
 import { Position } from '../../classes/Node';
 import { PipeableType, PipeableTypeRestriction, PropertyType } from '../../classes/NodeRegistration';
 import Utils from '../../classes/Utils';
+
+//#region Edge Utility Functions
 
 function bezierPoint(t: number, p1: Position, p2: Position, p3: Position, p4: Position) {
 
@@ -43,10 +44,18 @@ function getBezierPath(p1: Position, p2: Position, p3: Position, p4: Position) {
 }
 
 
+//#endregion Edge Utility Functions
+
+
+
+
 interface EdgeData {
     sourceType: PipeableType,
     targetType: PipeableTypeRestriction,
 }
+/**
+ * Allows for custom visuals in the node editor for edges between nodes
+ */
 export default function CustomEdgeComponent({
     id,
     sourceX,
@@ -76,14 +85,12 @@ export default function CustomEdgeComponent({
 
     const markerEnd = getMarkerEnd(arrowHeadType, markerEndId);
 
-
-    let conversion_needed = true;
     let source_type = edge_data.sourceType;
     let target_type = edge_data.targetType;
 
 
 
-    if (!Utils.pipeableTypeMeetsMinReq(source_type, target_type)) { // type is invalid!
+    if (!Utils.pipeableTypeMeetsMinReq(source_type, target_type)) { // if the type does not meet minimum requirements, we mark it as red, since it's invalid
         const edgePath1 = getBezierPath(p1, p2, p3, p4);
         style = style || {};
 
@@ -92,7 +99,7 @@ export default function CustomEdgeComponent({
         );
     }
 
-    if (!Utils.pipeableTypeAboveMaxReq(source_type, target_type)) {
+    if (!Utils.pipeableTypeAboveMaxReq(source_type, target_type)) { // if the type is not above the maximum requirements, it can be drawn with the appropriate colour
         const edgePath1 = getBezierPath(p1, p2, p3, p4);
         style = style || {};
         return (
@@ -100,17 +107,13 @@ export default function CustomEdgeComponent({
         );
     }
 
-    let new_source_type = Utils.pipeableTypeDowngrade(source_type, target_type);
 
+    // Otherwise, we need to downgrade the type, and make it look nice!
 
-
-
-
+    let new_source_type = Utils.pipeableTypeDowngrade(source_type, target_type); // First, get the downgraded type
 
     // map from 0 -> 300
     let delta = Math.min(Math.max(((300 - dist) / 300), 0.1), 1) * 0.3;
-
-
 
     let pathToMid = subBezier(0, 0.5 - delta, p1, p2, p3, p4);
     let mid = subBezier(0.5 - delta, 0.5 + delta, p1, p2, p3, p4);
@@ -119,6 +122,9 @@ export default function CustomEdgeComponent({
     const edgePath1 = getBezierPathO(pathToMid);
     const edgePath2 = getBezierPathO(mid);
     const edgePath3 = getBezierPathO(midToEnd);
+
+
+    // In essence: we're drawing a curve from the source node to the center (in the colour of the source media), and then another curve from the center to the destination (in the colour of the downgraded media).
 
     return (
         <>

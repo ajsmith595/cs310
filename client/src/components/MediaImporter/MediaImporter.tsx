@@ -11,7 +11,6 @@ import ClipComponent from './ClipComponent';
 
 
 interface Props {
-	cache?: Map<string, any>;
 }
 
 interface State {
@@ -45,17 +44,12 @@ class MediaImporter extends React.Component<Props, State> {
 
 	onImportMediaButtonClick() {
 		this.setOpenTab('source');
-		Communicator.invoke('import_media');
+		Communicator.invoke('import_media'); // will open a file dialog to allow users to import media
 	}
 
 	onCreateCompositedClipButtonClick() {
 		this.setOpenTab('composited');
 		Communicator.invoke("create_composited_clip");
-		// TODO: redo this in the new format i.e. auto-select the composited clip in the node editor
-		// requestAnimationFrame(() => {
-		// 	this.references.composited[new_composited_clip.id].current.enableEditingMode();
-		// 	EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, node.group);
-		// });
 	}
 
 
@@ -90,7 +84,7 @@ class MediaImporter extends React.Component<Props, State> {
 		if (this.state.openTab == 'source') {
 			for (let [id, source_clip] of store.clips.source) {
 				files.push(
-					<ClipComponent cache={this.props.cache} key={"source_" + id} clip={source_clip} />
+					<ClipComponent key={"source_" + id} clip={source_clip} />
 				);
 			}
 		}
@@ -101,7 +95,6 @@ class MediaImporter extends React.Component<Props, State> {
 				}
 				files.push(
 					<ClipComponent key={"composited" + id} clip={composited_clip} ref={this.references.composited[id]} />
-					// <CompositedClipComponent key={id} clip={composited_clip} ref={this.references.composited[id]} />
 				);
 			}
 		}
@@ -136,7 +129,7 @@ class MediaImporter extends React.Component<Props, State> {
 						<tr className="bg-black bg-opacity-20">
 							<td className='w-2/3 text-left  border border-gray-800 small-caps'>file</td>
 							<td className='w-1/6 text-left  border border-gray-800 small-caps'>duration</td>
-							<td className='w-1/6 text-left  border border-gray-800 small-caps'>status</td>
+							<td className='w-1/6 text-left  border border-gray-800 small-caps'>{this.state.openTab == 'composited' ? '' : 'status'}</td>
 						</tr>
 					</thead>
 					<tbody>

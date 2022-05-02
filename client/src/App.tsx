@@ -6,7 +6,6 @@ import MediaImporter from './components/MediaImporter/MediaImporter'
 import NodeEditor from './components/NodeEditor/NodeEditor'
 import PropertiesPanel from './components/PropertiesPanel'
 import VideoPreview from './components/VideoPreview'
-import { appWindow } from '@tauri-apps/api/window';
 import Store from './classes/Store'
 import Communicator from './classes/Communicator'
 import EditorNode from './classes/Node'
@@ -51,7 +50,6 @@ interface State {
 
 class App extends React.Component<Props, State> {
 
-	cache: Map<string, any> = new Map();
 	nodeEditor: React.RefObject<NodeEditor>;
 
 	constructor(props: Props) {
@@ -64,24 +62,13 @@ class App extends React.Component<Props, State> {
 			connectionError: null
 		}
 		this.nodeEditor = React.createRef<NodeEditor>();
-
-		this.onClick = this.onClick.bind(this);
 		this.connectionStatusUpdate = this.connectionStatusUpdate.bind(this);
 
 
 		this.setSelectionHandler = this.setSelectionHandler.bind(this);
-		this.setStoreHandler = this.setStoreHandler.bind(this);
-		this.setStoreUIHandler = this.setStoreUIHandler.bind(this);
 		this.changeGroupHandler = this.changeGroupHandler.bind(this);
 	}
 
-	async onClick(e: React.MouseEvent<HTMLDivElement, MouseEvent>) {
-		if (e.detail == 1) {
-			appWindow.startDragging();
-		} else if (e.detail == 2) { // Double click
-			appWindow.toggleMaximize();
-		}
-	}
 
 	connectionStatusUpdate(connectionStatus) {
 		if (connectionStatus === 'InitialisingConnection') {
@@ -126,31 +113,18 @@ class App extends React.Component<Props, State> {
 			selection: value
 		});
 	}
-	setStoreHandler(value: Store) {
-		this.setState({
-			Store: value
-		});
-		Communicator.invoke('store_update', {
-			store: value.serialise()
-		});
-	}
-	setStoreUIHandler(value: Store) {
-		this.setState({
-			Store: value
-		});
-	}
 	changeGroupHandler() {
 		this.forceUpdate();
 	}
 
 	componentDidMount() {
-
 		Communicator.invoke('get_connection_status', null, this.connectionStatusUpdate);
 		Communicator.on('connection-status', this.connectionStatusUpdate);
 
 		Communicator.on('store-update', (store) => {
+
+			// whenever the persistent state is changed			
 			let _store = Store.deserialise(store);
-			console.log(_store);
 			this.setState({
 				Store: _store
 			});
@@ -194,10 +168,9 @@ class App extends React.Component<Props, State> {
 
 			return (
 				<div className="h-screen w-screen flex flex-col dark:bg-gray-700">
-					{/* <div style={{ userSelect: 'none' }} className="border-red-500 w-full" onMouseDown={(e) => this.onClick(e)}>TEST DRAG</div> */}
 					<div className="dark:bg-gray-700 flex-grow max-h-full">
 						<Section width="w-1/2" height="h-2/5" text="media importer" icon={faFolder}>
-							<MediaImporter cache={this.cache} />
+							<MediaImporter />
 						</Section>
 						<Section width="w-1/2" height="h-2/5" text="video preview" icon={faFilm} className="border-l-0">
 							<VideoPreview />
@@ -211,11 +184,8 @@ class App extends React.Component<Props, State> {
 							</div>
 						</Section>
 						<Section width="w-1/4" height="h-3/5" text="properties" icon={faCog} className="border-t-0 border-l-0">
-							<PropertiesPanel cache={this.cache} />
+							<PropertiesPanel />
 						</Section>
-						{/* <div className="absolute right-1 top-1 bg-white bg-opacity-40 hover:bg-opacity-80 px-2 rounded">
-							<p className="text-green-600">Connected to server</p>
-						</div> */}
 					</div>
 				</div>
 			);
@@ -224,6 +194,7 @@ class App extends React.Component<Props, State> {
 		let content = null;
 
 
+		// Handle when the app has not yet connected to the server, and notify the user of the error that there is if there is a connection error
 		if (!this.state.initialConnectionDone) {
 
 			if (this.state.connectionError) {

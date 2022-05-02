@@ -5,6 +5,7 @@ import Store from "./Store";
 import Utils from "./Utils";
 
 
+//#region Metadata Info
 interface VideoStreamInfo {
     width: number,
     height: number,
@@ -23,6 +24,7 @@ interface SubtitleStreamInfo {
     language: string,
 }
 
+
 interface SourceClipInfo {
     duration: number;
     video_streams: Array<VideoStreamInfo>;
@@ -30,17 +32,23 @@ interface SourceClipInfo {
     subtitle_streams: Array<SubtitleStreamInfo>;
 }
 
+//#endregion Metadata Info
+
 export class SourceClip {
     public id: ID;
     public name: string;
-    public status: any;
-    public info?: SourceClipInfo; // TODO: implement proper (de)serialiser for this
+    public status: any; // uploading, uploaded, local only, etc.
+    public info?: SourceClipInfo; // metadata
+    public original_file_location?: string; // if the file is from this device, then the file location on this device
 
-    public original_file_location?: string;
 
+
+    // Not utilised by client, but present for serialisation purposes
     public file_location: null;
     public original_device_id: null;
     public thumbnail_location: null;
+
+
     constructor(id: ID, name: string, status: any, info?: SourceClipInfo, original_file_location?: string) {
         this.id = id;
         this.name = name;
@@ -83,19 +91,20 @@ export class SourceClip {
     }
 
 
+    // The identifier used to determine what clip is being targeted, when doing drag-drops for example
     getIdentifier() {
-        return {
-            clip_type: 'Source',
-            id: this.id
-        }
+        return new ClipIdentifier(this.id, 'Source');
     }
 
-    private _type: PipeableType = null;
+
+    private _type: PipeableType = null; // the stream types for this clip
     getType() {
         return this._type;
     }
     async fetchType() {
         return await new Promise((res, rej) => {
+
+            // Fetch the stream types for this clip from the Rust side
             Communicator.invoke('get_clip_type', {
                 clipType: 'Source',
                 id: this.id
@@ -105,16 +114,26 @@ export class SourceClip {
             });
         })
     }
+
+
+    getThumbnailCacheID() {
+        return "source_clips_thumbnail_data_" + this.id;
+    }
 }
 
 export class CompositedClip {
     public id: ID;
     public name: string;
+
+
     constructor(id: ID, name: string) {
         this.id = id;
         this.name = name;
 
+
         EventBus.on('composited-clip-length', (data) => {
+            // If this is called, it means that the composited clip has been changed, and this is notifying everyone of the new length of the composited clip
+            // Therefore, if this event is for us, we capture the duration it's transmitted and store it so we can provide metadata for the video preview later
             let id = data[0];
             let duration_ms = data[1];
 
@@ -143,12 +162,11 @@ export class CompositedClip {
 
 
     getIdentifier() {
-        return {
-            clip_type: 'Composited',
-            id: this.id
-        }
+        return new ClipIdentifier(this.id, 'Composited');
     }
 
+
+    // Gets the group ID for a particular composited clip by iterating through all the nodes and finding the matching output node.
     getClipGroup() {
         let store: Store = EventBus.getValue(EventBus.GETTERS.APP.STORE);
         let nodes = store.nodes;
@@ -199,5 +217,12 @@ export class ClipIdentifier {
             throw new Error("Could not deserialise! Malformed object");
         }
         return new ClipIdentifier(obj.id, obj.clip_type);
+    }
+
+    serialise() {
+        return {
+            clip_type: this.clip_type,
+            id: this.id
+        };
     }
 }

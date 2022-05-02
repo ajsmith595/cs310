@@ -1,5 +1,7 @@
 
-
+/**
+ * A simple global map to contain values which may take time to obtain
+ */
 const Cache = {
     cache() {
         if (!(document as any)._cache) {

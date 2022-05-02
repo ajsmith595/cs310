@@ -1,46 +1,23 @@
 import { faClosedCaptioning } from '@fortawesome/free-regular-svg-icons';
 import { faCog, faFile, faMusic, faVideo, faVideoSlash } from '@fortawesome/free-solid-svg-icons';
-import * as fontAwesomeSolid from '@fortawesome/free-solid-svg-icons';
-import * as fontAwesomeRegular from '@fortawesome/free-regular-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import React from 'react';
 import { ClipIdentifier, CompositedClip, SourceClip } from '../classes/Clip';
-import Communicator from '../classes/Communicator';
+import Cache from '../classes/Cache';
 import EventBus from '../classes/EventBus';
 import EditorNode from '../classes/Node';
 import Utils from '../classes/Utils';
 import ClipDropComponent from './shared/ClipDropComponent';
 
 
-interface Props {
-    cache?: Map<string, any>;
-}
-
-interface State {
-    // state
-}
-
-class PropertiesPanel extends React.Component<Props, State> {
-    constructor(props: Props) {
+class PropertiesPanel extends React.Component {
+    constructor(props) {
         super(props);
     }
 
-    componentDidMount() {
-        // EventBus.on(EventBus.EVENTS.APP.SET_STORE, () => this.forceUpdate());
-        // EventBus.on(EventBus.EVENTS.APP.SET_STORE_UI, () => this.forceUpdate());
-    }
-    componentWillUnmount() {
-    }
-
-    getSourceClipInfo() {
-        let clip: SourceClip = EventBus.getValue(EventBus.GETTERS.APP.CURRENT_SELECTION);
-
-        if (clip.info) {
-            return clip.info;
-        }
-        return null;
-    }
-
+    /**
+     * Rendering all the properties for a node
+     */
     renderEditorNode(selection: EditorNode) {
 
         let registration = EditorNode.NodeRegister.get(selection.node_type);
@@ -109,8 +86,11 @@ class PropertiesPanel extends React.Component<Props, State> {
         </>);
     }
 
+    /**
+     * Render all information and data about a source clip
+     */
     renderSourceClip(selection: SourceClip) {
-        let clip_info = this.getSourceClipInfo();
+        let clip_info = selection.info;
 
         let media_info_display = <p className="text-center">Loading media information <FontAwesomeIcon icon={faCog} className="fa-spin" /></p>;
 
@@ -252,7 +232,7 @@ class PropertiesPanel extends React.Component<Props, State> {
             </div>;
         }
 
-        let thumbnail_data = this.props.cache.get("clips").source[selection.id].thumbnail_data;
+        let thumbnail_data = Cache.get(selection.getThumbnailCacheID());
         let img = <img src="https://via.placeholder.com/1920x1080" className="w-full" />;
         if (thumbnail_data) {
             img = <img src={"data:image/jpeg;base64," + thumbnail_data} className="w-full" />;
@@ -298,10 +278,12 @@ class PropertiesPanel extends React.Component<Props, State> {
         else if (selection instanceof CompositedClip) {
             content = this.renderCompositedClip(selection);
         }
+        else if (selection == null) {
+            content = <h1>No selection</h1>;
+        }
         return <div className="text-white overflow-y-auto max-h-full">
             {content}
         </div>;
-
     }
 }
 

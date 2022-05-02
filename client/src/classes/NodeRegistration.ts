@@ -2,37 +2,38 @@ import Utils from "./Utils";
 
 
 
-
-/*
-
-REDO TYPES - instead of specifying types, we shall instead specify minimum + maximum number of streams of each type (video, audio, subtitle)
-    We will then 'classify' these types based on what streams they have:
-        - Video = exactly 1 video stream + any other streams
-        - Audio = exactly 0 video streams + 1 or more audio streams + any subtitle streams
-        - Subtitle = exactly 0 video streams + 0 audio streams + 1 or more subtitle streams
-        - Container = anything that is not covered (so will be when we have more than 1 video stream)
-
-*/
-
+/**
+ * Specifies how many of each type of stream a media type has
+ */
 export interface PipeableType {
     video: number,
     audio: number,
     subtitles: number
 };
 
+/**
+ * Specifies requirements for a particular input of a ndoe
+ */
 export interface PipeableTypeRestriction {
     min: PipeableType,
     max: PipeableType
 }
-// export type PipeableTypeRestriction = FixedLengthArray<[PipeableType, PipeableType]>;
 
 
+/**
+ * Specifies a set of restrictions on numerical values in the application
+ */
 interface NumberRestrictions {
     min: number,
     max: number,
     step: number,
     default: number,
 }
+
+
+/**
+ * Specifies a particular node input/property's type and restrictions
+ */
 
 export class PropertyType {
     type: string;
@@ -51,12 +52,14 @@ export class PropertyType {
         return new PropertyType(key, obj[key]);
     }
 
+    // Can only be called if the property is a number type
     getNumberRestrictions() {
         if (this.type != 'Number') {
             throw new Error("Cannot get number restrictions from non-number type!");
         }
         return this.extra_data as NumberRestrictions;
     }
+    // Can only be called if the property is pipeable (i.e. it's an input/can be piped into via the node editor)
     getPipeableType() {
         if (this.type != 'Pipeable') {
             throw new Error("Cannot get pipeable type from non-pipeable!");
@@ -74,6 +77,9 @@ export class PropertyType {
 }
 
 
+/**
+ * Specifies data related to a particular input of a node type
+ */
 export class NodeRegistrationInput {
     description: string;
     display_name: string;
@@ -118,7 +124,9 @@ export class NodeRegistrationOutput {
     }
 }
 
-
+/**
+ * Specifies a particular node type. Excludes functions to generate inputs/properties/outputs - that is exclusively for the Rust side to handle
+ */
 export class NodeRegistration {
     description: string;
     display_name: string;

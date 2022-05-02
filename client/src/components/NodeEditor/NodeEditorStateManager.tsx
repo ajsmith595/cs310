@@ -3,7 +3,9 @@ import { useStoreState } from "react-flow-renderer";
 import EventBus from "../../classes/EventBus";
 
 
-
+/**
+ * A wrapper to utilise the internal state of the ReactFlow renderer
+ */
 function NodeEditorStateManager(props) {
 
     const state = useStoreState((state) => state);
