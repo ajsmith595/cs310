@@ -236,9 +236,9 @@ impl Pipeline {
             if pipeline.is_err() {
                 do_return = false;
             } else {
-                let pipeline = pipeline.unwrap();
+                let (timeline_outputs, memory_safety_vars) = pipeline.unwrap();
 
-                for (k, v) in pipeline {
+                for (k, v) in timeline_outputs {
                     let out_type = outputs.get(&k).unwrap();
 
                     let from_piped_type = PipedType {
@@ -258,6 +258,12 @@ impl Pipeline {
                         Some(output_location.as_str()),
                     );
                 }
+
+                println!("Dummy memory safety lines");
+                for mem in memory_safety_vars {
+                    print!("M");
+                }
+                println!("----");
             }
 
             if node.node_type == output_node::IDENTIFIER {

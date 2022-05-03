@@ -153,7 +153,6 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
         Ok(message) => {
             let operation_id = &format!("{}", Uuid::new_v4())[..8];
 
-            println!("Message: {:?}", message);
             log::info!(
                 "[{}] New operation from: {}",
                 operation_id,
@@ -509,6 +508,13 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
                     let starting_segment = networking::receive_u64(&mut stream)? as u32;
                     let ending_segment = networking::receive_u64(&mut stream)? as u32;
 
+                    log::warn!(
+                        "Getting video preview from {} to {} ({})",
+                        starting_segment,
+                        ending_segment,
+                        operation_id
+                    );
+
                     let mut lock = state.lock().unwrap();
                     let result =
                         generate_pipeline_in_process(lock.store.clone(), lock.cache.clone());
@@ -567,6 +573,7 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
 
                         if ok {
                             drop(lock);
+                            log::warn!("All chunks are already present, so will simply push them all to the client ({})", operation_id);
                             for i in starting_segment..(ending_segment + 1) {
                                 networking::send_message(
                                     &mut stream,
@@ -659,6 +666,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
                                 )
                                 .unwrap();
 
+                                log::warn!(
+                                    "Chunk {} ready, sending to user ({})",
+                                    chunk,
+                                    operation_id
+                                );
                                 networking::send_data(&mut stream, &chunk.to_ne_bytes()).unwrap();
                             }
                             Ok(IPCMessage::ChunksCompleted(id, start_chunk, end_chunk)) => {
@@ -696,14 +708,11 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
                     let data = lock.video_preview_generation.get(&uuid);
                     println!("Downloading chunk requested");
                     if let (Some((duration, codec, data)), Some(clip)) = (data, clip) {
-                        println!("Structure matched");
                         if let Some(data) = data.get(chunk_id as usize) {
-                            println!("Structure matched 2");
                             match data {
                                 VideoChunkStatus::Generated => {
-                                    println!("Structure matched 3");
                                     let output_location = format!(
-                                        "{}/segment{:0>width$}.mp4",
+                                        "{}/segment{:0>width$}.ts",
                                         clip.get_output_location(),
                                         chunk_id,
                                         width = CHUNK_FILENAME_NUMBER_LENGTH as usize
@@ -712,7 +721,6 @@ fn handle_client(mut stream: TcpStream, state: Arc<Mutex<State>>) -> Result<(), 
 
                                     let file = File::open(output_location);
                                     if let Ok(mut file) = file {
-                                        println!("Structure matched 4");
                                         networking::send_message(
                                             &mut stream,
                                             networking::Message::Response,

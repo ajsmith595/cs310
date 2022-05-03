@@ -7,7 +7,10 @@ use ges::{
 use serde_json::Value;
 
 use crate::{
-    node::{InputOrOutput, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
+    node::{
+        InputOrOutput, MemorySafetyWrapper, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType,
+        PipedType, Type,
+    },
     store::Store,
     ID,
 };
@@ -125,7 +128,7 @@ fn get_output(
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
-) -> Result<HashMap<String, ges::Timeline>, String> {
+) -> Result<(HashMap<String, ges::Timeline>, Vec<MemorySafetyWrapper>), String> {
     let io = get_io(
         node_id.clone(),
         properties,
@@ -174,7 +177,13 @@ fn get_output(
 
     let mut hm = HashMap::new();
     hm.insert(outputs::OUTPUT.to_string(), timeline);
-    return Ok(hm);
+    return Ok((
+        hm,
+        vec![
+            MemorySafetyWrapper::UriClipAsset(clip1),
+            MemorySafetyWrapper::UriClipAsset(clip2),
+        ],
+    ));
 }
 
 pub fn concat_node() -> NodeType {

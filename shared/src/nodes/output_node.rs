@@ -9,7 +9,9 @@ use serde_json::Value;
 
 use crate::{
     clip::{ClipIdentifier, CompositedClip},
-    node::{NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
+    node::{
+        MemorySafetyWrapper, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type,
+    },
     store::Store,
     ID,
 };
@@ -84,7 +86,7 @@ fn get_output(
     _composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     _node_register: &NodeRegister,
-) -> Result<HashMap<String, ges::Timeline>, String> {
+) -> Result<(HashMap<String, ges::Timeline>, Vec<MemorySafetyWrapper>), String> {
     let media = piped_inputs.get(inputs::MEDIA);
     if media.is_none() {
         return Err(format!("Media is none!"));
@@ -117,7 +119,7 @@ fn get_output(
         .unwrap();
 
     ges::Asset::needs_reload(ges::UriClip::static_type(), Some(output_location.as_str()));
-    Ok(HashMap::new())
+    Ok((HashMap::new(), vec![]))
 }
 
 pub fn output_node() -> NodeType {

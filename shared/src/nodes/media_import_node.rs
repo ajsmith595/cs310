@@ -6,7 +6,10 @@ use serde_json::Value;
 
 use crate::{
     clip::{ClipIdentifier, ClipType},
-    node::{self, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType, PipedType, Type},
+    node::{
+        self, MemorySafetyWrapper, NodeType, NodeTypeInput, NodeTypeOutput, PipeableType,
+        PipedType, Type,
+    },
     nodes::NodeRegister,
     store::Store,
     ID,
@@ -115,7 +118,7 @@ fn get_output(
     composited_clip_types: &HashMap<ID, PipedType>,
     store: &Store,
     node_register: &NodeRegister,
-) -> Result<HashMap<String, ges::Timeline>, String> {
+) -> Result<(HashMap<String, ges::Timeline>, Vec<MemorySafetyWrapper>), String> {
     let io = get_io(
         node_id.clone(),
         properties,
@@ -145,7 +148,7 @@ fn get_output(
         cache_id: None,
     };
 
-    let timeline = match clip_identifier.clip_type {
+    let (timeline, mem_safety) = match clip_identifier.clip_type {
         ClipType::Source => {
             let clip = store.clips.source.get(&clip_identifier.id).unwrap();
 
@@ -158,7 +161,7 @@ fn get_output(
             layer
                 .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
                 .unwrap();
-            timeline
+            (timeline, vec![MemorySafetyWrapper::UriClipAsset(clip)])
         }
         ClipType::Composited => {
             let clip = store.clips.composited.get(&clip_identifier.id).unwrap();
@@ -172,13 +175,13 @@ fn get_output(
             layer
                 .add_asset(&clip, None, None, None, ges::TrackType::UNKNOWN)
                 .unwrap();
-            timeline
+            (timeline, vec![MemorySafetyWrapper::UriClipAsset(clip)])
         }
     };
 
     let mut hm = HashMap::new();
     hm.insert(outputs::OUTPUT.to_string(), timeline);
-    Ok(hm)
+    Ok((hm, mem_safety))
 }
 
 pub fn media_import_node() -> NodeType {

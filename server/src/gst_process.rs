@@ -125,6 +125,10 @@ fn process_func(server_name: String) {
         match child_recv.recv() {
             Ok(msg) => match msg {
                 IPCMessage::GeneratePreview(clip, output_type, start_chunk, end_chunk) => {
+                    println!(
+                        "Generating preview for {} between chunks {} and {}",
+                        clip.id, start_chunk, end_chunk
+                    );
                     execute_pipeline(
                         clip,
                         output_type,
@@ -174,7 +178,6 @@ fn execute_pipeline(
     let number_of_chunks =
         f64::ceil((total_duration as f64) / ((CHUNK_LENGTH as f64) * (1000 as f64)) as f64) as u32;
 
-    println!("Total duration: {}", total_duration);
     parent_send
         .send(IPCMessage::CompositedClipLength(
             clip.id.clone(),
@@ -185,12 +188,8 @@ fn execute_pipeline(
     if chunk_range.is_none() {
         return;
     }
-
-    println!("[GST] Output type: {:?}", output_type);
     let (start_chunk, end_chunk) = chunk_range.unwrap();
     for i in start_chunk..(end_chunk + 1) {
-        let end_chunk = start_chunk;
-
         let pipeline = gst::Pipeline::new(None);
 
         let out_type = output_type.clone();
@@ -236,17 +235,17 @@ fn execute_pipeline(
         )
         .unwrap();
         muxer.set_property("location", clip.get_output_location_template());
-        muxer.set_property("muxer-factory", "mp4mux");
+        muxer.set_property("muxer-factory", "mpegtsmux");
         let start_index: i32 = start_chunk as i32;
         muxer.set_property("start-index", start_index);
 
         std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
-        let structure = gst::Structure::new(
-            "properties",
-            &[("streamable", &true), ("fragment-duration", &10)],
-        );
-        muxer.set_property("muxer-properties", structure);
+        // let structure = gst::Structure::new(
+        //     "properties",
+        //     &[("streamable", &true), ("fragment-duration", &10)],
+        // );
+        // muxer.set_property("muxer-properties", structure);
         muxer.set_property("async-finalize", true);
         let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
 
@@ -260,11 +259,13 @@ fn execute_pipeline(
         pipeline.add(&muxer).unwrap();
 
         let mut i = 0;
+
+        let mut memory_safety_vars = Vec::new();
+
         for x in timeline.pads() {
             let video = i;
             let audio = i - out_type.stream_type.video;
             i += 1;
-            println!("Name: {:?}", x.name());
 
             if video < out_type.stream_type.video {
                 let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
@@ -291,6 +292,10 @@ fn execute_pipeline(
                 queue
                     .link_pads(None, &muxer, Some(format!("video").as_str()))
                     .unwrap();
+
+                memory_safety_vars.push(encoder);
+                memory_safety_vars.push(videoconvert);
+                memory_safety_vars.push(queue);
             } else {
                 let audioconvert1 = gst::ElementFactory::make("audioconvert", None).unwrap();
                 let audioresample = gst::ElementFactory::make("audioresample", None).unwrap();
@@ -315,6 +320,12 @@ fn execute_pipeline(
                 queue
                     .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
                     .unwrap();
+
+                memory_safety_vars.push(audioconvert1);
+                memory_safety_vars.push(audioresample);
+                memory_safety_vars.push(audioconvert2);
+                memory_safety_vars.push(queue);
+                memory_safety_vars.push(encoder);
             }
         }
 
@@ -351,7 +362,6 @@ fn execute_pipeline(
                             let running_time = structure.get::<u64>("running-time");
 
                             if let (Ok(location), Ok(running_time)) = (location, running_time) {
-                                println!("Name: {}", src.name());
                                 let node_id = src.name().to_string();
 
                                 let mut parts: Vec<&str> = node_id.split("-").collect();
@@ -383,10 +393,12 @@ fn execute_pipeline(
         pipeline
             .set_state(gst::State::Null)
             .expect("Unable to set the pipeline to the `Null` state");
-        println!("Pipeline complete!");
+
+        for mem in memory_safety_vars {
+            print!("M");
+        }
     }
 
-    println!("Composited clips done!");
     parent_send
         .send(IPCMessage::ChunksCompleted(
             id.clone(),

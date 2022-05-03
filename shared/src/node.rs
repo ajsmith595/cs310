@@ -256,6 +256,12 @@ type NodeTypeFunc<T> = fn(
     node_register: &NodeRegister,
 ) -> Result<T, String>;
 
+pub enum MemorySafetyWrapper {
+    UriClip(ges::UriClip),
+    UriClipAsset(ges::UriClipAsset),
+    Effect(ges::Effect),
+}
+
 #[derive(Serialize, Clone)]
 pub struct NodeType {
     pub id: String,
@@ -270,7 +276,7 @@ pub struct NodeType {
     )>,
 
     #[serde(skip_serializing)]
-    pub get_output: NodeTypeFunc<HashMap<String, ges::Timeline>>,
+    pub get_output: NodeTypeFunc<(HashMap<String, ges::Timeline>, Vec<MemorySafetyWrapper>)>,
 }
 
 // impl NodeType {
