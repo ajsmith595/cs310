@@ -14,6 +14,9 @@ interface State {
 
 }
 
+/**
+ * A simple component to allow the user to drag and drop a clip from the media importer onto this component
+ */
 
 export default class ClipDropComponent extends React.Component<Props, State> {
     constructor(props) {
@@ -24,6 +27,11 @@ export default class ClipDropComponent extends React.Component<Props, State> {
 
     }
 
+
+
+    /**
+     * Parses and returns the ClipIdentifier of the drag event, if applicable
+     */
     getClipIdentifier(event: React.DragEvent<HTMLDivElement>) {
         if (this.props.disable_drag)
             return false;
@@ -45,17 +53,11 @@ export default class ClipDropComponent extends React.Component<Props, State> {
             return true;
 
         event.preventDefault();
-        event.stopPropagation();
+        event.stopPropagation(); // stop propagation - if in node editor, this prevents a media import node from being created
 
         this.props.onDropClip(clip_identifier);
     }
     onDragOver(event: React.DragEvent<HTMLDivElement>) {
-
-        // let clip_identifier = this.getClipIdentifier(event);
-        // if (clip_identifier === false)
-        //     return true;
-
-        // if we've got past all the checks, make the drop event happen
         event.preventDefault();
         event.stopPropagation();
     }

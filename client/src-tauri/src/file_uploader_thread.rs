@@ -1,49 +1,53 @@
+use crate::state::{ConnectionStatus, SharedState};
 use core::time;
-use std::{
-  error::Error,
-  fs::File,
-  sync::{mpsc, Arc, Mutex},
-  thread,
-};
-
 use cs310_shared::{
   clip::{self, SourceClip},
   networking,
 };
+use std::{
+  fs::File,
+  sync::{mpsc, Arc, Mutex},
+  thread,
+};
 use uuid::Uuid;
 
-use crate::state::{ConnectionStatus, SharedState};
-
+/**
+ * Goes through all the source clips which are not yet uploaded, and uploads them to the server
+ */
 pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
-    let mut x = shared_state.lock().unwrap();
-    let rx = &x.thread_stopper;
+    let mut state = shared_state.lock().unwrap();
+    let rx = &state.thread_stopper;
 
+    // We use `drop(state)` to unlock the lock when we're done with it
     match rx.try_recv() {
       Ok(_) | Err(mpsc::TryRecvError::Disconnected) => {
         println!("Thread terminating");
         break;
       }
       Err(mpsc::TryRecvError::Empty) => {
-        match x.connection_status {
+        match state.connection_status {
           ConnectionStatus::InitialisingConnection
           | ConnectionStatus::InitialConnectionFailed(_) => {
-            drop(x);
+            drop(state);
           }
           _ => {
-            let store = x.store.as_mut();
+            // Initial connection to the server is fine
+
+            let store = state.store.as_mut();
 
             if let Some(store) = store {
               let clips = &mut store.clips.source;
               let mut clips: Vec<(&Uuid, &mut clip::SourceClip)> = clips
                 .iter_mut()
                 .filter(|(_, clip)| match clip.status {
-                  clip::SourceClipServerStatus::LocalOnly => clip.original_file_location.is_some(),
+                  clip::SourceClipServerStatus::LocalOnly => clip.original_file_location.is_some(), // Get all the clips which have not been uploaded yet
                   _ => false,
                 })
                 .collect();
 
               if clips.len() > 0 {
+                // We only upload one clip at a time, so we just get the first one
                 let (id, clip) = clips.first_mut().unwrap();
                 clip.status = clip::SourceClipServerStatus::Uploading;
 
@@ -51,17 +55,18 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                 let clip = clip.clone();
 
                 let store_clone = store.clone();
-                drop(x);
-                let mut x = shared_state.lock().unwrap();
-                x.window
+                drop(state);
+                let mut state = shared_state.lock().unwrap();
+                state
+                  .window
                   .as_mut()
                   .unwrap()
                   .emit("store-update", store_clone)
                   .unwrap();
 
-                drop(x);
+                drop(state);
 
-                let res = execute_something(id.clone(), clip.clone(), shared_state.clone());
+                let res = upload_file(id.clone(), clip.clone(), shared_state.clone());
 
                 let mut lock_shared_state = shared_state.lock().unwrap();
 
@@ -81,21 +86,24 @@ pub fn file_uploader_thread(shared_state: Arc<Mutex<SharedState>>) {
                   .emit("store-update", lock_shared_state.store.clone())
                   .unwrap();
               } else {
-                drop(x);
+                drop(state);
               }
-              // https://github.com/sdroege/gstreamer-rs/blob/master/examples/src/bin/events.rs
             } else {
-              drop(x);
+              drop(state);
             }
           }
         }
       }
     }
+
     thread::sleep(time::Duration::from_millis(1000));
   }
 }
 
-fn execute_something(
+/**
+ * Uploads a particular file to the server, with error handling
+*/
+fn upload_file(
   id: Uuid,
   clip: SourceClip,
   shared_state: Arc<Mutex<SharedState>>,
@@ -110,21 +118,21 @@ fn execute_something(
   let mut file = File::open(file_path.clone()).unwrap();
 
   let state_clone = shared_state.clone();
+
+  // We send the file with progress callback
   networking::send_file_with_progress(&mut stream, &mut file, |perc, bytes_complete| {
     let now = std::time::Instant::now();
     let mut prev_time = last_time_progress.lock().unwrap();
     let duration = now.duration_since(*prev_time).as_millis();
 
-    if duration > 20 {
-      // do an update at most every 300 ms
-      println!("Perc complete: {}%; bytes done: {}", perc, bytes_complete);
+    if duration > 100 {
+      // do an update at most every 0.1s
       *prev_time = now;
-
       match &state_clone.lock().unwrap().window {
         Some(window) => {
-          window.emit("file-upload-progress", (id, perc)).unwrap();
+          window.emit("file-upload-progress", (id, perc)).unwrap(); // We notify the UI so it can display the progress of the upload to the user
         }
-        None => todo!(),
+        None => {}
       }
     }
   })?;

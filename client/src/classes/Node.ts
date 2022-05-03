@@ -1,14 +1,15 @@
 import Communicator, { ID } from "./Communicator";
 import Utils from "./Utils";
 import { v4 } from 'uuid';
-import Store from "./Store";
 import { NodeRegistration, NodeRegistrationOutput, NodeRegistrationInput } from "./NodeRegistration";
 import Cache from "./Cache";
 import EventBus from "./EventBus";
 
 
 
-
+/**
+ * Stores a position (x,y), primarily used for nodes
+ */
 export class Position {
     x: number;
     y: number;
@@ -41,16 +42,23 @@ export class Position {
     }
 }
 
+
+/**
+ * A node in the pipeline
+ */
 export default class EditorNode {
-    position: Position;
+    position: Position; // its position in the node editor
     id: ID;
-    node_type: string;
-    properties: Map<string, any>;
-    group: ID;
+    node_type: string; // the identifier of its node type
+    properties: Map<string, any>; // all the current properties set on the node
+    group: ID; // the ID of its `group` which helps to determine what nodes are shown when a composited clip is opened in the node editor
 
-    public static NodeRegister: Map<string, NodeRegistration> = new Map();
+    public static NodeRegister: Map<string, NodeRegistration> = new Map(); // A map of all node types in the application
 
 
+    /**
+     * Takes the node registrations supplied by the Rust backend, and populates the NodeRegister accordingly
+     */
     public static deserialiseRegister(obj: any) {
         for (let node_type in obj) {
             EditorNode.NodeRegister.set(node_type, NodeRegistration.deserialise(obj[node_type]));
@@ -72,6 +80,9 @@ export default class EditorNode {
     }
 
 
+    /**
+     * Moves any I/O data for a node from one ID to another; used when the server creates a new ID for a new node, and we want to prevent the nodes from flashing
+     */
     static moveCacheData(from_id: ID, to_id: ID) {
         let cacheInputs1 = this.cacheID(from_id) + "inputs";
         let cacheOutputs1 = this.cacheID(from_id) + "outputs";
@@ -81,11 +92,7 @@ export default class EditorNode {
 
         Cache.put(cacheInputs2, Cache.get(cacheInputs1));
         Cache.put(cacheOutputs2, Cache.get(cacheOutputs1));
-        console.log("Copied " + cacheInputs1 + " => " + cacheInputs2);
-        console.log("Copied " + cacheOutputs1 + " => " + cacheOutputs2);
     }
-
-
 
 
     static deserialise(obj: any) {
@@ -120,11 +127,19 @@ export default class EditorNode {
         return EditorNode.cacheID(this.id);
     }
 
+    /**
+     * If available, will return the currently obtained inputs for a particular node
+     */
     getInputsSync() {
         let cacheID = this.cacheID + "inputs";
         return Cache.get(cacheID);
     }
 
+
+
+    /**
+     * Will return the inputs for a particular node; if they are not present in the cache, the Rust backend will be called to obtain the inputs
+     */
     async getInputs(force = false) {
         let cacheID = this.cacheID + "inputs";
         if (Cache.get(cacheID) != null && !force) {
@@ -143,11 +158,14 @@ export default class EditorNode {
         });
     }
 
+    // Same as corresponding functions for inputs
     getOutputsSync() {
         let cacheID = this.cacheID + "outputs";
         return Cache.get(cacheID);
     }
 
+
+    // Same as corresponding functions for inputs
     async getOutputs(force = false) {
         let cacheID = this.cacheID + "outputs";
         if (Cache.get(cacheID) != null && !force) {
@@ -155,8 +173,6 @@ export default class EditorNode {
         }
         await new Promise((res, rej) => {
             Communicator.invoke('get_node_outputs', { node: this.serialise() }, (data) => {
-
-                console.log(data);
                 let outputs = new Map();
                 for (let prop in data) {
                     outputs.set(prop, NodeRegistrationOutput.deserialise(data[prop]));
@@ -167,11 +183,15 @@ export default class EditorNode {
         });
     }
 
+    // Updates a node's position, and calls `save`
     savePosition(newPosition) {
         this.position = Position.deserialise(newPosition);
         this.save();
     }
 
+    /**
+     * Sends a message to the Rust backend to save any changes made to this node to the application state
+     */
     async save() {
         Communicator.invoke('update_node', {
             node: this.serialise()
@@ -183,9 +203,12 @@ export default class EditorNode {
         await this.getInputs(true);
         await this.getOutputs(true);
 
-        EventBus.dispatch('node_editor_force_reload', null);
+        EventBus.dispatch(EventBus.EVENTS.NODE_EDITOR.FORCE_UPDATE, null);
     }
 
+    /**
+     * Creates a node of a particular type, with a particular group and position
+     */
     static createNode(type: string, group: string, position: Position) {
         let register_entry = EditorNode.NodeRegister.get(type);
 
@@ -200,18 +223,9 @@ export default class EditorNode {
         return new EditorNode(position, v4(), type, props, group);
     }
 
-
-    onDropClip(property, event: React.DragEvent) {
-        if (this.node_type == "output") {
-            return;
-        }
-        event.preventDefault();
-        event.stopPropagation();
-        let data = JSON.parse(event.dataTransfer.getData('application/json'));
-        this.properties.set(property, data);
-        this.save();
-    }
-
+    /**
+     * Modifies a particular property, and if that property has been changed, it will send a message to the Rust backend notifying of the change
+     */
     changeProperty(property, newValue) {
         //let register_entry = EditorNode.NodeRegister.get(this.node_type);
         let property_entry = this.getInputsSync().get(property);

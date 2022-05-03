@@ -6,9 +6,13 @@ import { readBinaryFile } from '@tauri-apps/api/fs';
 type Callback = (data?: any) => void;
 export type ID = string;
 
+
+/**
+ * An abstraction over the Tauri API for handling IPC calls
+ */
+
 export default class Communicator {
 
-    private static isInitialised = false;
     private static listenMap = new Map<string, Array<Callback>>();
 
     private static _invoke(event: string, e: any) {
@@ -20,6 +24,9 @@ export default class Communicator {
         }
     }
 
+    /**
+     * Listen for a certain event; callback will be called when the event is emitted
+     */
     static async on(event: string, callback: Callback) {
         if (!this.listenMap.has(event)) {
             this.listenMap.set(event, []);
@@ -32,21 +39,34 @@ export default class Communicator {
             this.listenMap.get(event).push(callback);
         }
     }
+    /**
+     * Opposite of `on` - will stop listening to a particular call
+     */
     static off(event: string, callback: Callback) {
         if (this.listenMap.has(event)) {
             this.listenMap.set(event, this.listenMap.get(event).filter(e => e != callback)); // remove the callback from the emission
         }
     }
+
+    /**
+     * Clears all event handlers for a particular event
+     */
     static clear(event: string) {
         if (this.listenMap.has(event)) {
             this.listenMap.delete(event);
         }
     }
 
+    /**
+     * Sends a message to the Rust backend
+     */
     static send(event: string, data?: any) {
         emit(event, data);
     }
 
+    /**
+     * Invokes a certain Rust command in the backend; `callback` can be used to capture returned data
+     */
     static invoke(event: string, args?: InvokeArgs, callback?: Callback) {
         let promise = invoke(event, args);
         if (callback) {
@@ -59,6 +79,9 @@ export default class Communicator {
     }
 
 
+    /**
+     * Returns the contents of a file in the filesystem
+     */
     static async readFile(filename: string) {
         return await readBinaryFile(filename);
     }

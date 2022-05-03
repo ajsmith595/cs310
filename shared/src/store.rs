@@ -11,6 +11,10 @@ use crate::{
     nodes::output_node,
 };
 
+/// ---------------------------------------------------------------------------------------
+/// Code from: https://stackoverflow.com/a/42723390
+/// ---------------------------------------------------------------------------------------
+
 fn ordered_map<S, T, X>(value: &HashMap<T, X>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -30,6 +34,7 @@ use super::{
 };
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClipStore {
+    // we serialise with this to ensure that the clips do not spontaneously change position in the UI
     #[serde(serialize_with = "ordered_map")]
     pub source: HashMap<ID, SourceClip>,
     #[serde(serialize_with = "ordered_map")]
@@ -59,6 +64,9 @@ impl Store {
         }
     }
 
+    /**
+     * Utility function for obtaining a store via a JSON file
+     */
     pub fn from_file(filename: String) -> Result<Self, String> {
         let f = std::fs::read(filename);
 
@@ -75,26 +83,9 @@ impl Store {
         Ok(store.unwrap())
     }
 
-    pub fn merge_client_data(&mut self, other: &Self) {
-        self.nodes = other.nodes.clone();
-        self.pipeline = other.pipeline.clone();
-
-        let other_clips = other.clips.clone();
-        self.clips.composited = other_clips.composited;
-        let mut source_clips = HashMap::new();
-        for (id, source_clip) in &other_clips.source {
-            let original_clip = self.clips.source.get(id);
-            if let Some(original_clip) = original_clip {
-                let mut clip = original_clip.clone();
-                clip.name = source_clip.name.clone();
-                source_clips.insert(id, clip);
-            } else {
-                source_clips.insert(id, source_clip.clone());
-            }
-        }
-        self.clips = other.clips.clone();
-    }
-
+    /**
+     * Returns a new struct with client-only data
+     */
     pub fn get_client_data(&self) -> Self {
         let mut self_clone = self.clone();
 
@@ -108,6 +99,9 @@ impl Store {
         self_clone
     }
 
+    /**
+     * Gets a checksum value of the client data of this store. Used to compare between server and client
+     */
     pub fn get_client_checksum(&self) -> u64 {
         let self_clone = self.get_client_data();
 
@@ -118,6 +112,9 @@ impl Store {
         hash.finish()
     }
 
+    /**
+     * Moves a particular clip from one ID to another
+     */
     pub fn move_clip(&mut self, original_clip_id: &Uuid, new_clip_id: &Uuid, clip_type: ClipType) {
         let do_other_transforms = match clip_type {
             ClipType::Source => {
@@ -143,6 +140,7 @@ impl Store {
         };
 
         if do_other_transforms {
+            // Performed if the clip actually did exist
             for (_, node) in &mut self.nodes {
                 for (_, value) in &mut node.properties {
                     let decoded_value = serde_json::from_value::<ClipIdentifier>(value.clone());
@@ -162,6 +160,9 @@ impl Store {
         }
     }
 
+    /**
+     * Moves a particular node from one ID to another
+     */
     pub fn move_node(&mut self, original_node_id: &Uuid, new_node_id: &Uuid) {
         let node = self.nodes.remove(original_node_id);
         let do_other_transforms = if let Some(mut node) = node {
@@ -184,6 +185,9 @@ impl Store {
         }
     }
 
+    /**
+     * Finds the composited clip ID from a particular node's ID - will find the composited clip associated with its group
+     */
     pub fn get_clip_from_group(&self, group: Uuid) -> Option<ID> {
         for (id, n) in &self.nodes {
             if group == n.group && n.node_type == output_node::IDENTIFIER {

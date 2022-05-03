@@ -1,29 +1,22 @@
 use std::{
   collections::HashMap,
   fs::File,
-  sync::{mpsc::Receiver, Arc, Mutex},
+  sync::{Arc, Mutex},
   thread,
   time::Duration,
 };
 
-use cs310_shared::{
-  clip::{ClipIdentifier, ClipType, CompositedClip, SourceClip},
-  constants::{CHUNK_FILENAME_NUMBER_LENGTH, CHUNK_LENGTH},
-  networking,
-  node::{Node, Position},
-  pipeline::Link,
-  store::Store,
-  task::Task,
-  ID,
-};
+use cs310_shared::{constants::CHUNK_FILENAME_NUMBER_LENGTH, networking};
 use ges::prelude::DiscovererStreamInfoExt;
 use glib::Cast;
 use gst_pbutils::DiscovererVideoInfo;
-use serde_json::Value;
 use uuid::Uuid;
 
 use crate::state::{SharedState, VideoPreviewChunkStatus, VideoPreviewStatus};
 
+/**
+ * Handles the requesting of video chunks from the server
+ */
 pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
     let mut lock = shared_state.lock().unwrap();
@@ -68,6 +61,7 @@ pub fn video_preview_handler_thread(shared_state: Arc<Mutex<SharedState>>) {
   }
 }
 
+/// Goes through the video preview, and downloads any generated but not downloaded chunks from the server
 pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) {
   loop {
     let mut lock = shared_state.lock().unwrap();
@@ -133,7 +127,7 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
 
                 let clip = clips.get(&id).unwrap();
                 let output_location = format!(
-                  "{}/segment{:0>width$}.mp4",
+                  "{}/segment{:0>width$}.ts",
                   clip.get_output_location(),
                   chunk_id,
                   width = CHUNK_FILENAME_NUMBER_LENGTH as usize
@@ -155,17 +149,12 @@ pub fn video_previewer_downloader_thread(shared_state: Arc<Mutex<SharedState>>) 
                         data[i] = VideoPreviewChunkStatus::Downloaded;
                         println!("File {} received", output_location.clone());
                         if codec.is_none() {
-                          println!("Getting codec...");
                           if let Ok((codec_string, is_video)) =
                             get_codec_string(output_location.clone())
+                          // obtains the codec by inspecting the file
                           {
                             *codec = Some(codec_string.clone());
                             *is_vid = is_video;
-
-                            println!("Got codec: {}", codec_string);
-                            println!("New data: {:?}", lock.video_preview_data);
-                          } else {
-                            println!("Could not get codec!");
                           }
                         }
                         lock
@@ -205,11 +194,7 @@ pub fn video_preview_length_requested(
   let uuid_bytes = id.as_bytes();
   networking::send_data(&mut stream, uuid_bytes)?;
 
-  println!("Sent data for {}", id);
-
   let msg = networking::receive_message(&mut stream)?;
-
-  println!("Message received: {:?}", msg);
 
   match msg {
     networking::Message::CompositedClipLength => {
@@ -294,6 +279,7 @@ pub fn video_preview_data(
                 println!("Received chunk out of range");
               }
               data[chunk_id as usize] = VideoPreviewChunkStatus::Generated;
+              // notify to the downloader thread that the chunk is ready to be downloaded
 
               lock
                 .window
@@ -319,10 +305,10 @@ pub fn video_preview_data(
   Ok(())
 }
 
+/// Looks at the supplied file, and will return the codec string that should be supplied to MSE when creating the source buffer.
 fn get_codec_string(filename: String) -> Result<(String, bool), glib::Error> {
   let discoverer = gst_pbutils::Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
 
-  println!("Looking for: {}", filename);
   let info = discoverer.discover_uri(format!("file:///{}", filename).as_str())?;
 
   let video_streams = info.video_streams();
@@ -349,28 +335,10 @@ fn get_codec_string(filename: String) -> Result<(String, bool), glib::Error> {
       }
     }
 
-    println!("Video stream codec string: {}", string);
     if codec_string.len() > 0 {
       codec_string = format!("{},", codec_string);
     }
     codec_string = format!("{}avc1.{}", codec_string, string);
-
-    let video_info = video_stream.clone().downcast::<DiscovererVideoInfo>();
-    if let Ok(video_info) = video_info {
-      let mut caps = video_stream.caps().unwrap();
-      for x in caps.iter() {
-        println!("Caps stuff (iter): {:#?}", x);
-
-        println!("Name: {}", x.name());
-        for field in x.fields() {
-          println!("Field: {}", field);
-        }
-      }
-
-      println!("CAPS: {:#?}", caps);
-      caps.simplify();
-      println!("CAPS (simplified): {:#?}", caps);
-    }
   }
   for audio_stream in info.audio_streams() {
     if codec_string.len() > 0 {
@@ -380,7 +348,7 @@ fn get_codec_string(filename: String) -> Result<(String, bool), glib::Error> {
   }
 
   Ok((
-    format!("video/mp4; codecs=\"{}\"", codec_string),
+    format!("video/mp2t; codecs=\"{}\"", codec_string),
     video_streams.len() > 0,
   ))
 }

@@ -1,10 +1,14 @@
 import { ID } from "./Communicator";
 import EditorNode from './Node';
-import { PipeableType } from "./NodeRegistration";
 import Pipeline from "./Pipeline";
 import { CompositedClip, SourceClip } from "./Clip";
 import Utils from "./Utils";
 import EventBus from "./EventBus";
+
+
+/**
+ * Contains all clip data
+ */
 export class ClipStore {
     source: Map<ID, SourceClip>;
     composited: Map<ID, CompositedClip>;
@@ -44,6 +48,10 @@ export class ClipStore {
     }
 }
 
+
+/**
+ * The container for the persistent application state
+ */
 export default class Store {
     nodes: Map<ID, EditorNode>;
     clips: ClipStore;
@@ -90,6 +98,9 @@ export default class Store {
         }
     }
 
+    /**
+     * A helper function to simplify code in many places
+     */
     static getCurrentStore(): Store {
         return EventBus.getValue(EventBus.GETTERS.APP.STORE);
     }

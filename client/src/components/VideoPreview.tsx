@@ -1,33 +1,24 @@
 import { faCircleNotch, faMusic, faPause, faPlay, faStepBackward, faStepForward } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { fs } from '@tauri-apps/api';
-import React, { ChangeEvent } from 'react';
-import { textChangeRangeIsUnchanged } from 'typescript';
+import React from 'react';
 import Communicator from '../classes/Communicator';
 import Store from '../classes/Store';
 import { Mutex } from 'async-mutex';
 import Utils from '../classes/Utils';
 import EventBus from '../classes/EventBus';
 
-
 interface Props {
-    cache?: Map<string, any>;
-    // props
 }
 
 interface State {
-    currentTime: number,
     clip: string,
     videoURL: string,
     playing: boolean,
     buffering: boolean,
 }
 
-interface ClipInfo {
-    codec: string;
-    no_video_streams: number;
-    no_audio_streams: number;
-}
+
+//#region Video Preview Data: Parsing Wrapper
 namespace VideoPreviewInputData {
     type VideoPreviewClipStatus = "NotRequested" | "LengthRequested" | {
         "Data": [
@@ -73,21 +64,18 @@ namespace VideoPreviewClipStatus {
 
 type VideoPreviewClipStatus = "NotRequested" | "LengthRequested" | VideoPreviewClipStatus.Data;
 
+//#endregion Video Preview Data: Parsing Wrapper
+
+
 class VideoPreview extends React.Component<Props, State> {
 
-    video_element_ref: React.RefObject<HTMLVideoElement>;
-    media_source: MediaSource;
-
-    /**
-     * Contains an array of `LoadedStatus` which can be used to determine what chunks have been loaded into the `media_source`
-     */
-    video_preview_data: Map<string, VideoPreviewClipStatus>;
+    static CHUNK_LENGTH: number = 1; // the length in seconds of each chunk
 
 
-
-
-
-    change_lock: Mutex;
+    video_element_ref: React.RefObject<HTMLVideoElement>; // a reference to the main video element
+    media_source: MediaSource; // the media source which will bind to the video element, and will contain the source buffers which are used to render the video    
+    video_preview_data: Map<string, VideoPreviewClipStatus>; // from the Rust process
+    change_lock: Mutex; // Prevents simulatenous modification of the media source, which can cause unexpected errors
 
 
     constructor(props: Props) {
@@ -98,7 +86,6 @@ class VideoPreview extends React.Component<Props, State> {
         this.video_preview_data = new Map();
 
         this.state = {
-            currentTime: 0,
             clip: null,
             videoURL: URL.createObjectURL(this.media_source),
             playing: false,
@@ -127,18 +114,17 @@ class VideoPreview extends React.Component<Props, State> {
 
     componentDidMount() {
         Communicator.on('video-preview-data-update', async (data) => {
+            // Emitted when the Rust side updates the video preview data
             await this.videoPreviewDataUpdate(data);
         });
 
         Communicator.invoke('get_video_preview_data', {}, async (data) => {
+            // Gets the initial video preview data
             await this.videoPreviewDataUpdate(data);
         });
     }
 
     async videoPreviewDataUpdate(data: VideoPreviewInputData.VideoPreviewData) {
-
-        console.log("New data received");
-        console.log(data);
         let release = await this.change_lock.acquire();
         for (let k of this.video_preview_data.keys()) {
             if (data[k] === undefined) {
@@ -148,6 +134,7 @@ class VideoPreview extends React.Component<Props, State> {
 
         let do_clip_refresh = false;
 
+        // Basically, parsing in the video preview data
         for (let k in data) {
             let value = data[k];
             if (typeof value == "string") {
@@ -157,7 +144,7 @@ class VideoPreview extends React.Component<Props, State> {
                 let duration = value.Data[0];
                 let codec = value.Data[1];
                 let is_video = value.Data[2];
-                EventBus.dispatch('composited-clip-length', [k, duration]);
+                EventBus.dispatch('composited-clip-length', [k, duration]); // Updates the global context with the new composited clip duration
                 let data = value.Data[3];
 
                 let existing = this.video_preview_data.get(k);
@@ -178,6 +165,7 @@ class VideoPreview extends React.Component<Props, State> {
                         let existingChunkData = existing.chunkData[i];
                         let newChunkData = data[i];
 
+                        // If it's `Downloaded`, but we've already `Loaded` it into the media source, we just ignore updating this chunk - the Rust side is not aware of what chunks are `Loaded` by MSE
                         if (!(existingChunkData == VideoPreviewClipStatus.ChunkStatus.Loaded && newChunkData == VideoPreviewInputData.VideoPreviewChunkStatus.Downloaded)) {
                             existing.chunkData[i] = newChunkData as any;
                         }
@@ -187,6 +175,7 @@ class VideoPreview extends React.Component<Props, State> {
         }
         release();
         if (do_clip_refresh) {
+            // If the currently selected clip has been changed, we reset the player
             await this.onClipChanged(this.state.clip);
         }
         await this.videoUpdate();
@@ -196,44 +185,56 @@ class VideoPreview extends React.Component<Props, State> {
         Communicator.clear('video-preview-data-update');
     }
 
+    update_end_callbacks: Array<() => void> = []; // to keep track of when a particular update has been completed; since we can only wait for the callback, we can't say "wait until this operation is complete"
 
-    async changeClipCodec() {
-        await this.onClipChanged(this.state.clip);
-    }
 
-    update_end_callbacks: Array<() => void> = [];
+    /**
+     * Loads in the supplied chunk from the filesystem, and pushes it into the current source buffer.
+     */
     async loadChunk(directory: string, segment_id: number) {
-        let file = directory + "\\segment" + segment_id.toString().padStart(6, '0') + ".mp4";;
+        let file = directory + "\\segment" + segment_id.toString().padStart(6, '0') + ".ts";
         console.log(`Loading chunk: ${file}`);
         let contents = await Communicator.readFile(file);
         let buffer = new Uint8Array(contents);
 
-        let clipData = this.video_preview_data.get(this.state.clip);
-        if (typeof clipData != "string") {
-            clipData.chunkData[segment_id] = VideoPreviewClipStatus.ChunkStatus.Loaded;
-        }
+
         let res = null;
         try {
+            this.source_buffer.abort(); // Previous MPEG-TS files need to be aborted, since they do not ever finish the `Parsing` stage
             await new Promise((resolve, reject) => {
                 res = () => { resolve(null) };
-                this.update_end_callbacks.push(res);
+                this.update_end_callbacks.push(res); // Wait for the source buffer to be updated
                 try {
-                    this.source_buffer.timestampOffset = segment_id * 10;
+                    this.source_buffer.timestampOffset = segment_id * VideoPreview.CHUNK_LENGTH;
                     this.source_buffer.appendWindowStart = 0;
                     this.source_buffer.appendBuffer(buffer);
+                    // Append the video data to the buffer
                 } catch (e) {
                     reject(e);
+                    // If anything goes wrong, just abort!
                 }
             });
-            this.update_end_callbacks = this.update_end_callbacks.filter(e => e != res); // remove the callback
+
+            // If we got to this point, the video data is now successfully in the source buffer.
+
+            this.update_end_callbacks = this.update_end_callbacks.filter(e => e != res); // remove the callback - otherwise it'll cause some weird issues
+
+
+            let clipData = this.video_preview_data.get(this.state.clip);
+            if (typeof clipData != "string") {
+                clipData.chunkData[segment_id] = VideoPreviewClipStatus.ChunkStatus.Loaded; // Set the relevant chunk as loaded
+            }
             console.log("Loading chunk done!");
-        } catch {
+        } catch (e) {
             console.log("Error caught in loading chunk!");
+            console.log(e);
         }
     }
 
+    /**
+     * Requests a set of segments from the Rust client, which will then notify the server to generate
+     */
     async requestSegments(clip, start_segment, end_segment) {
-        console.log("Requesting chunks: " + start_segment + " => " + end_segment);
         Communicator.invoke('request_video_preview', {
             clipId: clip,
             startChunk: start_segment,
@@ -242,20 +243,19 @@ class VideoPreview extends React.Component<Props, State> {
     }
 
 
+    /**
+     * Called when anything is changed about the video preview
+     */
     async videoUpdate() {
-
-
         if (!this.state.clip) { // if there's no clip, don't do anything
             return;
         }
 
-        console.log("Aquiring lock for videoUpdate");
         const release = await this.change_lock.acquire();
-        console.log("Lock aquired for videoUpdate");
-
 
         let clipData = this.video_preview_data.get(this.state.clip);
         if (!clipData || typeof clipData == "string") {
+            // If the clip data is invalid, we cannot play any preview for it
             release();
             console.log("Cancelling. Clip data is as follows: ");
             console.log(clipData);
@@ -264,22 +264,18 @@ class VideoPreview extends React.Component<Props, State> {
 
 
 
-        console.log("Getting output directory...");
         let output_directory: string = await new Promise((resolve, reject) => {
-            Communicator.invoke("get_output_directory", null, (data) => {
+            Communicator.invoke("get_output_directory", null, (data) => { // Fetch the output directory from the Rust client
                 resolve(data);
             });
         }) + "\\composited-clip-" + this.state.clip;
 
 
-
-        let current_segment = Math.floor(this.currentTimestamp / 10); // TODO: SEGMENT LENGTH
-        let next_segment = current_segment + 1;
-        console.log(this.currentTimestamp);
-        console.log(clipData.chunkData.length);
+        let current_segment = Math.floor(this.currentTimestamp / VideoPreview.CHUNK_LENGTH); // Fetch this and the next 10 segments
+        let next_segment = current_segment + 10;
 
         if (clipData.chunkData.length <= next_segment) {
-            next_segment = clipData.chunkData.length - 1;
+            next_segment = clipData.chunkData.length - 1; // Limit to the maximum chunk number
 
             if (current_segment > next_segment) {
                 release();
@@ -288,42 +284,37 @@ class VideoPreview extends React.Component<Props, State> {
         }
 
 
-        console.log("Loading up to chunk " + next_segment);
-
         for (let segment = 0; segment <= next_segment; segment++) {
             if (clipData.chunkData[segment] != VideoPreviewClipStatus.ChunkStatus.Loaded) {
                 if (clipData.chunkData[segment] != VideoPreviewClipStatus.ChunkStatus.Downloaded) {
-                    console.log("Lock releasing for videoUpdate");
                     let clip = this.state.clip;
                     release();
                     await this.requestSegments(clip, segment, next_segment);
-                    console.log("Lock released for videoUpdate");
                     return;
                 }
 
                 if (!this.source_buffer) {
+                    // If there's no source buffer, we can't load anything
                     release();
                     return;
                 }
-                // if this chunk has not been generated, stop!                
-
                 await this.loadChunk(output_directory, segment);
-                console.log("Lock releasing for videoUpdate");
                 release();
-                console.log("Lock released for videoUpdate");
+                // Only ever load at most one chunk in an update
                 return;
             }
         }
 
-        console.log("Lock releasing for videoUpdate");
         release();
-        console.log("Lock released for videoUpdate");
     }
 
 
 
 
 
+    /**
+     * Play/pause the video
+     */
     playPause() {
 
         this.setState({
@@ -341,16 +332,13 @@ class VideoPreview extends React.Component<Props, State> {
 
         this.forceUpdate();
         if (Math.abs(time - this.last_time_update) > 1) {
-            await this.videoUpdate();
-
-
+            await this.videoUpdate(); // Perform a video update every 1 second, to allow the relevant chunks to be requested
             this.last_time_update = time;
         }
     }
 
 
-    onSourceBufferUpdateEnd() {
-        console.log("Update end callback!");
+    onSourceBufferUpdateEnd(e) {
         for (let callback of this.update_end_callbacks) {
             callback();
         }
@@ -358,16 +346,15 @@ class VideoPreview extends React.Component<Props, State> {
     }
 
     source_buffer: SourceBuffer;
+
+
     async onClipChanged(clip: string) {
 
-
-
-
+        // If the clip is changed, we need to request that clip's length. That way, we can then go ahead and request the relevant chunks, which can then be loaded in
         Communicator.invoke('request_video_length', {
             clipId: clip
         });
 
-        console.log("Aquiring lock for onClipChanged");
         const release = await this.change_lock.acquire();
         let current_data = this.video_preview_data.get(this.state.clip);
         if (typeof current_data != "string" && current_data != null) {
@@ -377,15 +364,15 @@ class VideoPreview extends React.Component<Props, State> {
                 }
             }
         }
-        console.log("Lock acquired for onClipChanged");
 
         if (this.source_buffer) {
             this.source_buffer.removeEventListener('updateend', this.onSourceBufferUpdateEnd);
         }
         await new Promise((resolve, reject) => setTimeout(resolve, 1000));
 
-        this.media_source = new MediaSource();
 
+        // Reset the player - create a new media source, get a new source buffer with the relevant codecs
+        this.media_source = new MediaSource();
         this.setState({
             clip,
             videoURL: URL.createObjectURL(this.media_source)
@@ -407,39 +394,16 @@ class VideoPreview extends React.Component<Props, State> {
         }
         let codec = current_data.codec;
 
-        console.log(current_data);
-        console.log(codec);
         if (!codec || codec.startsWith("ERROR")) {
             release();
             return;
         };
         let mime_type = codec;
-        // if (this.clip_codecs.get(clip)) {
-        //     mime_type = this.clip_codecs.get(clip).codec;
-        // }
-        // else {
-        //     release();
-        //     console.log("WARNING: no codec found!");
-        //     console.log(this.clip_codecs);
-        //     console.log(clip);
-        //     return;
-        // }
-
-
-
 
         this.source_buffer = this.media_source.addSourceBuffer(mime_type);
-        this.source_buffer.mode = 'sequence';
-        console.log("New source buffer:");
-        console.log(this.source_buffer);
-
+        this.source_buffer.mode = 'sequence'; // When we add them, we will manually specify where they should be inserted - instead of them being added based on some metadata in the file itself
         this.source_buffer.addEventListener('updateend', this.onSourceBufferUpdateEnd);
-
-        // reset everything!
-
-        console.log("Lock releasing for onClipChanged");
         release();
-        console.log("Lock released for onClipChanged");
 
         await this.videoUpdate();
     }
@@ -447,7 +411,6 @@ class VideoPreview extends React.Component<Props, State> {
 
 
     render() {
-
         let options = [
             <option value={null}>Unselected</option>
         ];
@@ -460,13 +423,9 @@ class VideoPreview extends React.Component<Props, State> {
         let musicDisplay = null;
 
         let current_data = this.video_preview_data.get(this.state.clip);
-        console.log(this.video_element_ref);
         if (current_data && typeof current_data != "string" && !current_data.is_video) {
             musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
         }
-        // if (this.clip_codecs.get(this.state.clip) && this.clip_codecs.get(this.state.clip).no_video_streams == 0) {
-        //     musicDisplay = <FontAwesomeIcon icon={faMusic} className={`text-${Utils.Colours.Audio} text-6xl`} />;
-        // }
         let bufferingDisplay = null;
         if (this.state.buffering) {
             bufferingDisplay = <FontAwesomeIcon icon={faCircleNotch} className={`text-white animate-spin text-6xl`} />;
@@ -474,10 +433,9 @@ class VideoPreview extends React.Component<Props, State> {
 
         let loadedPercentage = 0;
         if (this.state.clip && this.duration != 0) {
-            // let chunksReady = this.clip_chunks_ready.get(this.state.clip);
             let chunksReady = 1;
-            let durationReady = chunksReady * 10;
-            loadedPercentage = durationReady / this.duration * 100;
+            let durationReady = chunksReady * VideoPreview.CHUNK_LENGTH;
+            loadedPercentage = Math.min(durationReady / this.duration * 100, 100);
         }
 
         return <div className="flex flex-col h-full">

@@ -7,6 +7,7 @@ interface Edge {
 	to: ID,
 }
 
+// A simple graph implementation with cycle checking and simple utility functions
 export default class Graph {
 	private nodes: Array<Node>;
 	private edges: Array<Edge>;
@@ -35,18 +36,12 @@ export default class Graph {
 	}
 
 	public isAcyclic() {
-
-		//let nodes_copy = this.nodes.slice();
 		let edges_copy = this.edges.slice(0);
-
-
 
 		// we do a topological sort, and if it can't do that, then it's got a cycle
 
 		let L = [];
-
 		let S = this.nodes.filter(e => this.getIncomingNodes(e).length == 0);
-		// Q now contains all nodes with no incoming edges
 
 		while (S.length > 0) {
 			let n = S.pop();

@@ -1,11 +1,13 @@
 use once_cell::sync::Lazy;
 use std::{fs, sync::Mutex};
 
+// This file allows us to utilise the same utility functions on the server and client, but make use of different constants by initialising with a custom value
+
 static DATA_LOCATION: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 static IS_SERVER: Lazy<Mutex<Option<bool>>> = Lazy::new(|| Mutex::new(None));
 
-pub const CHUNK_LENGTH: u8 = 10;
-pub const CHUNK_FILENAME_NUMBER_LENGTH: u8 = 6;
+pub const CHUNK_LENGTH: u8 = 1; // Video chunk length, in seconds
+pub const CHUNK_FILENAME_NUMBER_LENGTH: u8 = 6; // The length of the chunk filename template
 
 pub fn data_location() -> String {
     DATA_LOCATION.lock().unwrap().as_ref().unwrap().clone()

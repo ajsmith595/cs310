@@ -51,13 +51,13 @@ fn default_properties() -> HashMap<String, NodeTypeInput> {
             String::from(inputs::GAIN),
             NodeTypeInput {
                 name: String::from(inputs::GAIN),
-                display_name: String::from("Gain Amount"),
-                description: String::from("The amount to gain by"),
+                display_name: String::from("Multiplier"),
+                description: String::from("The volume multiplier"),
                 property_type: Type::Number(Restrictions {
-                    min: (-12 as f64),
-                    max: (12 as f64),
-                    step: (0.1 as f64),
-                    default: (0 as f64),
+                    min: (0 as f64),
+                    max: (10 as f64),
+                    step: (0.01 as f64),
+                    default: (1 as f64),
                 }),
             },
         );
@@ -173,11 +173,11 @@ pub fn get_output(
     }
     return Err(format!("Media is invalid type (audio gain blur)"));
 }
-pub fn audio_gain() -> NodeType {
+pub fn volume_node() -> NodeType {
     NodeType {
         id: String::from(IDENTIFIER),
-        display_name: String::from("Audio Gain"),
-        description: String::from("Increase the volume of a source"),
+        display_name: String::from("Volume"),
+        description: String::from("Apply a multiplier to the volume of the source clip"),
         default_properties: default_properties(),
         get_io: |node_id: ID,
                  properties: &HashMap<String, Value>,

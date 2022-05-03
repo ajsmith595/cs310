@@ -4,6 +4,10 @@ import { Fragment } from 'react';
 import EventBus from '../../classes/EventBus';
 import EditorNode, { Position } from '../../classes/Node';
 
+
+/**
+ * A simple menu for adding nodes to the node editor
+ */
 export default function NodeAddMenu() {
 
     function dispatchAddNode(node_type) {

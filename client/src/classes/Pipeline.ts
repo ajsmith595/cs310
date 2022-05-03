@@ -2,8 +2,11 @@ import { ID } from "./Communicator";
 import Graph from "./Graph";
 import Store from "./Store";
 import Utils from "./Utils";
-// import { DiGraph, Graph } from 'js-graph-algorithms';
 
+
+/**
+ * Specifies what node and input/output one end of the link connects to
+ */
 export class LinkEndpoint {
     node_id: ID;
     property: string;
@@ -26,6 +29,10 @@ export class LinkEndpoint {
     }
 }
 
+
+/**
+ * Specifies a link between two nodes
+ */
 export class Link {
     from: LinkEndpoint;
     to: LinkEndpoint;
@@ -49,6 +56,9 @@ export class Link {
 }
 
 
+/**
+ * Contains the set of links that define the pipeline - the nodes are stored in the more global `Store`.
+ */
 export default class Pipeline {
     links: Array<Link>;
 
@@ -68,6 +78,9 @@ export default class Pipeline {
     }
 
 
+    /**
+     * Returns true if a particular node and input/output combination has any link connected to it
+     */
     containsLinkForNodeProperty(node_id, property) {
         for (let link of this.links) {
             if ((link.from.node_id == node_id && link.from.property == property)
@@ -79,6 +92,9 @@ export default class Pipeline {
     }
 
 
+    /**
+     * Checks if adding a particular node will cause a cycle in the graph
+     */
     hasCyclesWithLink(store: Store, link_to_add: Link) {
 
         let g = new Graph();

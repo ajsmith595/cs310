@@ -4,9 +4,6 @@ use uuid::Uuid;
 extern crate serde_derive;
 #[macro_use]
 extern crate enum_primitive;
-// #[macro_use]
-// extern crate erased_serde;
-// extern crate dirs;
 extern crate dirs;
 extern crate gst;
 extern crate gst_pbutils;

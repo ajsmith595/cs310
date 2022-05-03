@@ -20,7 +20,6 @@ interface Props {
 type NotificationType = 'error' | 'warning' | 'success' | 'info';
 
 interface State {
-    loading: boolean,
     group: string,
     notifications: Array<{
         title: string,
@@ -38,7 +37,6 @@ class NodeEditor extends React.Component<Props, State> {
     constructor(props: Props) {
         super(props);
         this.state = {
-            loading: true,
             group: props.initial_group || "",
             notifications: []
         }
@@ -52,9 +50,8 @@ class NodeEditor extends React.Component<Props, State> {
         EventBus.on(EventBus.EVENTS.NODE_EDITOR.CHANGE_GROUP, this.changeGroup);
         EventBus.registerGetter(EventBus.GETTERS.NODE_EDITOR.CURRENT_GROUP, () => this.state.group);
 
-        EventBus.on('node_editor_force_reload', () => {
+        EventBus.on(EventBus.EVENTS.NODE_EDITOR.FORCE_UPDATE, () => {
             this.forceUpdate();
-            console.log("force update invoked")
         });
     }
 
@@ -72,12 +69,11 @@ class NodeEditor extends React.Component<Props, State> {
     }
 
     changeGroup(group: string) {
-        console.log("Changing group to:" + group);
         this.setState({
             group
         });
     }
-
+    // Adds a notification in the bottom right
     addNotification(message: string, type: NotificationType) {
         setTimeout(() => {
             this.setState({
@@ -98,6 +94,9 @@ class NodeEditor extends React.Component<Props, State> {
         });
     }
 
+    /**
+     * Obtains each node's inputs and outputs so they can be displayed in the node editor
+     */
     async prepareNodes(nodes: Array<EditorNode>) {
         let promises = [];
         for (let node of nodes) {
@@ -108,13 +107,12 @@ class NodeEditor extends React.Component<Props, State> {
             await p;
         }
         await new Promise(resolve => setTimeout(resolve, 200));
-        this.setState({
-            loading: !this.state.loading // force reload
-        });
+        this.forceUpdate();
     }
 
+
     addLink(e: Edge<any> | Connection) {
-        if (e.source === e.target) {
+        if (e.source === e.target) { // cannot connect to self!
             return;
         }
 
@@ -122,6 +120,7 @@ class NodeEditor extends React.Component<Props, State> {
         for (let link of store.pipeline.links) {
             if (link.from.node_id === e.source && link.from.property === e.sourceHandle
                 && link.to.node_id === e.target && link.to.property === e.targetHandle) {
+                // If the link already exists, cancel
                 return;
             }
         }
@@ -130,13 +129,17 @@ class NodeEditor extends React.Component<Props, State> {
 
 
         if (store.pipeline.hasCyclesWithLink(store, link)) {
+            // prevent a link with cycles
             this.addNotification('Link caused cycle in pipeline', 'error');
         }
         else {
+            // Otherwise, add the link
             Communicator.invoke('add_link', {
                 link
             });
 
+
+            // Update all node's inputs and outputs
             let ids_left_inputs = [];
             let ids_left_outputs = [];
             for (let [id, node] of store.nodes.entries()) {
@@ -157,16 +160,9 @@ class NodeEditor extends React.Component<Props, State> {
         }
     }
 
-    isValidConnection(connection: Connection) {
-        return true;
-        // let store = Store.getCurrentStore();
-
-        // let link = new Link(new LinkEndpoint(connection.source, connection.sourceHandle), new LinkEndpoint(connection.target, connection.targetHandle));
-        // if (store.pipeline.hasCyclesWithLink(store, link))
-        //     return false;
-        // return true;
-    }
-
+    /**
+     * Delete all links from a particular node; if a property is supplied, only links to that particular input/output are removed
+     */
     deleteLinks(node_id, property = null) {
         Communicator.invoke('delete_links', {
             nodeId: node_id,
@@ -174,23 +170,24 @@ class NodeEditor extends React.Component<Props, State> {
         })
     }
 
-
     deleteNode(node_id) {
         Communicator.invoke('delete_node', {
             id: node_id
         });
     }
 
+    /**
+     * If the user drags a clip from the media importer onto the node editor (not into a ClipDropComponent) the node editor should create an import node for that clip
+     * This handles the dragging from the media importer
+     */
     addImportNode(event: React.DragEvent) {
         event.preventDefault();
-        let data = JSON.parse(event.dataTransfer.getData('application/json'));
+        let data = JSON.parse(event.dataTransfer.getData('application/json')); // Parse in the JSON string encoded in the drag event
 
         let state = EventBus.getValue(EventBus.GETTERS.NODE_EDITOR.CURRENT_INTERNAL_STATE);
 
         let bounds = event.currentTarget.getBoundingClientRect();
         let [mouseX, mouseY] = [event.clientX - bounds.left, event.clientY - bounds.top];
-
-
 
         let x = (mouseX - state.transform[0]) / state.transform[2];
         let y = (mouseY - state.transform[1]) / state.transform[2];
@@ -199,6 +196,8 @@ class NodeEditor extends React.Component<Props, State> {
 
         let node = EditorNode.createNode('clip_import', this.state.group, pos);
         node.properties.set('clip', data);
+
+        // Create a node in the center of the screen
         this.addNode(node);
     }
 
@@ -213,6 +212,7 @@ class NodeEditor extends React.Component<Props, State> {
                 continue;
             }
             if (node.group === this.state.group) {
+                // Only show nodes that match the group ID
                 elements.push({
                     id,
                     position: node.position,
@@ -220,7 +220,6 @@ class NodeEditor extends React.Component<Props, State> {
                         node: node,
                         deleteLinks: (property: string) => this.deleteLinks(node.id, property),
                         deleteNode: () => this.deleteNode(node.id),
-                        isValidConnection: (property: string, connection: Connection) => this.isValidConnection(connection)
                     },
                     type: 'editor_node'
                 });
@@ -228,6 +227,7 @@ class NodeEditor extends React.Component<Props, State> {
         }
         if (nodesInPreparation.length > 0) {
             this.prepareNodes(nodesInPreparation);
+            // Prepare any unready nodes
         }
 
         for (let link of store.pipeline.links) {
