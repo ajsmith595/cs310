@@ -68,7 +68,7 @@ impl ProcessPool {
         for _ in 0..number_of_processes {
             let (server, server_name) = IpcOneShotServer::new().unwrap();
 
-            let handle = procspawn::spawn(server_name, process_func);
+            let handle = procspawn::spawn(server_name, process_main);
             let (_, child_send): (_, IpcSender<IPCMessage>) = server.accept().unwrap();
 
             let (parent_send, parent_recv): (IpcSender<IPCMessage>, IpcReceiver<IPCMessage>) =
@@ -100,9 +100,17 @@ impl ProcessPool {
         }
     }
 }
-fn process_func(server_name: String) {
+
+fn process_main(server_name: String) {
+    println!("Initialising GES + GST...");
     gst::init().unwrap();
     ges::init().unwrap();
+
+    let current_dir = std::env::current_dir().unwrap();
+    let current_dir = current_dir.to_str().unwrap();
+    cs310_shared::constants::init(format!("{}/application_data", current_dir), true);
+    println!("Initialised");
+    // initialise gstreamer and ges
 
     let (child_send, child_recv): (IpcSender<IPCMessage>, IpcReceiver<IPCMessage>) =
         ipc::channel().unwrap();
@@ -116,9 +124,12 @@ fn process_func(server_name: String) {
             panic!("Invalid message!")
         }
     };
+    // establish connection with parent process
+
     ctrlc::set_handler(move || {
         child_send.send(IPCMessage::EndProcess).unwrap();
     })
+    // add a ctrl-c handler to end the process
     .unwrap();
 
     loop {
@@ -151,19 +162,22 @@ fn process_func(server_name: String) {
                 break;
             }
         }
-        //parent_send.send(IPCMessage::OperationFinished).unwrap();
     }
-
-    // use parent_send to send messages to the parent process
-    // use child_recv to receive messages from the parent process
 }
 
+/**
+ * Will execute the pipeline for a particular composited clip. This assumes that the relevant GES timeline files have already been generated
+ */
 fn execute_pipeline(
     clip: CompositedClip,
     output_type: PipedType,
     chunk_range: Option<(u32, u32)>,
     parent_send: &IpcSender<IPCMessage>,
 ) {
+    println!("Initialising...");
+    gst::init().unwrap();
+    ges::init().unwrap();
+    println!("Initialised!");
     let id = clip.id.clone();
 
     let timeline_location = clip.get_location();
@@ -189,214 +203,204 @@ fn execute_pipeline(
         return;
     }
     let (start_chunk, end_chunk) = chunk_range.unwrap();
-    for i in start_chunk..(end_chunk + 1) {
-        let pipeline = gst::Pipeline::new(None);
+    let pipeline = gst::Pipeline::new(None);
 
-        let out_type = output_type.clone();
-        let timeline = out_type.stream_type.create_timeline();
-        let layer = timeline.append_layer();
+    let out_type = output_type.clone();
+    let timeline = out_type.stream_type.create_timeline();
+    let layer = timeline.append_layer();
 
-        let inpoint = if start_chunk > 0 {
-            let inpoint = ((CHUNK_LENGTH as u32) * start_chunk) as u64;
-            Some(gst::ClockTime::from_seconds(inpoint))
-        } else {
-            None
-        };
+    let inpoint = if start_chunk > 0 {
+        let inpoint = ((CHUNK_LENGTH as u32) * start_chunk) as u64;
+        Some(gst::ClockTime::from_seconds(inpoint))
+    } else {
+        None
+    };
 
-        let duration = if end_chunk == number_of_chunks - 1 && start_chunk == 0 {
-            None
-        } else if end_chunk < number_of_chunks - 1 {
-            let num_chunks = end_chunk - start_chunk + 1;
-            let duration = num_chunks * (CHUNK_LENGTH as u32);
-            Some(gst::ClockTime::from_seconds(duration as u64))
-        } else {
-            let num_full_chunks = end_chunk - start_chunk;
-            let duration = (num_full_chunks * (CHUNK_LENGTH as u32) * 1000) as u64
-                + (total_duration % (CHUNK_LENGTH as u64));
+    let duration = if end_chunk == number_of_chunks - 1 && start_chunk == 0 {
+        None
+    } else if end_chunk < number_of_chunks - 1 {
+        let num_chunks = end_chunk - start_chunk + 1;
+        let duration = num_chunks * (CHUNK_LENGTH as u32);
+        Some(gst::ClockTime::from_seconds(duration as u64))
+    } else {
+        let num_full_chunks = end_chunk - start_chunk;
+        let duration = (num_full_chunks * (CHUNK_LENGTH as u32) * 1000) as u64
+            + (total_duration % (CHUNK_LENGTH as u64));
 
-            Some(gst::ClockTime::from_mseconds(duration as u64))
-        };
+        Some(gst::ClockTime::from_mseconds(duration as u64))
+    };
 
-        layer
-            .add_asset(
-                &timeline_asset,
-                None,
-                inpoint,
-                duration,
-                ges::TrackType::UNKNOWN,
-            )
-            .unwrap();
-
-        pipeline.add(&timeline).unwrap();
-
-        let muxer = gst::ElementFactory::make(
-            "splitmuxsink",
-            Some(format!("composited-clip-{}", id.to_string()).as_str()),
+    layer
+        .add_asset(
+            &timeline_asset,
+            None,
+            inpoint,
+            duration,
+            ges::TrackType::UNKNOWN,
         )
         .unwrap();
-        muxer.set_property("location", clip.get_output_location_template());
-        muxer.set_property("muxer-factory", "mpegtsmux");
-        let start_index: i32 = start_chunk as i32;
-        muxer.set_property("start-index", start_index);
 
-        std::fs::create_dir_all(clip.get_output_location()).unwrap();
+    pipeline.add(&timeline).unwrap();
 
-        // let structure = gst::Structure::new(
-        //     "properties",
-        //     &[("streamable", &true), ("fragment-duration", &10)],
-        // );
-        // muxer.set_property("muxer-properties", structure);
-        muxer.set_property("async-finalize", true);
-        let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
+    let muxer = gst::ElementFactory::make(
+        "splitmuxsink",
+        Some(format!("composited-clip-{}", id.to_string()).as_str()),
+    )
+    .unwrap();
+    muxer.set_property("location", clip.get_output_location_template());
+    muxer.set_property("muxer-factory", "mpegtsmux");
+    let start_index: i32 = start_chunk as i32;
+    muxer.set_property("start-index", start_index);
 
-        let nanoseconds = if start_chunk == end_chunk {
-            nanoseconds * 10
-        } else {
-            nanoseconds
-        };
-        muxer.set_property("max-size-time", nanoseconds);
-        muxer.set_property("send-keyframe-requests", true);
-        pipeline.add(&muxer).unwrap();
+    std::fs::create_dir_all(clip.get_output_location()).unwrap();
 
-        let mut i = 0;
+    muxer.set_property("async-finalize", true);
+    let nanoseconds = (CHUNK_LENGTH as u64) * 1000000000;
 
-        let mut memory_safety_vars = Vec::new();
+    let nanoseconds = if start_chunk == end_chunk {
+        nanoseconds * 10
+    } else {
+        nanoseconds
+    };
+    muxer.set_property("max-size-time", nanoseconds);
+    muxer.set_property("send-keyframe-requests", true);
+    pipeline.add(&muxer).unwrap();
 
-        for x in timeline.pads() {
-            let video = i;
-            let audio = i - out_type.stream_type.video;
-            i += 1;
+    let mut i = 0;
 
-            if video < out_type.stream_type.video {
-                let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
+    let mut memory_safety_vars = Vec::new();
 
-                let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
-                let queue = gst::ElementFactory::make("queue", None).unwrap();
+    for x in timeline.pads() {
+        let video = i;
+        let audio = i - out_type.stream_type.video;
+        i += 1;
 
-                pipeline.add(&encoder).unwrap();
-                pipeline.add(&videoconvert).unwrap();
-                pipeline.add(&queue).unwrap();
+        if video < out_type.stream_type.video {
+            let encoder = gst::ElementFactory::make("x264enc", None).unwrap();
 
-                //pipeline.add(&videoconvert2).unwrap();
-                timeline
-                    .link_pads(Some(x.name().as_str()), &videoconvert, None)
-                    .unwrap();
-                videoconvert.link(&encoder).unwrap();
-                //encoder.link(&videoconvert2).unwrap();
+            let videoconvert = gst::ElementFactory::make("videoconvert", None).unwrap();
+            let queue = gst::ElementFactory::make("queue", None).unwrap();
 
-                encoder.link(&queue).unwrap();
+            pipeline.add(&encoder).unwrap();
+            pipeline.add(&videoconvert).unwrap();
+            pipeline.add(&queue).unwrap();
+            timeline
+                .link_pads(Some(x.name().as_str()), &videoconvert, None)
+                .unwrap();
+            videoconvert.link(&encoder).unwrap();
 
-                if video > 0 {
-                    panic!("Can only handle one video stream!");
-                }
-                queue
-                    .link_pads(None, &muxer, Some(format!("video").as_str()))
-                    .unwrap();
+            encoder.link(&queue).unwrap();
 
-                memory_safety_vars.push(encoder);
-                memory_safety_vars.push(videoconvert);
-                memory_safety_vars.push(queue);
-            } else {
-                let audioconvert1 = gst::ElementFactory::make("audioconvert", None).unwrap();
-                let audioresample = gst::ElementFactory::make("audioresample", None).unwrap();
-                let audioconvert2 = gst::ElementFactory::make("audioconvert", None).unwrap();
-
-                let queue = gst::ElementFactory::make("queue", None).unwrap();
-
-                let encoder = gst::ElementFactory::make("avenc_aac", None).unwrap();
-
-                pipeline.add(&audioconvert1).unwrap();
-                pipeline.add(&audioresample).unwrap();
-                pipeline.add(&audioconvert2).unwrap();
-                pipeline.add(&queue).unwrap();
-                pipeline.add(&encoder).unwrap();
-                timeline
-                    .link_pads(Some(x.name().as_str()), &audioconvert1, None)
-                    .unwrap();
-                audioconvert1.link(&audioresample).unwrap();
-                audioresample.link(&audioconvert2).unwrap();
-                audioconvert2.link(&encoder).unwrap();
-                encoder.link(&queue).unwrap();
-                queue
-                    .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
-                    .unwrap();
-
-                memory_safety_vars.push(audioconvert1);
-                memory_safety_vars.push(audioresample);
-                memory_safety_vars.push(audioconvert2);
-                memory_safety_vars.push(queue);
-                memory_safety_vars.push(encoder);
+            if video > 0 {
+                panic!("Can only handle one video stream!");
             }
+            queue
+                .link_pads(None, &muxer, Some(format!("video").as_str()))
+                .unwrap();
+
+            memory_safety_vars.push(encoder);
+            memory_safety_vars.push(videoconvert);
+            memory_safety_vars.push(queue);
+        } else {
+            let audioconvert1 = gst::ElementFactory::make("audioconvert", None).unwrap();
+            let audioresample = gst::ElementFactory::make("audioresample", None).unwrap();
+            let audioconvert2 = gst::ElementFactory::make("audioconvert", None).unwrap();
+
+            let queue = gst::ElementFactory::make("queue", None).unwrap();
+
+            let encoder = gst::ElementFactory::make("avenc_aac", None).unwrap();
+
+            pipeline.add(&audioconvert1).unwrap();
+            pipeline.add(&audioresample).unwrap();
+            pipeline.add(&audioconvert2).unwrap();
+            pipeline.add(&queue).unwrap();
+            pipeline.add(&encoder).unwrap();
+            timeline
+                .link_pads(Some(x.name().as_str()), &audioconvert1, None)
+                .unwrap();
+            audioconvert1.link(&audioresample).unwrap();
+            audioresample.link(&audioconvert2).unwrap();
+            audioconvert2.link(&encoder).unwrap();
+            encoder.link(&queue).unwrap();
+            queue
+                .link_pads(None, &muxer, Some(format!("audio_{}", audio).as_str()))
+                .unwrap();
+
+            memory_safety_vars.push(audioconvert1);
+            memory_safety_vars.push(audioresample);
+            memory_safety_vars.push(audioconvert2);
+            memory_safety_vars.push(queue);
+            memory_safety_vars.push(encoder);
         }
+    }
 
-        println!("Starting pipeline...");
-        pipeline
-            .set_state(gst::State::Playing)
-            .expect("Unable to set the pipeline to the `Playing` state");
+    println!("Starting pipeline...");
+    pipeline
+        .set_state(gst::State::Playing)
+        .expect("Unable to set the pipeline to the `Playing` state");
 
-        let bus = pipeline.bus().unwrap();
+    let bus = pipeline.bus().unwrap();
 
-        for msg in bus.iter_timed(gst::ClockTime::NONE) {
-            use gst::MessageView;
+    for msg in bus.iter_timed(gst::ClockTime::NONE) {
+        use gst::MessageView;
 
-            match msg.view() {
-                MessageView::Eos(..) => break,
-                MessageView::Error(err) => {
-                    println!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
-                    break;
-                }
-                MessageView::Element(_) => {
-                    let src = msg.src();
-                    let structure = msg.structure();
+        match msg.view() {
+            MessageView::Eos(..) => break,
+            MessageView::Error(err) => {
+                println!(
+                    "Error from {:?}: {} ({:?})",
+                    err.src().map(|s| s.path_string()),
+                    err.error(),
+                    err.debug()
+                );
+                break;
+            }
+            MessageView::Element(_) => {
+                let src = msg.src();
+                let structure = msg.structure();
 
-                    if let (Some(src), Some(structure)) = (src, structure) {
-                        let event = structure.name().to_string();
+                if let (Some(src), Some(structure)) = (src, structure) {
+                    let event = structure.name().to_string();
 
-                        if event == String::from("splitmuxsink-fragment-closed") {
-                            let location = structure.get::<String>("location");
-                            let running_time = structure.get::<u64>("running-time");
+                    if event == String::from("splitmuxsink-fragment-closed") {
+                        let location = structure.get::<String>("location");
+                        let running_time = structure.get::<u64>("running-time");
 
-                            if let (Ok(location), Ok(running_time)) = (location, running_time) {
-                                let node_id = src.name().to_string();
+                        if let (Ok(location), Ok(running_time)) = (location, running_time) {
+                            let node_id = src.name().to_string();
 
-                                let mut parts: Vec<&str> = node_id.split("-").collect();
-                                parts.drain(0..(parts.len() - 5));
+                            let mut parts: Vec<&str> = node_id.split("-").collect();
+                            parts.drain(0..(parts.len() - 5));
 
-                                let parts: Vec<&str> = location.split("/").collect();
-                                let filename = parts.last().unwrap();
-                                let parts: Vec<&str> = filename.split(".").collect();
-                                let number_string: String = parts
-                                    .first() // the bit of the filename excluding the extension
-                                    .unwrap()
-                                    .chars()
-                                    .filter(|c| c.is_digit(10)) // extract all the numbers
-                                    .collect();
-                                let segment = number_string.parse::<u32>().unwrap();
+                            let parts: Vec<&str> = location.split("/").collect();
+                            let filename = parts.last().unwrap();
+                            let parts: Vec<&str> = filename.split(".").collect();
+                            let number_string: String = parts
+                                .first() // the bit of the filename excluding the extension
+                                .unwrap()
+                                .chars()
+                                .filter(|c| c.is_digit(10)) // extract all the numbers
+                                .collect();
+                            let segment = number_string.parse::<u32>().unwrap();
 
-                                parent_send
-                                    .send(IPCMessage::ChunkCompleted(id.clone(), segment))
-                                    .unwrap();
-                            }
+                            parent_send
+                                .send(IPCMessage::ChunkCompleted(id.clone(), segment))
+                                .unwrap();
                         }
                     }
                 }
-
-                _ => (),
             }
-        }
 
-        pipeline
-            .set_state(gst::State::Null)
-            .expect("Unable to set the pipeline to the `Null` state");
-
-        for mem in memory_safety_vars {
-            print!("M");
+            _ => (),
         }
+    }
+
+    pipeline
+        .set_state(gst::State::Null)
+        .expect("Unable to set the pipeline to the `Null` state");
+
+    for mem in memory_safety_vars {
+        print!("M");
     }
 
     parent_send
