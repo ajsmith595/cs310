@@ -48,15 +48,15 @@ pub struct Pipeline {
     pub links: Vec<Link>,
 }
 
-pub struct NodeData {
-    pub node: Node,
-}
-
 impl Pipeline {
     pub fn new() -> Self {
         Self { links: Vec::new() }
     }
 
+    /**
+     * Generates a directed graph representation; no data will be supplied to the nodes or edges
+     * Also returns a `BiMap` indicating what node IDs correspond to the `NodeIndex` in the graph
+     */
     pub fn get_graph(
         &self,
         store: &Store,
@@ -150,6 +150,10 @@ impl Pipeline {
         Ok((graph, node_id_to_index))
     }
 
+    /**
+     * Generates the pipeline; will not generate timeline files if `get_output` = `false`
+     * Will utilise the cache when possible
+     */
     pub fn generate_pipeline(
         &self,
         store: &Store,
@@ -333,176 +337,9 @@ impl Pipeline {
         }
 
         // we should then have populated both the node type hashmap and the composited clip type hashmap.
-        // we can also perform actual obtaining of the output here
-
-        // TODO: check piped inputs meet minimum requirements for the inputs generated
-        // TODO: check if a piped input does not correspond to an input, then we need to delete the link from the store, since it's invalid now
 
         let output = (node_type_data, composited_clip_data, do_return);
 
         return Ok(output);
-    }
-
-    pub fn execute_pipeline<'a>(
-        pipeline: String,
-        timeout: u32,
-        composited_clip_callback: Option<Box<dyn Fn(String, u32, String) + Send + 'a>>,
-    ) -> Result<(), ()> {
-        let main_loop = glib::MainLoop::new(None, false);
-
-        //println!("Pipeline: {}", pipeline);
-        // This creates a pipeline by parsing the gst-launch pipeline syntax.
-
-        let pipeline = gst::parse_launch(pipeline.as_str()).unwrap();
-        let pipeline = pipeline.dynamic_cast::<gst::Pipeline>().unwrap();
-
-        let bus = pipeline.bus().unwrap();
-
-        let res = pipeline.set_state(gst::State::Playing);
-        if res.is_err() {
-            println!("Error! {:?}", res.unwrap_err());
-            return Err(());
-        }
-
-        let pipeline_weak = pipeline.downgrade();
-
-        let main_loop_clone = main_loop.clone();
-        let (tx, rx) = mpsc::channel();
-
-        let tx_clone = tx.clone();
-        glib::timeout_add_seconds(timeout, move || {
-            match pipeline_weak.upgrade() {
-                Some(_) => {}
-                None => return glib::Continue(false),
-            };
-            let main_loop = &main_loop_clone;
-            println!("sending eos");
-            main_loop.quit();
-
-            tx_clone.send(Ok(None)).unwrap();
-            glib::Continue(false)
-        });
-
-        let main_loop_clone = main_loop.clone();
-
-        let mut send_segments = false;
-        if composited_clip_callback.is_some() {
-            send_segments = true;
-        }
-        let tx_clone = tx.clone();
-        bus.add_watch(move |_, msg| {
-            use gst::MessageView;
-
-            let main_loop = &main_loop_clone;
-            match msg.view() {
-                MessageView::Eos(..) => {
-                    tx_clone.send(Ok(None)).unwrap();
-                    main_loop.quit();
-                }
-                MessageView::Error(err) => {
-                    println!(
-                        "Error from {:?}: {} ({:?})",
-                        err.src().map(|s| s.path_string()),
-                        err.error(),
-                        err.debug()
-                    );
-                    main_loop.quit();
-                    tx_clone.send(Err(())).unwrap();
-                }
-                MessageView::Element(_) => {
-                    if send_segments {
-                        let src = msg.src();
-                        let structure = msg.structure();
-
-                        if let (Some(src), Some(structure)) = (src, structure) {
-                            let event = structure.name().to_string();
-
-                            if event == String::from("splitmuxsink-fragment-closed") {
-                                let location = structure.get::<String>("location");
-                                let running_time = structure.get::<u64>("running-time");
-
-                                if let (Ok(location), Ok(_)) = (location, running_time) {
-                                    let node_id = src.name().to_string();
-
-                                    let mut parts: Vec<&str> = node_id.split("-").collect();
-                                    parts.drain(0..(parts.len() - 5));
-                                    let node_id = parts.join("-");
-
-                                    let parts: Vec<&str> = location.split("/").collect();
-                                    let filename = parts.last().unwrap();
-                                    let parts: Vec<&str> = filename.split(".").collect();
-                                    let number_string: String = parts
-                                        .first() // the bit of the filename excluding the extension
-                                        .unwrap()
-                                        .chars()
-                                        .filter(|c| c.is_digit(10)) // extract all the numbers
-                                        .collect();
-                                    let segment = number_string.parse::<u32>().unwrap();
-
-                                    tx_clone
-                                        .send(Ok(Some((node_id, segment, location))))
-                                        .unwrap();
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => (),
-            };
-
-            glib::Continue(true)
-        })
-        .expect("Failed to add bus watch");
-
-        println!("Running loop");
-        let thread = thread::spawn(move || {
-            main_loop.run();
-            println!("Loop executed");
-
-            pipeline
-                .set_state(gst::State::Null)
-                .expect("Unable to set the pipeline to the `Null` state");
-
-            bus.remove_watch().unwrap();
-        });
-        if send_segments {
-            let mut x = rx.recv();
-            let composited_clip_callback = composited_clip_callback.unwrap();
-            while let Ok(Ok(res)) = x.clone() {
-                if res.is_none() {
-                    println!("Exiting gst execution with ok");
-                    thread.join().unwrap();
-                    return Ok(());
-                }
-                let (node_id, segment, location) = res.unwrap();
-
-                (composited_clip_callback)(node_id, segment, location);
-                println!("Waiting for another response after: {:?}", x);
-                x = rx.recv();
-            }
-            thread.join().unwrap();
-            println!("Exiting gst execution with final res: {:?}", x);
-        } else {
-            let res = rx.recv();
-            if res.is_ok() {
-                if res.unwrap().is_ok() {
-                    thread.join().unwrap();
-                    return Ok(());
-                }
-            }
-        }
-        Err(())
-    }
-
-    pub fn get_video_thumbnail(path: String, id: String) {
-        let path = path.replace("\\", "/");
-        let pipeline = format!("filesrc location=\"{}\" ! decodebin ! jpegenc snapshot=TRUE ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
-        Self::execute_pipeline(pipeline, 10, None).unwrap();
-    }
-
-    pub fn get_audio_thumbnail(path: String, id: String) {
-        let path = path.replace("\\", "/");
-        let pipeline = format!("filesrc location=\"{}\" ! decodebin ! audioconvert ! wavescope ! jpegenc ! filesink location=\"thumbnails/source/{}.jpg\"", path, id);
-        Self::execute_pipeline(pipeline, 10, None).unwrap();
     }
 }

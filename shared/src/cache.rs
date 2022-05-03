@@ -10,6 +10,10 @@ use crate::{
     ID,
 };
 #[derive(Serialize, Deserialize, Clone, Debug)]
+
+/**
+ * The caching structure to assist with ensuring that the correct nodes of the graph are regenerated when a particular node is changed
+ */
 pub struct Cache {
     pub cache_data: HashMap<ID, HashMap<String, ID>>,
 }
@@ -29,6 +33,9 @@ impl Cache {
         self.cache_data.remove(id);
     }
 
+    /**
+     * Updates the cache to purge any affected nodes' cache as a result of a node modification
+     */
     pub fn node_modified(&mut self, id: &ID, store: &Store) {
         let graph = store.pipeline.get_graph(store);
         if let Ok((graph, node_id_to_index)) = graph {
@@ -61,7 +68,9 @@ impl Cache {
             }
         }
     }
-
+    /**
+     * Updates the cache to purge any affected nodes' cache as a result of a clip modification
+     */
     pub fn clip_modified(&mut self, clip_id: &ID, clip_type: ClipType, store: &Store) {
         for (id, node) in &store.nodes {
             if node.node_type.as_str() == media_import_node::IDENTIFIER {

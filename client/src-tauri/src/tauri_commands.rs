@@ -1,6 +1,5 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::mpsc};
 
-use rfd::AsyncFileDialog;
 use serde_json::Value;
 use uuid::Uuid;
 
@@ -33,22 +32,26 @@ pub async fn import_media(
     }
   }
 
-  let dialog = AsyncFileDialog::new().add_filter("Media", &["mp4", "mkv", "mp3"]);
+  let dialog = tauri::api::dialog::FileDialogBuilder::new()
+    .add_filter("Media", &["mp4", "mkv", "mp3", "avi", "wav", "flv", "webm"]);
 
-  #[cfg(not(target_os = "linux"))]
-  let dialog = dialog
-    .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"));
+  // #[cfg(not(target_os = "linux"))]
+  // let dialog = dialog
+  //   .set_parent(&tauri::api::dialog::window_parent(&window).expect("Could not get window parent"));
 
-  let file = dialog.pick_files().await;
+  let (tx, rx) = mpsc::channel();
+  dialog.pick_files(move |f| {
+    tx.send(f).unwrap();
+  });
+  let file = rx.recv().unwrap();
   match file {
     None => Err(String::from("No file selected")),
     Some(paths) => {
       let mut hm = HashMap::new();
-      // let mut jobs = Vec::new();
 
       let mut tasks = Vec::new();
       for path in paths {
-        let file_path = path.path().to_str().unwrap().to_string();
+        let file_path = path.to_str().unwrap().to_string();
         let info = SourceClip::get_file_info(file_path.clone());
         if info.is_err() {
           return Err(format!(
@@ -57,11 +60,11 @@ pub async fn import_media(
           ));
         }
         let info = info.unwrap();
-        let id = Uuid::new_v4(); // temporarily, we create a random file ID
+        let id = Uuid::new_v4(); // temporarily, we create a random clip ID - the server will provide a new one when submitted
 
         let clip = SourceClip {
           id: id.clone(),
-          name: path.file_name(),
+          name: String::from(path.file_name().unwrap().to_str().unwrap()),
           original_file_location: Some(file_path.clone()),
           info: Some(info),
           status: clip::SourceClipServerStatus::NeedsNewID,
@@ -173,6 +176,7 @@ pub fn get_node_inputs(
   return Ok(inputs.clone());
 }
 
+/// Returns the directory containing the media files for the video preview
 #[tauri::command]
 pub fn get_output_directory() -> String {
   media_output_location()
@@ -348,6 +352,7 @@ pub fn request_video_length(state: tauri::State<SharedStateWrapper>, clip_id: Uu
     .insert(clip_id.clone(), VideoPreviewStatus::LengthRequested);
 }
 
+/// Requests a video preview for a particular set of chunks
 #[tauri::command]
 pub fn request_video_preview(
   state: tauri::State<SharedStateWrapper>,

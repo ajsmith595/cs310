@@ -23,7 +23,7 @@ pub struct Node {
     pub position: Position,
     pub id: ID,
     pub node_type: String,
-    pub properties: HashMap<String, Value>, // value from serde_json?
+    pub properties: HashMap<String, Value>, // A set of key-value pairs - the serde Value allows any type of value to be stored
     pub group: ID,
 }
 impl Node {
@@ -48,6 +48,7 @@ impl Node {
     }
 }
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
+// Specifies numeric restrictions on a property
 pub struct Restrictions {
     pub min: f64,
     pub max: f64,
@@ -189,46 +190,14 @@ impl PipeableStreamType {
             PipeableStreamType::Subtitles => String::from("subtitles"),
         }
     }
-
-    pub fn stream_linker(&self) -> String {
-        String::from(match &self {
-            &PipeableStreamType::Video => "videoconvert",
-            &PipeableStreamType::Audio => "audioconvert",
-            &PipeableStreamType::Subtitles => "subparse",
-        })
-    }
-    pub fn encoder(&self) -> String {
-        String::from(match &self {
-            &PipeableStreamType::Video => "nvh264enc bitrate=400 ! h264parse",
-            &PipeableStreamType::Audio => "avenc_aac",
-            &PipeableStreamType::Subtitles => todo!(),
-        })
-    }
-}
-
-impl PipedType {
-    pub fn get_gst_handle(&self, stream_type: &PipeableStreamType, index: i32) -> Option<String> {
-        let io = match self.io {
-            InputOrOutput::Input => "input",
-            InputOrOutput::Output => "output",
-        };
-        let stream_type_str = stream_type.to_string();
-        if self.get_number_of_streams(&stream_type) <= index {
-            return None;
-        }
-        return Some(format!(
-            "{}-{}-{}-{}-{}",
-            self.node_id, io, self.property_name, stream_type_str, index
-        ));
-    }
 }
 
 #[derive(Copy, Serialize, Deserialize, Debug, Clone)]
+/// The enum specifying a particular input/output's type
 pub enum Type {
     Pipeable(PipeableType, PipeableType),
     Number(Restrictions),
-    String(i32), // TODO: make these easier to read + add more properties. e.g. min string length, max string length, regex for valid string, etc.
-    // Maybe some restrictions on video min/max duration, resolution, etc?
+    String(i32),
     Clip,
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -236,7 +205,7 @@ pub struct NodeTypeInput {
     pub name: String,
     pub display_name: String,
     pub description: String,
-    pub property_type: Type,
+    pub property_type: Type, // The input type is a restriction, rather than a definitive type. Allows different stream types to be supplied and accepted
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -244,9 +213,10 @@ pub struct NodeTypeOutput {
     pub name: String,
     pub display_name: String,
     pub description: String,
-    pub property_type: PipeableType,
+    pub property_type: PipeableType, // The output type is definitive, unlike the input
 }
 
+/// Shorthand for specifying the `NodeType` functions
 type NodeTypeFunc<T> = fn(
     node_id: ID,
     properties: &HashMap<String, Value>,
@@ -263,52 +233,12 @@ pub struct NodeType {
     pub description: String,
     pub default_properties: HashMap<String, NodeTypeInput>,
 
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing)] // we cannot serialise functions, so do not try to serialise them
     pub get_io: NodeTypeFunc<(
         HashMap<String, NodeTypeInput>,
         HashMap<String, NodeTypeOutput>,
-    )>,
+    )>, // this function returns the inputs, outputs and properties of a node, given its current inputs and properties.
 
     #[serde(skip_serializing)]
-    pub get_output: NodeTypeFunc<HashMap<String, ges::Timeline>>,
+    pub get_output: NodeTypeFunc<HashMap<String, ges::Timeline>>, // Gets the GES timeline for that particular node
 }
-
-// impl NodeType {
-//   pub fn new(
-//     id: String,
-//     display_name: String,
-//     description: String,
-
-//     get_properties: fn(
-//       properties: &HashMap<String, Value>,
-//       store: &Store,
-//       node_register: &NodeRegister,
-//     ) -> Result<HashMap<String, NodeTypeInput>, String>,
-
-//     get_output_types: fn(
-//       node_id: String,
-//       properties: &HashMap<String, Value>,
-//       store: &Store,
-//       node_register: &NodeRegister,
-//     ) -> Result<HashMap<String, NodeTypeOutput>, String>,
-//     get_output: fn(
-//       node_id: String,
-//       properties: &HashMap<String, Value>,
-//       store: &Store,
-//       node_register: &NodeRegister,
-//     ) -> Result<String, String>,
-
-//     store: &Store,
-//   ) -> Self {
-//     let default_properties = get_properties(HashMap::new(), store, )
-//     Self {
-//       id,
-//     display_name,
-//     description,
-//     get_properties,
-//     get_output_types,
-//     get_output,
-
-//     }
-//   }
-// }

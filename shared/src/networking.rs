@@ -8,21 +8,19 @@ use std::sync::Arc;
 use std::{io::Read, net::TcpStream};
 use uuid::Uuid;
 
-pub const SERVER_PORT: u16 = 3001;
+pub const SERVER_PORT: u16 = 3001; // The port that the server will run on
 
 enum_from_primitive! {
     #[derive(Debug)]
     pub enum Message {
         GetStore,
-        SetStore,
         GetVideoPreview,
-        GetFileThumbnail,
+        GetFileThumbnail, // to be implemented
         UploadFile,
         Response,
         EndFile,
         NewChunk,
         AllChunksGenerated,
-        CreateFile,
         GetFileID,
         CompositedClipLength,
         Checksum,
@@ -44,6 +42,9 @@ enum_from_primitive! {
     }
 }
 
+/**
+ * Utility function to connect to the server. If SERVER_HOST env variable is not set, localhost is assumed
+ */
 pub fn connect_to_server() -> Result<TcpStream, Error> {
     let host = match env::var("SERVER_HOST") {
         Ok(host) => host,
@@ -52,20 +53,27 @@ pub fn connect_to_server() -> Result<TcpStream, Error> {
     TcpStream::connect(format!("{}:{}", host, SERVER_PORT))
 }
 
+/**
+ * Sends data through a TcpStream as if it was a file (sends the length of the data)
+ */
 pub fn send_as_file(stream: &mut TcpStream, file_data: &[u8]) {
-    println!("Sending file (as bytes) of length: {}", file_data.len());
     let length = file_data.len().to_ne_bytes();
-
     send_data(stream, &length).unwrap(); // send the file length
     send_data(stream, file_data).unwrap();
 }
 
+/**
+ * Sends a file through a TcpStream; sends the length of the file prior so it can be received on the other end via `receive_file`
+ */
 pub fn send_file(stream: &mut TcpStream, file: &mut File) {
     let file_length = file.metadata().unwrap().len();
     let bytes = file_length.to_ne_bytes();
     send_data(stream, &bytes).unwrap(); // send the file length
     std::io::copy(file, stream).unwrap();
 }
+/**
+ * Sends a file through a TcpStream, whilst also calling the specified callback with the total progress of the transfer
+ */
 pub fn send_file_with_progress<F>(
     stream: &mut TcpStream,
     file: &mut File,
@@ -91,6 +99,9 @@ where
     Ok(())
 }
 
+/**
+ * Receives a data stream sent by the sender as a file (with file length), and pushes it into a u8 vector
+ */
 pub fn receive_file_as_bytes(stream: &mut TcpStream) -> Vec<u8> {
     let file_length = receive_data(stream, 8).unwrap();
     let mut file_length_bytes = [0 as u8; 8];
@@ -109,6 +120,9 @@ pub fn receive_file_as_bytes(stream: &mut TcpStream) -> Vec<u8> {
     buffer
 }
 
+/**
+ * Receives file data and pushes it into an output file
+ */
 pub fn receive_file(stream: &mut TcpStream, output_file: &mut File) {
     let file_length = receive_data(stream, 8).unwrap();
     let mut file_length_bytes = [0 as u8; 8];
@@ -119,22 +133,19 @@ pub fn receive_file(stream: &mut TcpStream, output_file: &mut File) {
     std::io::copy(&mut data, output_file).unwrap();
 }
 
+/**
+ * Sends the relevant message through the TcpStream
+ */
 pub fn send_message(stream: &mut TcpStream, message: Message) -> Result<(), Error> {
-    send_message_with_data(stream, message, &[])
-}
-pub fn send_message_with_data(
-    stream: &mut TcpStream,
-    message: Message,
-    bytes: &[u8],
-) -> Result<(), Error> {
-    println!("Sending message: {:?}", message);
     let mut base = Vec::new();
     base.push(message as u8);
-    base.extend_from_slice(bytes);
 
     send_data(stream, base.as_slice())
 }
 
+/**
+ * Receives a message being sent to the TcpStream
+ */
 pub fn receive_message(stream: &mut TcpStream) -> Result<Message, Error> {
     let result = receive_data(stream, 1);
     if result.is_err() {
@@ -162,6 +173,9 @@ pub fn receive_message(stream: &mut TcpStream) -> Result<Message, Error> {
     Ok(message)
 }
 
+/**
+ * Sends raw data through a TcpStream
+ */
 pub fn send_data(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     let result = stream.write(bytes);
     if result.is_err() {
@@ -169,6 +183,10 @@ pub fn send_data(stream: &mut TcpStream, bytes: &[u8]) -> Result<(), Error> {
     }
     Ok(())
 }
+
+/**
+ * Receives raw data from a TcpStream
+ */
 pub fn receive_data(stream: &mut TcpStream, buffer_size: u64) -> Result<Vec<u8>, Error> {
     let mut buffer = vec![0; buffer_size as usize];
 
@@ -182,6 +200,9 @@ pub fn receive_data(stream: &mut TcpStream, buffer_size: u64) -> Result<Vec<u8>,
     Ok(buffer)
 }
 
+/**
+ * Utility function for receiving a Uuid through a TcpStream
+ */
 pub fn receive_uuid(stream: &mut TcpStream) -> Result<Uuid, Error> {
     let temp = receive_data(stream, 16)?;
     let mut uuid_bytes = [0 as u8; 16];
@@ -189,12 +210,19 @@ pub fn receive_uuid(stream: &mut TcpStream) -> Result<Uuid, Error> {
     Ok(Uuid::from_bytes(uuid_bytes))
 }
 
+/**
+ * Utility function for receiving a u64 through a TcpStream
+ */
 pub fn receive_u64(stream: &mut TcpStream) -> Result<u64, Error> {
     let bytes = receive_data(stream, 8).unwrap();
     let mut buffer = [0 as u8; 8];
     buffer.copy_from_slice(&bytes);
     Ok(u64::from_ne_bytes(buffer))
 }
+
+/**
+ * Utility function for receiving a u32 through a TcpStream
+ */
 pub fn receive_u32(stream: &mut TcpStream) -> Result<u32, Error> {
     let bytes = receive_data(stream, 4).unwrap();
     let mut buffer = [0 as u8; 4];
@@ -202,6 +230,9 @@ pub fn receive_u32(stream: &mut TcpStream) -> Result<u32, Error> {
     Ok(u32::from_ne_bytes(buffer))
 }
 
+/**
+ * Utility function for receiving a u16 through a TcpStream
+ */
 pub fn receive_u16(stream: &mut TcpStream) -> Result<u16, Error> {
     let bytes = receive_data(stream, 2).unwrap();
     let mut buffer = [0 as u8; 2];
@@ -209,6 +240,9 @@ pub fn receive_u16(stream: &mut TcpStream) -> Result<u16, Error> {
     Ok(u16::from_ne_bytes(buffer))
 }
 
+/**
+ * Utility function for receiving a u8 through a TcpStream
+ */
 pub fn receive_u8(stream: &mut TcpStream) -> Result<u8, Error> {
     let bytes = receive_data(stream, 1).unwrap();
     let mut buffer = [0 as u8; 1];

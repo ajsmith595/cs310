@@ -25,6 +25,7 @@ pub struct ClipIdentifier {
     pub clip_type: ClipType,
 }
 
+/// metadata about a particular video stream
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct VideoStreamInfo {
     pub width: u32,
@@ -33,6 +34,7 @@ pub struct VideoStreamInfo {
     pub bitrate: u32,
 }
 
+/// metadata about a particular audio stream
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AudioStreamInfo {
     pub sample_rate: u32,
@@ -41,11 +43,13 @@ pub struct AudioStreamInfo {
     pub language: String,
 }
 
+/// metadata about a particular subtitle stream
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SubtitleStreamInfo {
     pub language: String,
 }
 
+/// metadata about a clip, including duration, and the set of stream metadatas
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ClipInfo {
     pub duration: u64,
@@ -55,6 +59,9 @@ pub struct ClipInfo {
 }
 
 impl ClipInfo {
+    /**
+     * Converts the stream metadata into a `PipeableType` containing the relevant number of each type of stream
+     */
     pub fn to_pipeable_type(&self) -> PipeableType {
         PipeableType {
             video: self.video_streams.len() as i32,
@@ -74,19 +81,19 @@ pub enum SourceClipServerStatus {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct SourceClip {
-    // shared:
+    // shared with client:
     pub id: ID,
     pub name: String,
     pub status: SourceClipServerStatus,
     pub info: Option<ClipInfo>,
 
-    // sometimes shared:
-    pub original_file_location: Option<String>,
+    // sometimes shared (if they are the client who uploaded the source clip):
+    pub original_file_location: Option<String>, // the location of the source clip on the relevant source device
 
     // server only
-    pub file_location: Option<String>,
-    pub original_device_id: Option<ID>,
-    pub thumbnail_location: Option<String>,
+    pub file_location: Option<String>, // the location of the source clip on the server
+    pub original_device_id: Option<ID>, // not yet implemented: handle different devices' source clips
+    pub thumbnail_location: Option<String>, // not yet implemented for server
 }
 
 impl SourceClip {
@@ -102,13 +109,13 @@ impl SourceClip {
         };
     }
 
+    /**
+     * Uses GStreamer Discoverer to get metadata about a source clip
+     */
     pub fn get_file_info(filename: String) -> Result<ClipInfo, String> {
-        println!("Filename: {}", filename);
         let file_location = format!("file:///{}", filename.replace("\\", "/"));
-        println!("Location: {}", file_location);
 
         let discoverer = Discoverer::new(gst::ClockTime::from_seconds(10)).unwrap();
-
         let info = discoverer.discover_uri(&file_location);
         if info.is_err() {
             return Err(format!(
@@ -119,7 +126,6 @@ impl SourceClip {
         let info = info.unwrap();
 
         let duration = info.duration().unwrap().nseconds();
-        // let exact_duration = (duration as f64) / (1000000000 as f64);
         let mut video_streams_vec = Vec::new();
         let video_streams = info.video_streams();
         for video_stream in video_streams {
@@ -130,9 +136,6 @@ impl SourceClip {
                 let (fps_num, fps_den): (i32, i32) = video_info.framerate().into();
                 let (fps_num, fps_den): (f64, f64) = (fps_num.into(), fps_den.into());
                 let fps = fps_num / fps_den;
-
-                // let total_frames = exact_duration * fps_num / fps_den; // not 100% accurate
-                // let total_frames = total_frames.round() as i64;
 
                 let bitrate = video_info.bitrate();
                 let video_stream = VideoStreamInfo {
@@ -165,8 +168,6 @@ impl SourceClip {
                     number_of_channels: num_channels,
                 };
                 audio_streams_vec.push(audio_stream);
-            } else {
-                println!("Could not cast to audio info");
             }
         }
 
@@ -192,15 +193,6 @@ impl SourceClip {
         });
     }
 
-    pub fn get_gstreamer_id(&self, stream_type: &PipeableStreamType, index: i32) -> String {
-        format!(
-            "source-clip-{}-{}-{}",
-            self.id,
-            stream_type.to_string(),
-            index,
-        )
-    }
-
     pub fn get_server_url(&self) -> String {
         if is_server() {
             format!("file:///{}/{}", source_files_location(), self.id)
@@ -216,26 +208,27 @@ pub struct CompositedClip {
     pub name: String,
 }
 impl CompositedClip {
-    pub fn get_gstreamer_id(&self, stream_type: &PipeableStreamType, index: i32) -> String {
-        format!(
-            "composited-clip-{}-{}-{}",
-            self.id,
-            stream_type.to_string(),
-            index,
-        )
-    }
+    /**
+     * Gets the directory where this clip's chunks should be output to
+     */
     pub fn get_output_location(&self) -> String {
         format!("{}/composited-clip-{}", media_output_location(), self.id).replace("\\", "/")
     }
 
+    /**
+     * Gets the output location template that is used to split the file into chunks in GStreamer
+     */
     pub fn get_output_location_template(&self) -> String {
         format!(
-            "{}/segment%0{}d.mp4",
+            "{}/segment%0{}d.ts",
             self.get_output_location(),
             CHUNK_FILENAME_NUMBER_LENGTH
         )
     }
 
+    /**
+     * Gets the location of the GES timeline file for this clip
+     */
     pub fn get_location(&self) -> String {
         if is_server() {
             format!(

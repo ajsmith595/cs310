@@ -26,17 +26,16 @@ pub enum VideoPreviewChunkStatus {
 
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize, Debug)]
 pub enum VideoPreviewStatus {
-  NotRequested,
-  LengthRequested,
-  Data(u64, Option<String>, bool, Vec<VideoPreviewChunkStatus>),
+  NotRequested,                                                  // Not yet requested
+  LengthRequested, // The number of chunks and the duration of the composited clip have been requested
+  Data(u64, Option<String>, bool, Vec<VideoPreviewChunkStatus>), // The duration, codec string and vector of chunk statuses for the composited clip
 }
 
 pub struct SharedStateWrapper(pub Arc<Mutex<SharedState>>);
 
 pub struct SharedState {
-  pub file_written: bool,
-  pub connection_status: ConnectionStatus,
-  pub store: Option<Store>,
+  pub connection_status: ConnectionStatus, // The current connection status with the server
+  pub store: Option<Store>,                // The persistent state
   pub thread_stopper: Receiver<()>,
   pub task_manager_notifier: Option<Sender<bool>>,
   pub window: Option<Window<Wry>>,

@@ -49,7 +49,15 @@
       "active": false
     },
     "allowlist": {
-      "all": true
+      "all": true,
+      "fs": {
+        "all": true,
+        "scope": ["*"]
+      },
+      "http": {
+        "all": true,
+        "scope": ["http://*", "https://*", "wry://*"]
+      }
     },
     "windows": [
       {

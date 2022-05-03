@@ -3,10 +3,8 @@
   windows_subsystem = "windows"
 )]
 
-use core::time;
 use std::{
   collections::HashMap,
-  fs::File,
   sync::{mpsc, Arc, Mutex},
   thread,
 };
@@ -32,9 +30,6 @@ use tauri::Manager;
 
 #[macro_use]
 extern crate serde_derive;
-// #[macro_use]
-// extern crate erased_serde;
-// extern crate dirs;
 extern crate dirs;
 extern crate gst;
 extern crate gst_pbutils;
@@ -50,22 +45,21 @@ mod tauri_commands;
 mod video_preview_handler_thread;
 
 fn main() {
-  let path = dirs::data_dir().unwrap();
+  let path = tauri::api::path::data_dir().unwrap(); // Get the recommended directory for application data
   let path = format!(
     "{}\\AdamSmith\\VideoEditor",
     path.into_os_string().into_string().unwrap()
   );
 
   println!("Initialising...");
-  init(path, false);
+  init(path, false); // Sets up utility functions
   println!("Initialised");
 
-  let register = get_node_register();
-  let (tx, rx) = mpsc::channel();
+  let register = get_node_register(); // Gets the complete register of node types
 
+  let (tx, rx) = mpsc::channel(); // Thread stopper communication - allows a message to be send from the main thread, so that all threads can then be stopped
   let shared_state = SharedState {
     store: None,
-    file_written: false,
     connection_status: ConnectionStatus::InitialisingConnection,
     window: None,
     node_register: register.clone(),
@@ -78,15 +72,16 @@ fn main() {
 
   let shared_state = Arc::new(Mutex::new(shared_state));
 
-  let shared_state_clone = shared_state.clone();
-
-  let thread_spawned = Arc::new(Mutex::new(false));
-
+  let thread_spawned = Arc::new(Mutex::new(false)); // Prevents threads from being spawned twice in the event that the page is reloaded
   let threads = Arc::new(Mutex::new(Some(Vec::new())));
+
+  // For the page load callback
+  let shared_state_clone = shared_state.clone();
   let threads_clone = threads.clone();
 
   tauri::Builder::default()
     .manage(SharedStateWrapper(shared_state))
+    // Register all the Tauri commands available to the frontend
     .invoke_handler(tauri::generate_handler![
       tauri_commands::import_media,
       tauri_commands::get_initial_data,
@@ -106,21 +101,17 @@ fn main() {
       tauri_commands::request_video_preview,
       tauri_commands::get_video_preview_data
     ])
-    .on_page_load(move |app, _ev| {
+    .on_page_load(move |app, _| {
       let threads = threads_clone.clone();
       if *thread_spawned.lock().unwrap() {
-        println!("Not starting threads again!");
+        // Do not spawn threads again if they're already spawned
         return;
       }
       *thread_spawned.lock().unwrap() = true;
-      println!("Starting up threads...");
 
       let window = app.get_window("main").unwrap();
+      shared_state_clone.clone().lock().as_mut().unwrap().window = Some(window);
 
-      let temp = shared_state_clone.clone();
-      let x = &mut temp.lock().unwrap();
-      x.window = Some(window);
-      drop(x);
       let threads_to_spawn = [
         store_fetcher_thread,
         file_uploader_thread,
@@ -131,6 +122,7 @@ fn main() {
 
       let mut threads_lock = threads.lock().unwrap();
       let mutable_lock = threads_lock.as_mut().unwrap();
+
       for thread in threads_to_spawn {
         let shared_state = shared_state_clone.clone();
         mutable_lock.push(thread::spawn(move || {
@@ -142,7 +134,7 @@ fn main() {
         let shared_state = shared_state_clone.clone();
         mutable_lock.push(thread::spawn(move || {
           let (task_manager_notifier, task_manager_receiver) = mpsc::channel();
-          shared_state.lock().unwrap().task_manager_notifier = Some(task_manager_notifier);
+          shared_state.lock().unwrap().task_manager_notifier = Some(task_manager_notifier); // Register the special communication setup for the task manager
           task_manager_thread(shared_state, task_manager_receiver);
         }))
       }
@@ -150,10 +142,10 @@ fn main() {
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 
-  let _ = tx.send(());
+  let _ = tx.send(()); // send a request to the thread stopper when the window closes
 
   let threads = threads.lock().unwrap().take().unwrap();
   for t in threads {
-    t.join().unwrap();
+    t.join().unwrap(); // then join all the threads
   }
 }

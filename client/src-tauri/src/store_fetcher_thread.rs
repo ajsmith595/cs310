@@ -14,8 +14,12 @@ use cs310_shared::{
 
 use crate::state::{ConnectionStatus, SharedState, VideoPreviewStatus};
 
+/**
+ * The thread that gets the initial state of the application from the server upon startup
+ */
 pub fn store_fetcher_thread(state: Arc<Mutex<SharedState>>) {
   loop {
+    // Keep trying until successful
     set_connection_status(&state, ConnectionStatus::InitialisingConnection);
 
     let stream = networking::connect_to_server();

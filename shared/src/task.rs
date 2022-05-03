@@ -34,6 +34,12 @@ pub enum NetworkTask {
 }
 
 impl Task {
+    /**
+     * Modifies a store to apply the supplied tasks to that store
+     * Used to share functionality between client and server
+     *
+     * Returns a set of network jobs that need to be executed after these tasks if it is executed on the client
+     */
     pub fn apply_tasks(store: &mut Store, tasks: Vec<Task>) -> Vec<NetworkTask> {
         let mut network_jobs = Vec::new();
         for task in tasks {
