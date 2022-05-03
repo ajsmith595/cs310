@@ -94,3 +94,118 @@ impl Cache {
         self.cache_data.insert(id, cache_data);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::{
+        global::uniq_id,
+        node::{Node, Position},
+        nodes::blur_node,
+        pipeline::{Link, LinkEndpoint, Pipeline},
+        store::{ClipStore, Store},
+    };
+
+    use super::Cache;
+
+    #[test]
+    fn test_cache_1() {
+        let node1 = Node {
+            id: uniq_id(),
+            group: uniq_id(),
+            node_type: blur_node::IDENTIFIER.to_owned(),
+            position: Position::new(),
+            properties: HashMap::new(),
+        };
+
+        let node2 = Node {
+            id: uniq_id(),
+            group: uniq_id(),
+            node_type: blur_node::IDENTIFIER.to_owned(),
+            position: Position::new(),
+            properties: HashMap::new(),
+        };
+
+        let edge = Link {
+            from: LinkEndpoint {
+                node_id: node1.id.clone(),
+                property: blur_node::outputs::OUTPUT.to_owned(),
+            },
+            to: LinkEndpoint {
+                node_id: node2.id.clone(),
+                property: blur_node::inputs::MEDIA.to_owned(),
+            },
+        };
+
+        let mut hm = HashMap::new();
+        hm.insert(node1.id.clone(), node1.clone());
+        hm.insert(node2.id.clone(), node2.clone());
+
+        let mut pipeline = Pipeline::new();
+        pipeline.links.push(edge);
+
+        let store = Store {
+            nodes: hm,
+            clips: ClipStore::new(),
+            pipeline,
+        };
+
+        let mut cache = Cache::new();
+        cache.add_to_cache(node1.id.clone(), HashMap::new());
+        cache.add_to_cache(node2.id.clone(), HashMap::new());
+
+        cache.node_modified(&node1.id, &store);
+        assert!(cache.cache_data.get(&node2.id).is_none());
+    }
+
+    #[test]
+    fn test_cache_2() {
+        let node1 = Node {
+            id: uniq_id(),
+            group: uniq_id(),
+            node_type: blur_node::IDENTIFIER.to_owned(),
+            position: Position::new(),
+            properties: HashMap::new(),
+        };
+
+        let node2 = Node {
+            id: uniq_id(),
+            group: uniq_id(),
+            node_type: blur_node::IDENTIFIER.to_owned(),
+            position: Position::new(),
+            properties: HashMap::new(),
+        };
+
+        let edge = Link {
+            from: LinkEndpoint {
+                node_id: node1.id.clone(),
+                property: blur_node::outputs::OUTPUT.to_owned(),
+            },
+            to: LinkEndpoint {
+                node_id: node2.id.clone(),
+                property: blur_node::inputs::MEDIA.to_owned(),
+            },
+        };
+
+        let mut hm = HashMap::new();
+        hm.insert(node1.id.clone(), node1.clone());
+        hm.insert(node2.id.clone(), node2.clone());
+
+        let mut pipeline = Pipeline::new();
+        pipeline.links.push(edge);
+
+        let store = Store {
+            nodes: hm,
+            clips: ClipStore::new(),
+            pipeline,
+        };
+
+        let mut cache = Cache::new();
+        cache.add_to_cache(node1.id.clone(), HashMap::new());
+        cache.add_to_cache(node2.id.clone(), HashMap::new());
+
+        cache.node_modified(&node2.id, &store);
+        assert!(cache.cache_data.get(&node1.id).is_some());
+    }
+}

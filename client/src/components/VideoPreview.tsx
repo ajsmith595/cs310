@@ -440,7 +440,7 @@ class VideoPreview extends React.Component<Props, State> {
 
         return <div className="flex flex-col h-full">
             <div className="flex-grow overflow-auto flex justify-center items-center p-3 bg-black relative">
-                <video onPlaying={() => this.setState({ buffering: false })} onWaiting={() => this.setState({ buffering: true })} className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)} controls></video>
+                <video onPlaying={() => this.setState({ buffering: false })} onWaiting={() => this.setState({ buffering: true })} className="max-h-full" ref={this.video_element_ref} src={this.state.videoURL} onTimeUpdate={e => this.timeUpdate(e)}></video>
                 <div className='absolute flex items-center justify-center h-full'>
                     {musicDisplay}
                 </div>
@@ -471,9 +471,7 @@ class VideoPreview extends React.Component<Props, State> {
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepBackward} /></button>
                     <button onClick={() => this.playPause()} className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={this.state.playing ? faPause : faPlay} /></button>
                     <button className="px-4 py-2 text-lg font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-opacity-75"><FontAwesomeIcon icon={faStepForward} /></button>
-                    <button className="flex-1" onClick={() => {
-                        console.log(this.video_preview_data);
-                    }}>Debug</button>
+                    <div className="flex-1"></div>
                 </div>
             </div>
         </div>;
